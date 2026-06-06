@@ -26,12 +26,12 @@ def update_status():
         
         # Écriture dans le fichier formatée pour PHP
         # Format : Pourcentage | État | Couleur
-        with open("/home/thomas/hechicero/scripts/batterie.txt", "w") as f:
+        with open("/home/thomas/hechicero/data/batterie.txt", "w") as f:
             f.write(f"{p}%|{etat}|{couleur}")
             
     except Exception as e:
         # En cas d'erreur (ex: HAT débranché), on écrit un état par défaut
-        with open("/home/thomas/hechicero/scripts/batterie.txt", "w") as f:
+        with open("/home/thomas/hechicero/data/batterie.txt", "w") as f:
             f.write("?%|Erreur|red")
 
 if __name__ == "__main__":

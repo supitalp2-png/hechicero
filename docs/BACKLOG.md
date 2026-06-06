@@ -1,8 +1,8 @@
 # Backlog Hechicero
 
 ## En cours / Priorité haute
+- [x] Refactorisation : Déplacer le site web vers `~/hechicero/web` et corriger le lien symbolique `/var/www/html`.
 - [ ] Brique Audio : Driver HiFiBerry Amp4, configuration MPD.
-- [ ] Refactorisation : Déplacer le site web vers `~/hechicero/web` et corriger le lien symbolique `/var/www/html`.
 
 ## À venir
 - [ ] Brique Contenu : Structure dossiers Podcasts/Radios (ESP/FR).

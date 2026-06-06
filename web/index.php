@@ -1,7 +1,7 @@
 <div class="batterie">
     <?php
     // 1. Lecture du fichier généré par le script Python
-    $data = @file_get_contents("/home/thomas/hechicero/scripts/batterie.txt");
+    $data = @file_get_contents("/home/thomas/hechicero/data/batterie.txt");    
     
     if ($data) {
         // 2. On découpe les données (format : %|Etat|Couleur)
