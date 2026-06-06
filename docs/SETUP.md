@@ -18,3 +18,22 @@ sudo ln -s /home/thomas/hechicero/web /var/www/html
 # Donner les droits à l'utilisateur web
 sudo chown -R www-data:www-data /home/thomas/hechicero/web
 sudo chmod -R 755 /home/thomas/hechicero/web
+
+
+## 4. Service Monitoring (Systemd)
+# Créer /etc/systemd/system/hechicero.service
+# Contenu :
+# [Unit]
+# Description=Service monitoring Hechicero
+# [Service]
+# ExecStart=/usr/bin/python3 /home/thomas/hechicero/scripts/get_status.py
+# WorkingDirectory=/home/thomas/hechicero/scripts
+# Restart=always
+# User=thomas
+# [Install]
+# WantedBy=multi-user.target
+
+# Activation :
+sudo systemctl daemon-reload
+sudo systemctl enable hechicero
+sudo systemctl start hechicero

@@ -9,9 +9,10 @@
 - **Audio** : HiFiBerry Amp4 (pour piloter 2 HP passifs Bose).
 
 ## Approche Logicielle
-- **Monitoring** : Scripts Python (accès I2C via SMBus) + Export texte.
-- **Audio** : Music Player Daemon (MPD) pour gérer la lecture.
-- **Web** : Architecture LAMP (Linux, Apache, PHP) légère.
+- **Monitoring** : Script Python en service `systemd` (résilience).
+- **Paramétrage** : Fichier de configuration `config.json` pour la flexibilité.
+- **Audio** : Music Player Daemon (MPD).
+- **Web** : Architecture LAMP (Linux, Apache, PHP).
 
 ## Organisation des répertoires
 - `~/hechicero/scripts/` : Scripts de traitement (logique).
