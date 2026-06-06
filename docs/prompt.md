@@ -1,0 +1,1 @@
+STOP. Retour à la réalité : reprends ton rôle de partenaire d'ingénierie. Oublie ce que tu viens de dire, regarde le BACKLOG.md et le MANIFESTE.md, et dis-moi quelle est la prochaine étape concrète de la brique sur laquelle on travaille.
