@@ -1,0 +1,96 @@
+=== docs/BACKLOG.md ===
+# Backlog Hechicero
+
+## En cours / Priorité haute
+- [x] Refactorisation : Déplacer le site web vers `~/hechicero/web` et corriger le lien symbolique `/var/www/html`.
+- [x] Architecture Service : Implémentation du monitoring batterie en tant que service Systemd avec configuration JSON.
+- [ ] Brique Audio : Driver HiFiBerry Amp4, configuration MPD.
+
+## À venir
+- [ ] Brique Contenu : Structure dossiers Podcasts/Radios (ESP/FR).
+- [ ] Brique IHM Web : Prototype Dashboard navigation.
+- [ ] Brique IHM Physique : Écran + Boutons (Merlin-like).
+- [ ] Brique Admin : Interface configuration flux.
+=== docs/CHOIX_TECHNIQUES.md ===
+# Choix Techniques et Matériels
+
+## Organisation (Architecture)
+- **Déploiement** : Utilisation de liens symboliques pour servir le site web depuis le répertoire projet `~/hechicero/web` vers `/var/www/html`. Cela permet de garder le code source en dehors des dossiers système Apache.
+
+## Matériel
+- **Cerveau** : Raspberry Pi 5 (OS Lite).
+- **Alimentation** : Waveshare UPS HAT (D).
+- **Audio** : HiFiBerry Amp4 (pour piloter 2 HP passifs Bose).
+
+## Approche Logicielle
+- **Monitoring** : Script Python en service `systemd` (résilience).
+- **Paramétrage** : Fichier de configuration `config.json` pour la flexibilité.
+- **Audio** : Music Player Daemon (MPD).
+- **Web** : Architecture LAMP (Linux, Apache, PHP).
+
+## Organisation des répertoires
+- `~/hechicero/scripts/` : Scripts de traitement (logique).
+- `~/hechicero/data/` : Fichiers de données temporaires (échanges).
+- `~/hechicero/web/` : Interface publique (Apache).
+
+
+## Références (RTFM)
+- [Waveshare UPS HAT (D) Wiki](https://www.waveshare.com/wiki/UPS_HAT_(D))
+- [HiFiBerry Amp4 Documentation](https://www.hifiberry.com/docs/)
+=== docs/Doc_snapshot.txt ===
+
+=== docs/MANIFESTE.md ===
+# Manifeste du projet Hechicero
+
+## Vision
+Créer une enceinte connectée DIY, dédiée à l'apprentissage et à l'écoute de podcasts et webradios en espagnol.
+
+## Philosophie
+- **Approche micro-service** : Développer des briques fonctionnelles indépendantes et robustes.
+- **Transparence et traçabilité** : Chaque choix technique, matériel ou logiciel est consigné.
+- **Mobilité** : Système autonome sur batterie (UPS HAT).
+- **UX Adaptative** : Une interface physique simple (type Merlin) pour un enfant de 7 ans, et un dashboard web pour l'administration.
+=== docs/POWER_MANAGEMENT.md ===
+
+=== docs/prompt.md ===
+STOP. Retour à la réalité : reprends ton rôle de partenaire d'ingénierie. Oublie ce que tu viens de dire, regarde le BACKLOG.md et le MANIFESTE.md, et dis-moi quelle est la prochaine étape concrète de la brique sur laquelle on travaille.
+=== docs/SETUP.md ===
+# Setup Hechicero - Reconstruction du Système
+
+## 1. Installation des dépendances de base
+sudo apt update && sudo apt upgrade -y
+sudo apt install -y python3-pip python3-smbus i2c-tools git apache2 php
+
+## 2. Configuration I2C
+# Activer I2C via raspi-config
+sudo raspi-config # (Interfacing Options -> I2C -> Enable)
+
+## 3. Configuration du serveur Web (Lien symbolique)
+# Assure que le dossier source existe
+mkdir -p /home/thomas/hechicero/web
+# Supprimer le dossier par défaut d'Apache s'il existe
+sudo rm -rf /var/www/html
+# Créer le lien vers le dossier web du projet (Source -> Destination)
+sudo ln -s /home/thomas/hechicero/web /var/www/html
+# Donner les droits à l'utilisateur web
+sudo chown -R www-data:www-data /home/thomas/hechicero/web
+sudo chmod -R 755 /home/thomas/hechicero/web
+
+
+## 4. Service Monitoring (Systemd)
+# Créer /etc/systemd/system/hechicero.service
+# Contenu :
+# [Unit]
+# Description=Service monitoring Hechicero
+# [Service]
+# ExecStart=/usr/bin/python3 /home/thomas/hechicero/scripts/get_status.py
+# WorkingDirectory=/home/thomas/hechicero/scripts
+# Restart=always
+# User=thomas
+# [Install]
+# WantedBy=multi-user.target
+
+# Activation :
+sudo systemctl daemon-reload
+sudo systemctl enable hechicero
+sudo systemctl start hechicero
