@@ -1,16 +1,242 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="fr">
 <head>
-    <meta charset="UTF-8">
-    <title>Hechicero</title>
-    <link rel="stylesheet" href="style.css">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Hechicero — Lecteur</title>
+  <style>
+    :root{
+      --bg:#0f1720;--card:#0b1220;--accent:#ffb86b;--text:#e6eef6;
+      --flag-size:56px;
+    }
+    html,body{height:100%;margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial;background:var(--bg);color:var(--text)}
+    .wrap{max-width:900px;margin:0 auto;padding:18px}
+    .center{display:flex;align-items:center;justify-content:center;flex-direction:column}
+    header{display:flex;align-items:center;gap:12px;margin-bottom:18px}
+    h1{font-size:1.2rem;margin:0}
+    button{background:var(--accent);border:0;padding:12px 18px;border-radius:10px;font-weight:600;cursor:pointer}
+    .screen{min-height:60vh;background:linear-gradient(180deg,rgba(255,255,255,0.02),transparent);border-radius:12px;padding:16px;box-sizing:border-box}
+    .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px}
+    .card{background:var(--card);padding:8px;border-radius:8px;text-align:center;cursor:pointer;user-select:none}
+    .card img{width:100%;height:100px;object-fit:cover;border-radius:6px}
+    .title{margin-top:8px;font-size:0.95rem}
+    .back{background:transparent;border:1px solid rgba(255,255,255,0.06);color:var(--text);padding:8px 12px;border-radius:8px;cursor:pointer}
+    .list{display:flex;flex-direction:column;gap:8px}
+    .episode{display:flex;align-items:center;gap:12px;padding:8px;border-radius:8px;background:rgba(255,255,255,0.02)}
+    .episode .meta{flex:1}
+    audio{width:100%;margin-top:12px}
+    .hidden{display:none}
+    .flags{display:flex;gap:18px;align-items:center;justify-content:center;margin-top:18px}
+    .flag-btn{display:flex;flex-direction:column;align-items:center;gap:8px;background:transparent;border:0;cursor:pointer;color:var(--text)}
+    .flag{width:var(--flag-size);height:var(--flag-size);border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,0.4);overflow:hidden;border:2px solid rgba(255,255,255,0.04)}
+    .flag svg{width:100%;height:100%;display:block}
+    .lang-label{font-size:0.95rem}
+    @media (max-width:480px){.card img{height:90px}}
+  </style>
 </head>
-
 <body>
-    <!-- Conteneur dans lequel on affichera les écrans -->
-    <div id="app"></div>
+  <div class="wrap">
+    <header>
+      <h1>Hechicero — Lecteur</h1>
+      <div style="margin-left:auto"><small>Offline first</small></div>
+    </header>
 
-    <!-- Le moteur d'interface -->
-    <script src="app.js"></script>
+    <main class="screen center" id="app">
+      <!-- Écrans injectés par JS -->
+      <div id="home">
+        <h2>Bienvenue</h2>
+        <p>Choisis la langue des podcasts</p>
+
+        <div class="flags" role="tablist" aria-label="Choix de la langue">
+          <!-- France -->
+          <button class="flag-btn" id="btn-fr" aria-pressed="false" title="Podcasts en français">
+            <span class="flag" aria-hidden="true">
+              <!-- simple stylized French flag SVG -->
+              <svg viewBox="0 0 3 2" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Drapeau français">
+                <rect width="1" height="2" x="0" fill="#0055A4"/>
+                <rect width="1" height="2" x="1" fill="#FFFFFF"/>
+                <rect width="1" height="2" x="2" fill="#EF4135"/>
+              </svg>
+            </span>
+            <span class="lang-label">Français</span>
+          </button>
+
+          <!-- Colombia -->
+          <button class="flag-btn" id="btn-es" aria-pressed="false" title="Podcasts en espagnol (Colombie)">
+            <span class="flag" aria-hidden="true">
+              <!-- stylized Colombian flag SVG -->
+              <svg viewBox="0 0 3 2" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Drapeau colombien">
+                <rect width="3" height="1" y="0" fill="#FFD100"/>
+                <rect width="3" height="0.5" y="1" fill="#0033A0"/>
+                <rect width="3" height="0.5" y="1.5" fill="#CE1126"/>
+              </svg>
+            </span>
+            <span class="lang-label">Español</span>
+          </button>
+        </div>
+
+        <div style="margin-top:18px">
+          <button id="enterBtn">Voir tous</button>
+        </div>
+      </div>
+
+      <div id="podcasts" class="hidden">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+          <button class="back" id="backFromPod">← Retour</button>
+          <strong id="podHeader">Choisir un podcast</strong>
+          <div style="width:48px"></div>
+        </div>
+        <div id="podGrid" class="grid" aria-live="polite"></div>
+      </div>
+
+      <div id="chapters" class="hidden">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+          <button class="back" id="backFromCh">← Podcasts</button>
+          <strong id="podTitle">Podcast</strong>
+          <div style="width:48px"></div>
+        </div>
+        <div id="chapList" class="list"></div>
+      </div>
+
+      <div id="player" class="hidden">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+          <button class="back" id="backFromPlayer">← Chapitres</button>
+          <strong id="trackTitle">Lecture</strong>
+          <div style="width:48px"></div>
+        </div>
+        <div id="cover" style="width:100%;max-width:360px;margin:0 auto 12px"></div>
+        <audio id="audio" controls preload="none"></audio>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    // UI helpers
+    const el = id => document.getElementById(id);
+    const show = (id)=>{['home','podcasts','chapters','player'].forEach(s=>el(s).classList.add('hidden')); el(id).classList.remove('hidden')}
+
+    // Elements
+    const enterBtn = el('enterBtn');
+    const podGrid = el('podGrid');
+    const chapList = el('chapList');
+    const audioEl = el('audio');
+    const trackTitle = el('trackTitle');
+    const podTitle = el('podTitle');
+    const cover = el('cover');
+    const podHeader = el('podHeader');
+
+    const btnFR = el('btn-fr');
+    const btnES = el('btn-es');
+
+    let DATA = null;
+    let currentPodcast = null;
+    let selectedLang = null; // 'FR' or 'ES' or null
+
+    // Fetch data.json (relative path)
+    async function loadData(){
+      try{
+        const res = await fetch('data.json', {cache: "no-store"});
+        if(!res.ok) throw new Error('Impossible de charger data.json');
+        DATA = await res.json();
+      }catch(e){
+        console.error(e);
+        podGrid.innerHTML = '<div style="padding:12px;color:#f88">Erreur: impossible de charger data.json</div>';
+      }
+    }
+
+    // Render podcasts (filtered by selectedLang if set)
+    function renderPodcasts(){
+      podGrid.innerHTML = '';
+      if(!DATA || !Array.isArray(DATA.podcasts)) return;
+      const list = selectedLang ? DATA.podcasts.filter(p => (p.langue || p.lang || p.language || '').toUpperCase() === selectedLang) : DATA.podcasts;
+      if(list.length === 0){
+        podGrid.innerHTML = '<div style="padding:12px;color:#9fb0c8">Aucun podcast disponible pour cette langue.</div>';
+        return;
+      }
+      list.forEach(p=>{
+        const c = document.createElement('div');
+        c.className = 'card';
+        c.tabIndex = 0;
+        c.innerHTML = `<img src="${p.image}" alt="${p.titre}"><div class="title">${p.titre}</div>`;
+        c.addEventListener('click', ()=>openPodcast(p.id));
+        c.addEventListener('keydown', (ev)=>{ if(ev.key==='Enter') openPodcast(p.id) });
+        podGrid.appendChild(c);
+      });
+    }
+
+    // Open podcast -> chapters
+    function openPodcast(id){
+      currentPodcast = DATA.podcasts.find(x=>x.id===id);
+      if(!currentPodcast) return;
+      podTitle.textContent = currentPodcast.titre;
+      renderChapters(currentPodcast);
+      show('chapters');
+    }
+
+    function renderChapters(p){
+      chapList.innerHTML = '';
+      p.chapitres.forEach(ch=>{
+        const row = document.createElement('div');
+        row.className = 'episode';
+        row.tabIndex = 0;
+        row.innerHTML = `<div class="meta"><div style="font-weight:600">${ch.titre}</div><div style="font-size:0.85rem;color:#9fb0c8">${formatDuration(ch.duree)}</div></div><div><button class="back">▶</button></div>`;
+        row.querySelector('button').addEventListener('click', ()=>playTrack(ch));
+        row.addEventListener('keydown', (ev)=>{ if(ev.key==='Enter') playTrack(ch) });
+        chapList.appendChild(row);
+      });
+    }
+
+    function playTrack(ch){
+      trackTitle.textContent = ch.titre;
+      audioEl.src = ch.audio;
+      audioEl.play().catch(()=>{ /* autoplay may be blocked; user can press play */ });
+      cover.innerHTML = currentPodcast.image ? `<img src="${currentPodcast.image}" alt="" style="width:100%;max-width:360px;border-radius:8px">` : '';
+      show('player');
+    }
+
+    function formatDuration(s){
+      if(!s && s!==0) return '';
+      const m = Math.floor(s/60), sec = s%60;
+      return `${m}:${sec.toString().padStart(2,'0')}`;
+    }
+
+    // Navigation buttons
+    el('backFromPod').addEventListener('click', ()=>show('home'));
+    el('backFromCh').addEventListener('click', ()=>show('podcasts'));
+    el('backFromPlayer').addEventListener('click', ()=>show('chapters'));
+
+    // Language buttons
+    function setLanguage(lang){
+      selectedLang = lang;
+      // update aria-pressed
+      btnFR.setAttribute('aria-pressed', lang === 'FR');
+      btnES.setAttribute('aria-pressed', lang === 'ES');
+      // update header
+      podHeader.textContent = lang === 'FR' ? 'Podcasts en français' : 'Podcasts en español';
+      // load data if needed and show podcasts
+      (async ()=>{
+        if(!DATA) await loadData();
+        renderPodcasts();
+        show('podcasts');
+      })();
+    }
+
+    btnFR.addEventListener('click', ()=>setLanguage('FR'));
+    btnES.addEventListener('click', ()=>setLanguage('ES'));
+
+    // Enter button: show all podcasts (no filter)
+    enterBtn.addEventListener('click', async ()=>{
+      selectedLang = null;
+      btnFR.setAttribute('aria-pressed', false);
+      btnES.setAttribute('aria-pressed', false);
+      podHeader.textContent = 'Choisir un podcast';
+      if(!DATA) await loadData();
+      renderPodcasts();
+      show('podcasts');
+    });
+
+    // Auto-load data in background
+    loadData();
+  </script>
 </body>
 </html>
