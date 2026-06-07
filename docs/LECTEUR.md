@@ -43,89 +43,88 @@ web/lecteur/
 - **data.json**  
   Base de données locale. Exemple minimal :
 
-```json
-{
-  "podcasts": [
+    ```json
     {
-      "id": "cuentasticos",
-      "titre": "Cuentásticos",
-      "langue": "ES",
-      "image": "images/cuentasticos.jpg",
-      "chapitres": [
+      "podcasts": [
         {
-          "id": "ep1",
-          "titre": "La princesa valiente",
-          "audio": "audio/cuentasticos_ep1.mp3",
-          "duree": 312
+          "id": "cuentasticos",
+          "titre": "Cuentásticos",
+          "langue": "ES",
+          "image": "images/cuentasticos.jpg",
+          "chapitres": [
+            {
+              "id": "ep1",
+              "titre": "La princesa valiente",
+              "audio": "audio/cuentasticos_ep1.mp3",
+              "duree": 312
+            }
+          ]
         }
       ]
     }
-  ]
-}
-
-
+    
 images/  
-Contient les jaquettes. Règles : pas d’accents ; pas d’espaces ; format .jpg ou .png.
+  Contient les jaquettes. Règles : pas d’accents ; pas d’espaces ; format .jpg ou .png.
 
 audio/  
-Contient les fichiers audio locaux. Règles : MP3 ; noms simples, sans espaces ni accents.
+  Contient les fichiers audio locaux. Règles : MP3 ; noms simples, sans espaces ni accents.
 
 Navigation du Lecteur
-Accueil
-
-Logo ou titre
-
-Bouton Entrer
-
-Choix du podcast
-
-Liste des podcasts issus de data.json
-
-Affichage des jaquettes
-
-Choix du chapitre
-
-Liste des épisodes du podcast sélectionné
-
-Lecture
-
-Titre du chapitre
-
-Bouton Play / Pause
-
-Barre de progression (optionnelle)
-
-Retour au chapitre précédent
-
-Contraintes techniques
-Le lecteur doit être servi par Apache via l’alias /hechicero/.
-
-fetch("data.json") nécessite un serveur web (pas de file://).
-
-Le lecteur doit fonctionner même si l’admin est hors service.
-
-Le lecteur ne doit jamais écrire sur le disque (lecture seule).
-
-Évolutions prévues
-Carrousel pour les jaquettes
-
-Animations simples (fade, slide)
-
-Mode hors-ligne complet
-
-Support des webradios
-
-Intégration avec boutons physiques (GPIO)
-
-Migration possible vers une IHM native (Qt, Flutter, Kivy)
-
-Critères d’acceptation
-Le lecteur charge data.json sans erreur.
-
-Les jaquettes s’affichent correctement.
-
-La navigation fonctionne sur écran tactile.
-
-La lecture audio fonctionne via MPD.
-
-Le lecteur reste fonctionnel sans réseau.
+  Accueil
+  
+  Logo ou titre
+  
+  Bouton Entrer
+  
+  Choix du podcast
+  
+  Liste des podcasts issus de data.json
+  
+  Affichage des jaquettes
+  
+  Choix du chapitre
+  
+  Liste des épisodes du podcast sélectionné
+  
+  Lecture
+  
+  Titre du chapitre
+  
+  Bouton Play / Pause
+  
+  Barre de progression (optionnelle)
+  
+  Retour au chapitre précédent
+  
+  Contraintes techniques
+  Le lecteur doit être servi par Apache via l’alias /hechicero/.
+  
+  fetch("data.json") nécessite un serveur web (pas de file://).
+  
+  Le lecteur doit fonctionner même si l’admin est hors service.
+  
+  Le lecteur ne doit jamais écrire sur le disque (lecture seule).
+  
+  Évolutions prévues
+  Carrousel pour les jaquettes
+  
+  Animations simples (fade, slide)
+  
+  Mode hors-ligne complet
+  
+  Support des webradios
+  
+  Intégration avec boutons physiques (GPIO)
+  
+  Migration possible vers une IHM native (Qt, Flutter, Kivy)
+  
+  Critères d’acceptation
+  Le lecteur charge data.json sans erreur.
+  
+  Les jaquettes s’affichent correctement.
+  
+  La navigation fonctionne sur écran tactile.
+  
+  La lecture audio fonctionne via MPD.
+  
+  Le lecteur reste fonctionnel sans réseau.
