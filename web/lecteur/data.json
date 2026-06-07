@@ -1,0 +1,18 @@
+{
+  "podcasts": [
+    {
+      "id": "cuentasticos",
+      "titre": "Cuentásticos",
+      "langue": "ES",
+      "image": "images/cuentasticos.jpg",
+      "chapitres": [
+        {
+          "id": "ep1",
+          "titre": "La princesa valiente",
+          "audio": "audio/cuentasticos_ep1.mp3",
+          "duree": 312
+        }
+      ]
+    }
+  ]
+}

@@ -6,6 +6,7 @@
 - [x] TICKET-001 — chore — Refactoriser emplacement web et corriger lien symbolique `/var/www/html` — (prio: High) — owner: infra
 - [x] TICKET-002 — infra — Architecture Service : monitoring batterie en service systemd (JSON) — (prio: High) — owner: infra
 - [ ] TICKET-003 — feat — Brique Audio : driver HiFiBerry Amp4, config MPD — (prio: High) — owner: audio
+- [ ] TICKET-022 — feat — Brique Lecteur : interface embarquée HTML/JS + data.json — (prio: High) — owner: web
 
 ## À venir / Priorité moyenne
 - [ ] TICKET-004 — feat — Brique Contenu : structure dossiers Podcasts/Radios (ESP/FR) — (prio: Med) — owner: content
