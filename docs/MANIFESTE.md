@@ -1,49 +1,110 @@
 # Manifeste du projet Hechicero
 
-## Vision
-Créer une enceinte connectée DIY, autonome sur batterie, dédiée à l'apprentissage et à l'écoute de podcasts et webradios en espagnol.  
-L’appareil doit être simple, robuste, compréhensible par un enfant, et administrable facilement par un adulte.
+## 1. Vision
 
-## Principes
-- **Briques indépendantes**  
-  Chaque fonctionnalité (audio, monitoring, lecteur, admin, contenu) est isolée, testable et remplaçable sans casser le reste.
+Créer une enceinte connectée **DIY**, **autonome**, **robuste**, dédiée à l’apprentissage et à l’écoute de contenus audio (podcasts, histoires, webradios), avec une interface pensée pour un enfant et une administration simple pour un adulte.
 
-- **Transparence**  
-  Chaque choix technique, chaque décision d’architecture et chaque procédure d’installation est documentée dans `docs/`.
+Hechicero doit être :
+- compréhensible,
+- maintenable,
+- réparable,
+- évolutif,
+- et utilisable hors réseau.
 
-- **Robustesse**  
-  Le système doit résister aux coupures, aux erreurs, aux redémarrages.  
-  → Services systemd, reprise automatique, logs, monitoring batterie.
+---
 
-- **Simplicité UX**  
-  Deux interfaces distinctes :
-  - **Lecteur embarqué** : interface tactile simple, pensée pour un enfant (type Merlin).
-  - **Dashboard Admin** : interface web locale pour configuration, diagnostics et mises à jour.
+## 2. Principes fondateurs
 
-- **Autonomie**  
-  L’appareil doit fonctionner sans réseau, sans cloud, sans dépendances externes.
+### 🔹 Briques indépendantes
+Chaque fonctionnalité est isolée :
+- Monitoring batterie  
+- Audio (MPD + Amp4)  
+- Lecteur embarqué  
+- Admin locale  
+- Ingestion podcasts  
 
-## Objectifs courts termes
-- Monitoring batterie fiable et visible via l’UI locale.
-- Lecture audio via HiFiBerry + MPD.
-- Lecteur embarqué HTML/JS basé sur `data.json`.
-- Interface d’administration locale pour logs, statut et configuration.
+Une brique peut évoluer sans casser les autres.
 
-## Objectifs moyen terme
-- Gestion complète du contenu (podcasts, radios, langues).
-- IHM physique (boutons, écran tactile).
-- Mode hors-ligne total pour le lecteur.
-- Amélioration de l’UX (carrousel, transitions, feedback visuel).
+### 🔹 Transparence
+Chaque choix technique, chaque décision d’architecture, chaque procédure d’installation est documentée dans `docs/`.
 
-## Objectifs long terme
-- Synchronisation optionnelle du contenu (USB, réseau local).
-- Mode “profil enfant” avec restrictions.
-- Extensions matérielles (LED, capteurs, boutons physiques).
-- Migration possible vers une IHM native (Qt, Flutter, Kivy).
+### 🔹 Robustesse
+Le système doit résister :
+- aux coupures,
+- aux erreurs,
+- aux redémarrages.
 
-## Valeurs du projet
-- **DIY** : comprendre, apprendre, construire soi-même.
-- **Durabilité** : matériel réparable, logiciel simple et maintenable.
-- **Accessibilité** : interface pensée pour les enfants et les non-technophiles.
-- **Évolutivité** : chaque brique peut être améliorée ou remplacée.
+Les services critiques tournent sous **systemd** avec reprise automatique.
 
+### 🔹 Simplicité UX
+Deux interfaces distinctes :
+- **Lecteur embarqué** : simple, tactile, pensée pour un enfant.
+- **Dashboard Admin** : interface locale pour configuration, diagnostics et mises à jour.
+
+### 🔹 Autonomie
+L’appareil doit fonctionner :
+- sans réseau,
+- sans cloud,
+- sans dépendances externes.
+
+---
+
+## 3. Objectifs court terme (MVP)
+
+- Monitoring batterie fiable (INA219 + service systemd)
+- Audio local + Webradio via MPD
+- Lecteur embarqué HTML/JS basé sur `data.json`
+- Admin locale minimale (statut batterie, tests audio)
+- Arborescence cohérente (`web/`, `scripts/`, `podcasts/`, `data/`)
+
+---
+
+## 4. Objectifs moyen terme
+
+- Ingestion complète des podcasts (RSS → fichiers locaux)
+- Génération automatique de `data.json`
+- Gestion du contenu (radios, podcasts, langues)
+- Amélioration de l’UX (carrousel, transitions, feedback visuel)
+- Mode hors-ligne total pour le lecteur
+
+---
+
+## 5. Objectifs long terme
+
+- Synchronisation locale (USB, réseau local)
+- Profils enfants (restrictions, favoris)
+- Extensions matérielles (LED, capteurs, boutons physiques)
+- Migration possible vers une IHM native (Qt, Flutter, Kivy)
+- Mode “parent technophile” : logs, monitoring avancé, outils de debug
+
+---
+
+## 6. Valeurs du projet
+
+### 🔹 DIY
+Comprendre, apprendre, construire soi-même.  
+Le projet doit rester accessible, documenté, reproductible.
+
+### 🔹 Durabilité
+Matériel réparable, logiciel simple et maintenable.  
+Pas de dépendances opaques.
+
+### 🔹 Accessibilité
+Interface pensée pour :
+- les enfants,
+- les non-technophiles,
+- les parents qui veulent partager leur passion.
+
+### 🔹 Évolutivité
+Chaque brique peut être améliorée ou remplacée sans réécrire tout le système.
+
+---
+
+## 7. Ce que Hechicero n’est pas
+
+- Pas une enceinte cloud  
+- Pas un produit commercial  
+- Pas une usine à gaz  
+- Pas un système dépendant d’API externes
+
+Hechicero est un **projet personnel**, **pédagogique**, **familial**, conçu pour durer.

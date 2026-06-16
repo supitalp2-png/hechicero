@@ -1,86 +1,165 @@
-# Choix Techniques et Matériels
+# Choix Techniques et Matériels — Hechicero
 
-## Organisation (Architecture)
+## 1. Architecture générale
 
-- **Déploiement Web** : le dossier `~/hechicero/web` est servi par Apache via un alias.  
-  L’interface d’administration et le lecteur embarqué sont deux briques distinctes :
-  - `web/index.php` → Dashboard Admin (statut batterie, logs, config)
-  - `web/lecteur/` → Lecteur embarqué HTML/JS (IHM du Raspberry Pi)
+Hechicero repose sur une séparation stricte entre trois briques :
 
-- **Séparation des responsabilités** :
-  - L’Admin est accessible via le réseau local.
-  - Le Lecteur est autonome, prévu pour l’écran tactile du RPi.
-  - Les deux briques ne partagent que des fichiers statiques (ex. `status.json`).
+### 🔹 Backend (technique)
+- Monitoring batterie (INA219 + Python)
+- Ingestion future des podcasts (RSS → fichiers locaux)
+- Génération des données statiques (`data.json`)
+- Services systemd pour les tâches récurrentes
 
-- **Structure du lecteur** :
-  - `lecteur/index.html` → squelette minimal
-  - `lecteur/app.js` → moteur d’IHM (navigation, rendu, logique)
-  - `lecteur/data.json` → base de données locale (podcasts, chapitres)
-  - `lecteur/images/` → jaquettes
-  - `lecteur/audio/` → fichiers audio
+### 🔹 Lecteur embarqué (IHM enfant)
+- HTML/CSS/JS pur
+- Fonctionne **sans réseau**
+- Lit les flux MPD (webradio + fichiers locaux)
+- S’appuie sur un fichier unique : `web/lecteur/data.json`
 
-## Matériel
+### 🔹 Interface d’administration (IHM adulte)
+- Accessible via le réseau local
+- Apache + PHP
+- Affiche : statut batterie, logs, configuration
 
-- **Cerveau** : Raspberry Pi 5 (OS Lite).
-- **Alimentation** : Waveshare UPS HAT (D).
-- **Audio** : HiFiBerry Amp4 (2 HP passifs Bose).
-- **Écran** : écran tactile (IHM type Merlin).
+---
+
+## 2. Architecture matérielle
+
+### 🔹 Raspberry Pi 5
+- OS : Raspberry Pi OS Lite
+- Rôle : cœur du système
+
+### 🔹 Waveshare UPS HAT (D)
+- Mesure tension / courant via INA219
+- Permet un shutdown propre
+
+### 🔹 HiFiBerry Amp4
+- Ampli audio intégré
+- Sortie directe vers enceintes passives
+- Compatible ALSA → MPD
+
+### 🔹 Écran tactile
+- Interface enfant type Merlin
+- Navigation simple (haut / bas / gauche / droite / OK)
+
+---
+
+## 3. Architecture audio
+
+### 🔹 Chaîne audio complète
+- Lecteur HTML/JS → MPD → ALSA → HiFiBerry Amp4 → Enceintes
 
 
-      Choix du HiFiBerry Amp4 comme sortie audio matérielle
-      Justification : ampli intégré, qualité, simplicité, support ALSA
-      Choix de MPD comme moteur audio :
-      robuste
-      contrôlable en HTTP / TCP
-      compatible avec ton lecteur HTML/JS
-      parfait pour un système embarqué
-      Architecture audio :
-      HTML/JS → API MPD → ALSA → HiFiBerry Amp4 → enceintes
+### 🔹 Justification des choix
+- **MPD** : robuste, léger, parfait pour un système embarqué
+- **ALSA** : standard Linux, compatible Amp4
+- **Flux web + fichiers locaux** : même API MPD
+- **Séparation totale** entre IHM et moteur audio
 
+---
 
-## Approche Logicielle
+## 4. Organisation des répertoires
 
-- **Monitoring** : script Python (`get_status.py`) exécuté en service systemd.  
-  Écrit périodiquement `web/status.json` (format JSON strict).
+Arborescence réelle du projet :
+  ~/hechicero/
+  │
+  ├── data/              # config.json, fichiers internes
+  ├── docs/              # documentation du projet
+  ├── podcasts/          # fichiers téléchargés (RSS)
+  │     └── <podcast_id>/
+  │          ├── audio/
+  │          ├── images/
+  │          └── meta.json
+  ├── scripts/           # scripts Python (monitoring, ingestion)
+  ├── UX Design/         # maquettes, notes UX
+  └── web/               # interface web (admin + lecteur)
+  ├── index.php
+  ├── status.json
+  └── lecteur/
+  ├── index.html
+  ├── app.js
+  ├── style.css
+  ├── data.json
+  ├── images/
+  └── audio/
 
-- **Paramétrage** : `config.json` (seuils batterie, intervalle backend).
+### 🔹 Règles de cohérence
+- **Les fichiers téléchargés (podcasts)** vont dans `~/hechicero/podcasts/`
+- **Le lecteur** ne contient que :
+  - les images statiques
+  - les fichiers audio *manuels* (ex : démo)
+  - `data.json`
+- **Le backend** met à jour `data.json` mais ne touche jamais à l’IHM
 
-- **Audio** : Music Player Daemon (MPD) pour lecture fiable et contrôlable.
+---
 
-- **Web** : LAMP (Apache + PHP) pour simplicité locale et compatibilité RPi.
+## 5. Approche logicielle
 
-- **Lecteur embarqué** :
-  - HTML/CSS minimal
-  - JavaScript pur (sans framework)
-  - Données locales via `data.json`
-  - Navigation générée dynamiquement (pas de pages multiples)
-  - Architecture compatible avec une future migration vers une IHM native
+### 🔹 Monitoring batterie
+- Python + INA219
+- Service systemd
+- Écriture atomique dans `web/status.json`
 
-## Organisation des répertoires
+### 🔹 Ingestion podcasts (MVP à venir)
+- Script Python
+- Lecture RSS
+- Téléchargement des épisodes
+- Génération de `meta.json`
+- Mise à jour de `web/lecteur/data.json`
 
-- `~/hechicero/scripts/` : scripts Python (ex. `get_status.py`).
-- `~/hechicero/data/` : fichiers temporaires (shutdown_pending, config).
-- `~/hechicero/web/` : interface web (admin + lecteur).
-- `~/hechicero/web/lecteur/` : lecteur embarqué autonome.
+### 🔹 Lecteur embarqué
+- HTML minimal
+- JavaScript pur
+- Navigation dynamique
+- Compatible tactile
+- Fonctionne hors-ligne
 
-## Bonnes pratiques retenues
+### 🔹 Admin Web
+- Apache + PHP
+- Accès local uniquement
+- Affiche statut batterie + logs
 
-- **Permissions** :
-  - Dossiers parents traversables (`x`) pour l’utilisateur du service.
-  - `status.json` en `644`, propriétaire `thomas:www-data`.
+---
 
-- **Écriture atomique** :
-  - Écrire dans `status.json.tmp` puis `mv` → `status.json`.
+## 6. Bonnes pratiques retenues
 
-- **Isolation** :
-  - Utilisateur système `hechicero` recommandé pour la production.
+### 🔹 Permissions
+- `web/status.json` : `644`, propriétaire `thomas:www-data`
+- Dossiers traversables (`x`) pour les services systemd
+- `scripts/` en lecture seule pour www-data
 
-- **IHM Lecteur** :
-  - Données statiques (JSON) pour éviter dépendances réseau.
-  - Architecture incrémentale : MVP simple → carrousel plus tard.
-  - Séparation stricte entre logique (JS) et données (JSON).
+### 🔹 Écriture atomique
+- Toujours écrire dans `*.tmp` puis `mv`
 
-## Références
+### 🔹 Robustesse
+- Services systemd avec :
+  - Restart=always
+  - TimeoutStopSec
+  - ProtectSystem=full (à durcir plus tard)
 
-- [Waveshare UPS HAT (D) Wiki](https://www.waveshare.com/wiki/UPS_HAT_(D))
-- [HiFiBerry Amp4 Documentation](https://www.hifiberry.com/docs/)
+### 🔹 IHM Lecteur
+- Données statiques (JSON)
+- Pas de dépendance réseau
+- Architecture évolutive (future IHM native possible)
+
+---
+
+## 7. Références
+
+- Waveshare UPS HAT (D) — Documentation officielle  
+  https://www.waveshare.com/wiki/UPS_HAT_(D)
+
+- HiFiBerry Amp4 — Documentation officielle  
+  https://www.hifiberry.com/docs/hardware/amp4/
+
+- MPD (Music Player Daemon) — Documentation  
+  https://www.musicpd.org/doc/html/user.html
+
+- ALSA — Documentation  
+  https://www.alsa-project.org/wiki/Main_Page
+
+- Apache HTTP Server — Documentation  
+  https://httpd.apache.org/docs/
+
+- Radio France — Flux MP3 (exemple Mon Petit France Inter)  
+  https://www.radiofrance.fr

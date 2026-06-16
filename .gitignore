@@ -1,3 +1,20 @@
+# --- Fichiers sensibles ---
 data/batterie.txt
+web/status.json
+
+# --- Podcasts téléchargés (audio + images + meta) ---
+podcasts/
+!podcasts/.gitkeep
+
+# --- Lecteur : fichiers générés automatiquement ---
 web/lecteur/audio/
 web/lecteur/images/
+web/lecteur/data.json
+
+# --- Logs ---
+/var/log/hechicero/
+*.log
+
+# --- Python ---
+__pycache__/
+*.pyc

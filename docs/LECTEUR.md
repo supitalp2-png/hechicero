@@ -1,130 +1,181 @@
 # Brique Lecteur — Hechicero
 
-## Objectif
-Fournir une interface embarquée simple, robuste et autonome pour écouter des podcasts et webradios en espagnol.  
-Le lecteur est destiné à l’écran tactile du Raspberry Pi et doit fonctionner même sans réseau.
+## 1. Objectif
 
-## Principes
-- **Autonomie totale** : aucune dépendance réseau, toutes les données sont locales.  
-- **Simplicité UX** : navigation pensée pour un enfant (type Merlin).  
-- **Séparation stricte** : le lecteur ne dépend pas de l’interface d’administration.  
-- **Données statiques** : structure JSON simple, modifiable facilement.  
-- **Évolutivité** : architecture compatible avec une future IHM native.
+Fournir une interface embarquée simple, robuste et autonome pour écouter :
 
-## Architecture du Lecteur
+- des **webradios** (flux MP3)
+- des **podcasts locaux** (fichiers téléchargés)
+- des **contenus statiques** (démos, histoires)
 
-### Structure des fichiers
-web/lecteur/
-│
-├── index.html        # Point d’entrée du lecteur
-├── lecture.html      # Écran de lecture (optionnel selon implémentation)
-├── app.js            # Logique de navigation et rendu
-├── style.css         # Styles du lecteur
-│
-├── data.json         # Base de données locale (podcasts, chapitres)
-│
-├── images/           # Jaquettes des podcasts
-│   └── cuentasticos.jpg
-│
-└── audio/            # Fichiers audio locaux
-└── cuentasticos_ep1.mp3
+Le lecteur est destiné à l’écran tactile du Raspberry Pi et doit fonctionner **même sans réseau**.
 
+---
 
-### Rôle des fichiers
+## 2. Principes
+
+- **Autonomie totale**  
+  Aucun appel réseau. Toutes les données sont locales.
+
+- **Simplicité enfant**  
+  Navigation type Merlin : grands boutons, peu d’options, retour clair.
+
+- **Séparation stricte**  
+  Le lecteur ne dépend pas de l’interface d’administration.
+
+- **Données statiques**  
+  Un fichier unique : `data.json`.
+
+- **Évolutivité**  
+  Compatible avec une future IHM native (Qt, Flutter, Kivy).
+
+---
+
+## 3. Architecture du Lecteur
+
+### 3.1 Structure des fichiers
+  web/lecteur/
+  │
+  ├── index.html        # Point d’entrée du lecteur
+  ├── app.js            # Logique de navigation et rendu
+  ├── style.css         # Styles du lecteur
+  │
+  ├── data.json         # Base de données locale (radios + podcasts)
+  │
+  ├── images/           # Jaquettes des contenus
+  │   └── *.jpg / *.png
+  │
+  └── audio/            # Fichiers audio statiques (démos)
+  └── *.mp3
+
+### 3.2 Rôle des fichiers
+
 - **index.html**  
-  Contient la structure minimale de l’IHM. Le contenu dynamique est injecté par `app.js`.
+  Squelette minimal de l’IHM. Le contenu dynamique est injecté par `app.js`.
 
 - **app.js**  
   - charge `data.json`  
-  - génère les écrans (Accueil → Podcasts → Chapitres → Lecture)  
+  - génère les écrans (Accueil → Radios → Podcasts → Lecture)  
   - gère les événements (clics, retour, lecture audio)  
-  - prépare la compatibilité future avec une IHM tactile native
+  - communique avec MPD via commandes HTTP/TCP  
+  - prépare la compatibilité future avec une IHM native
 
 - **data.json**  
-  Base de données locale. Exemple minimal :
+  Catalogue local des contenus.  
+  Il est **généré par le backend** (ingestion RSS) et **lu par l’IHM**.
+
+---
+
+## 4. Structure de `data.json`
+
+### 4.1 Exemple minimal (MVP)
 
     ```json
     {
+      "radios": [
+        {
+          "id": "monpetitfranceinter",
+          "label": "Mon Petit France Inter",
+          "stream_url": "https://icecast.radiofrance.fr/monpetitfranceinter-midfi.mp3",
+          "image": "images/monpetitfranceinter.png"
+        }
+      ],
+      "podcasts": []
+    }
+
+  ### 4.2 Exemple complet (avec podcasts locaux)
+    ```json
+    {
+      "radios": [
+        {
+          "id": "monpetitfranceinter",
+          "label": "Mon Petit France Inter",
+          "stream_url": "https://icecast.radiofrance.fr/monpetitfranceinter-midfi.mp3",
+          "image": "images/monpetitfranceinter.png"
+        }
+      ],
       "podcasts": [
         {
-          "id": "cuentasticos",
-          "titre": "Cuentásticos",
-          "langue": "ES",
-          "image": "images/cuentasticos.jpg",
-          "chapitres": [
+          "id": "lesodyssees",
+          "titre": "Les Odyssées",
+          "image": "images/lesodyssees.jpg",
+          "episodes": [
             {
-              "id": "ep1",
-              "titre": "La princesa valiente",
-              "audio": "audio/cuentasticos_ep1.mp3",
-              "duree": 312
+              "id": "ep001",
+              "titre": "Cléopâtre, reine d’Égypte",
+              "audio": "/home/thomas/hechicero/podcasts/lesodyssees/audio/ep001.mp3",
+              "duree": 612
             }
           ]
         }
       ]
     }
-    
-images/  
-  Contient les jaquettes. Règles : pas d’accents ; pas d’espaces ; format .jpg ou .png.
+```
+### 4.3 Règles
+ - Pas d’accents dans les noms de fichiers
+ - Pas d’espaces
+ - Formats autorisés : .jpg, .png, .mp3
+ - Les chemins audio des podcasts pointent vers :
+ - ~/hechicero/podcasts/<id>/audio/*.mp3
 
-audio/  
-  Contient les fichiers audio locaux. Règles : MP3 ; noms simples, sans espaces ni accents.
+## 5. Navigation du Lecteur
 
-Navigation du Lecteur
-  Accueil
-  
-  Logo ou titre
-  
-  Bouton Entrer
-  
-  Choix du podcast
-  
-  Liste des podcasts issus de data.json
-  
-  Affichage des jaquettes
-  
-  Choix du chapitre
-  
-  Liste des épisodes du podcast sélectionné
-  
-  Lecture
-  
-  Titre du chapitre
-  
-  Bouton Play / Pause
-  
-  Barre de progression (optionnelle)
-  
-  Retour au chapitre précédent
-  
-  Contraintes techniques
-  Le lecteur doit être servi par Apache via l’alias /hechicero/.
-  
-  fetch("data.json") nécessite un serveur web (pas de file://).
-  
-  Le lecteur doit fonctionner même si l’admin est hors service.
-  
-  Le lecteur ne doit jamais écrire sur le disque (lecture seule).
-  
-  Évolutions prévues
-  Carrousel pour les jaquettes
-  
-  Animations simples (fade, slide)
-  
-  Mode hors-ligne complet
-  
-  Support des webradios
-  
-  Intégration avec boutons physiques (GPIO)
-  
-  Migration possible vers une IHM native (Qt, Flutter, Kivy)
-  
-  Critères d’acceptation
-  Le lecteur charge data.json sans erreur.
-  
-  Les jaquettes s’affichent correctement.
-  
-  La navigation fonctionne sur écran tactile.
-  
-  La lecture audio fonctionne via MPD.
-  
-  Le lecteur reste fonctionnel sans réseau.
+1. **Accueil**  
+   - Bouton “Radios”  
+   - Bouton “Podcasts”
+
+2. **Radios**  
+   - Liste des radios issues de `data.json`  
+   - Lecture via MPD (flux)
+
+3. **Podcasts**  
+   - Liste des podcasts disponibles  
+   - Liste des épisodes
+
+4. **Lecture**  
+   - Titre  
+   - Jaquette  
+   - Bouton Play/Pause  
+   - Barre de progression (optionnelle)  
+   - Bouton Retour
+
+---
+
+## 6. Intégration MPD
+
+Le lecteur ne lit **pas** directement les fichiers audio.  
+Il envoie des commandes à MPD :
+
+- `mpc clear`  
+- `mpc add <url>`  
+- `mpc play`  
+- `mpc pause`  
+- `mpc stop`
+
+MPD se charge de :
+
+- lire les flux web  
+- lire les fichiers locaux  
+- gérer les erreurs  
+- gérer la file d’attente
+
+---
+
+## 7. Critères d’acceptation
+
+- `data.json` chargé sans erreur  
+- jaquettes affichées correctement  
+- navigation tactile fluide  
+- lecture MPD fonctionnelle (flux + fichiers locaux)  
+- lecteur utilisable hors réseau  
+- aucune dépendance à l’admin  
+
+---
+
+## 8. Évolutions prévues
+
+- Carrousel pour les jaquettes  
+- Animations simples (fade, slide)  
+- Mode hors-ligne total (déjà compatible)  
+- Support des boutons physiques (GPIO)  
+- Migration possible vers une IHM native (Qt, Flutter, Kivy)

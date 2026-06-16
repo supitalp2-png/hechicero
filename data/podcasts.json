@@ -1,0 +1,13 @@
+{
+  "podcasts": [
+    {
+      "id": "lesodyssees",
+      "label": "Les Odyssées",
+      "rss": "https://radiofrance-podcast.net/podcast09/rss_14312.xml",
+      "enabled": true,
+      "language": "fr",
+      "image": "images/lesodyssees.jpg",
+      "max_episodes": 50
+    }
+  ]
+}
