@@ -1,110 +1,146 @@
-# Manifeste du projet Hechicero
+# Power Management — Hechicero
 
-## 1. Vision
+## Objectif
 
-Créer une enceinte connectée **DIY**, **autonome**, **robuste**, dédiée à l’apprentissage et à l’écoute de contenus audio (podcasts, histoires, webradios), avec une interface pensée pour un enfant et une administration simple pour un adulte.
-
-Hechicero doit être :
-- compréhensible,
-- maintenable,
-- réparable,
-- évolutif,
-- et utilisable hors réseau.
+Assurer un suivi fiable de l’état batterie via l’interface web, prévenir les coupures brutales,
+et permettre un shutdown propre lorsque la tension devient critique.
 
 ---
 
-## 2. Principes fondateurs
+## 1. Fichiers clés
 
-### 🔹 Briques indépendantes
-Chaque fonctionnalité est isolée :
-- Monitoring batterie  
-- Audio (MPD + Amp4)  
-- Lecteur embarqué  
-- Admin locale  
-- Ingestion podcasts  
+- `scripts/get_status.py`  
+  Lit INA219, calcule l’état batterie, écrit `web/status.json` (écriture atomique).
 
-Une brique peut évoluer sans casser les autres.
+- `web/status.json`  
+  Fichier lu par l’interface admin.
 
-### 🔹 Transparence
-Chaque choix technique, chaque décision d’architecture, chaque procédure d’installation est documentée dans `docs/`.
+- `data/config.json`  
+  Contient les seuils (warning, critical) et l’intervalle de polling.
 
-### 🔹 Robustesse
-Le système doit résister :
-- aux coupures,
-- aux erreurs,
-- aux redémarrages.
-
-Les services critiques tournent sous **systemd** avec reprise automatique.
-
-### 🔹 Simplicité UX
-Deux interfaces distinctes :
-- **Lecteur embarqué** : simple, tactile, pensée pour un enfant.
-- **Dashboard Admin** : interface locale pour configuration, diagnostics et mises à jour.
-
-### 🔹 Autonomie
-L’appareil doit fonctionner :
-- sans réseau,
-- sans cloud,
-- sans dépendances externes.
+- `data/shutdown_pending`  
+  Fichier créé lorsque le seuil critique est atteint.
 
 ---
 
-## 3. Objectifs court terme (MVP)
+## 2. Installation rapide
 
-- Monitoring batterie fiable (INA219 + service systemd)
-- Audio local + Webradio via MPD
-- Lecteur embarqué HTML/JS basé sur `data.json`
-- Admin locale minimale (statut batterie, tests audio)
-- Arborescence cohérente (`web/`, `scripts/`, `podcasts/`, `data/`)
+### 2.1 Créer l’utilisateur système (optionnel mais recommandé)
 
----
+sudo useradd --system --create-home --shell /usr/sbin/nologin hechicero
 
-## 4. Objectifs moyen terme
+### 2.2 Ajouter les groupes nécessaires
 
-- Ingestion complète des podcasts (RSS → fichiers locaux)
-- Génération automatique de `data.json`
-- Gestion du contenu (radios, podcasts, langues)
-- Amélioration de l’UX (carrousel, transitions, feedback visuel)
-- Mode hors-ligne total pour le lecteur
+sudo usermod -aG i2c,audio,gpio,www-data hechicero
+
+### 2.3 Permissions
+
+sudo chown -R hechicero:hechicero /home/thomas/hechicero
+sudo chmod -R 750 /home/thomas/hechicero/scripts
+sudo chown -R hechicero:www-data /home/thomas/hechicero/web
 
 ---
 
-## 5. Objectifs long terme
+## 3. Service systemd
 
-- Synchronisation locale (USB, réseau local)
-- Profils enfants (restrictions, favoris)
-- Extensions matérielles (LED, capteurs, boutons physiques)
-- Migration possible vers une IHM native (Qt, Flutter, Kivy)
-- Mode “parent technophile” : logs, monitoring avancé, outils de debug
+Fichier : `/etc/systemd/system/hechicero-battery.service`
 
----
+[Unit]
+Description=Hechicero Battery Monitor
+After=network.target
 
-## 6. Valeurs du projet
+[Service]
+ExecStart=/usr/bin/python3 /home/thomas/hechicero/scripts/get_status.py
+Restart=always
+User=thomas
+WorkingDirectory=/home/thomas/hechicero/scripts
+ProtectSystem=full
 
-### 🔹 DIY
-Comprendre, apprendre, construire soi-même.  
-Le projet doit rester accessible, documenté, reproductible.
+[Install]
+WantedBy=multi-user.target
 
-### 🔹 Durabilité
-Matériel réparable, logiciel simple et maintenable.  
-Pas de dépendances opaques.
+### Activer le service
 
-### 🔹 Accessibilité
-Interface pensée pour :
-- les enfants,
-- les non-technophiles,
-- les parents qui veulent partager leur passion.
+sudo systemctl daemon-reload
+sudo systemctl enable --now hechicero-battery.service
 
-### 🔹 Évolutivité
-Chaque brique peut être améliorée ou remplacée sans réécrire tout le système.
+### Vérifier le statut
+
+systemctl status hechicero-battery.service
 
 ---
 
-## 7. Ce que Hechicero n’est pas
+## 4. Format attendu de `status.json`
 
-- Pas une enceinte cloud  
-- Pas un produit commercial  
-- Pas une usine à gaz  
-- Pas un système dépendant d’API externes
+{
+  "percent": 98,
+  "voltage_v": 4.188,
+  "current_ma": 0,
+  "power_w": 0.006,
+  "state": "Sur batterie 🔋",
+  "alert": null,
+  "ts": 1780818044
+}
 
-Hechicero est un **projet personnel**, **pédagogique**, **familial**, conçu pour durer.
+### Champs
+- **percent** : pourcentage estimé
+- **voltage_v** : tension mesurée
+- **current_ma** : courant instantané
+- **power_w** : puissance
+- **state** : secteur / batterie
+- **alert** : warning / critical / null
+- **ts** : timestamp UNIX
+
+---
+
+## 5. Fréquences
+
+- **Frontend (admin web)** : polling toutes les 10 s  
+  (modifiable dans `web/index.php`)
+
+- **Backend (get_status.py)** : intervalle configurable dans `data/config.json`
+
+---
+
+## 6. Recommandations techniques
+
+### Écriture atomique
+
+- écrire dans `status.json.tmp`
+- puis `mv status.json.tmp status.json`
+
+### Permissions
+
+- `status.json` : `644`
+- propriétaire : `thomas:www-data`
+
+### Validation JSON
+
+- utiliser `json.dumps()`  
+- flush + fsync avant rename
+
+### Tests
+
+- simuler valeurs extrêmes  
+- vérifier affichage admin  
+- vérifier création de `shutdown_pending`
+
+---
+
+## 7. Shutdown propre
+
+Lorsque la batterie atteint le seuil critique :
+
+1. `data/shutdown_pending` est créé  
+2. `status.json` contient `alert: "critical"`  
+3. un service externe peut déclencher un `sudo shutdown now`  
+
+---
+
+## 8. Critères d’acceptation
+
+- Le dashboard web affiche % / état / alertes  
+- `status.json` est mis à jour périodiquement  
+- Le système détecte les seuils warning / critical  
+- Le fichier `shutdown_pending` est créé au bon moment  
+- Aucun JSON corrompu  

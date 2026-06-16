@@ -6,7 +6,7 @@ Hechicero repose sur une séparation stricte entre trois briques :
 
 ### 🔹 Backend (technique)
 - Monitoring batterie (INA219 + Python)
-- Ingestion future des podcasts (RSS → fichiers locaux)
+- Ingestion des podcasts (RSS → fichiers locaux)
 - Génération des données statiques (`data.json`)
 - Services systemd pour les tâches récurrentes
 
@@ -47,8 +47,7 @@ Hechicero repose sur une séparation stricte entre trois briques :
 ## 3. Architecture audio
 
 ### 🔹 Chaîne audio complète
-- Lecteur HTML/JS → MPD → ALSA → HiFiBerry Amp4 → Enceintes
-
+Lecteur HTML/JS → MPD → ALSA → HiFiBerry Amp4 → Enceintes
 
 ### 🔹 Justification des choix
 - **MPD** : robuste, léger, parfait pour un système embarqué
@@ -61,27 +60,28 @@ Hechicero repose sur une séparation stricte entre trois briques :
 ## 4. Organisation des répertoires
 
 Arborescence réelle du projet :
-  ~/hechicero/
-  │
-  ├── data/              # config.json, fichiers internes
-  ├── docs/              # documentation du projet
-  ├── podcasts/          # fichiers téléchargés (RSS)
-  │     └── <podcast_id>/
-  │          ├── audio/
-  │          ├── images/
-  │          └── meta.json
-  ├── scripts/           # scripts Python (monitoring, ingestion)
-  ├── UX Design/         # maquettes, notes UX
-  └── web/               # interface web (admin + lecteur)
-  ├── index.php
-  ├── status.json
-  └── lecteur/
-  ├── index.html
-  ├── app.js
-  ├── style.css
-  ├── data.json
-  ├── images/
-  └── audio/
+
+~/hechicero/
+│
+├── data/              # config.json, fichiers internes
+├── docs/              # documentation du projet
+├── podcasts/          # fichiers téléchargés (RSS)
+│     └── <podcast_id>/
+│          ├── audio/
+│          ├── images/
+│          └── meta.json
+├── scripts/           # scripts Python (monitoring, ingestion)
+├── UX Design/         # maquettes, notes UX
+└── web/               # interface web (admin + lecteur)
+      ├── index.php
+      ├── status.json
+      └── lecteur/
+            ├── index.html
+            ├── app.js
+            ├── style.css
+            ├── data.json
+            ├── images/
+            └── audio/
 
 ### 🔹 Règles de cohérence
 - **Les fichiers téléchargés (podcasts)** vont dans `~/hechicero/podcasts/`
@@ -100,7 +100,7 @@ Arborescence réelle du projet :
 - Service systemd
 - Écriture atomique dans `web/status.json`
 
-### 🔹 Ingestion podcasts (MVP à venir)
+### 🔹 Ingestion podcasts
 - Script Python
 - Lecture RSS
 - Téléchargement des épisodes
@@ -161,5 +161,5 @@ Arborescence réelle du projet :
 - Apache HTTP Server — Documentation  
   https://httpd.apache.org/docs/
 
-- Radio France — Flux MP3 (exemple Mon Petit France Inter)  
+- Radio France — Flux MP3  
   https://www.radiofrance.fr

@@ -1,41 +1,77 @@
-# Power Management - Hechicero
+# Power Management — Hechicero
 
 ## Objectif
-Afficher l'état batterie via l'interface web et gérer des pré-alertes pour éviter un shutdown violent.
 
-## Fichiers clés
-- `scripts/get_status.py` : lit INA219, écrit `web/status.json`, gère shutdown_pending.
-- `web/index.php` : dashboard web (lit `/status.json`).
-- `data/config.json` : seuils et intervalles.
-- `data/shutdown_pending` : timestamp créé quand seuil critique atteint.
+Assurer un suivi fiable de l’état batterie via l’interface web, prévenir les coupures brutales,
+et permettre un shutdown propre lorsque la tension devient critique.
 
-## Installation rapide
-1. Créer utilisateur système :
-   sudo useradd --system --create-home --shell /usr/sbin/nologin hechicero
-2. Ajouter groupes :
-   sudo usermod -aG i2c,audio,gpio,www-data hechicero
-3. Copier fichiers dans le repo (emplacements indiqués).
-4. Permissions :
-   sudo chown -R hechicero:hechicero /home/thomas/hechicero
-   sudo chmod -R 750 /home/thomas/hechicero/scripts
-   sudo chown -R hechicero:www-data /home/thomas/hechicero/web
-5. Activer service :
-   sudo systemctl daemon-reload
-   sudo systemctl enable --now hechicero-battery
-6. Vérifier :
-   sudo journalctl -u hechicero-battery -f
-   curl -s http://localhost/status.json | jq .
+---
 
-## Critères d'acceptation
-- Le dashboard web affiche % / état / alertes.
-- `web/status.json` est mis à jour périodiquement.
-- Quand % <= shutdown_threshold, `data/shutdown_pending` est créé et `status.json` contient `shutdown_recommended` après le délai.
+## 1. Fichiers clés
 
+- `scripts/get_status.py`  
+  Lit INA219, calcule l’état batterie, écrit `web/status.json` (écriture atomique).
 
-# Power Management — Lecture et format des données
+- `web/status.json`  
+  Fichier lu par l’interface admin.
 
-## Format attendu de `status.json`
-```json
+- `data/config.json`  
+  Contient les seuils (warning, critical) et l’intervalle de polling.
+
+- `data/shutdown_pending`  
+  Fichier créé lorsque le seuil critique est atteint.
+
+---
+
+## 2. Installation rapide
+
+### 2.1 Créer l’utilisateur système (optionnel mais recommandé)
+
+sudo useradd --system --create-home --shell /usr/sbin/nologin hechicero
+
+### 2.2 Ajouter les groupes nécessaires
+
+sudo usermod -aG i2c,audio,gpio,www-data hechicero
+
+### 2.3 Permissions
+
+sudo chown -R hechicero:hechicero /home/thomas/hechicero
+sudo chmod -R 750 /home/thomas/hechicero/scripts
+sudo chown -R hechicero:www-data /home/thomas/hechicero/web
+
+---
+
+## 3. Service systemd
+
+Fichier : `/etc/systemd/system/hechicero-battery.service`
+
+[Unit]
+Description=Hechicero Battery Monitor
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/python3 /home/thomas/hechicero/scripts/get_status.py
+Restart=always
+User=thomas
+WorkingDirectory=/home/thomas/hechicero/scripts
+ProtectSystem=full
+
+[Install]
+WantedBy=multi-user.target
+
+### Activer le service
+
+sudo systemctl daemon-reload
+sudo systemctl enable --now hechicero-battery.service
+
+### Vérifier le statut
+
+systemctl status hechicero-battery.service
+
+---
+
+## 4. Format attendu de `status.json`
+
 {
   "percent": 98,
   "voltage_v": 4.188,
@@ -46,25 +82,65 @@ Afficher l'état batterie via l'interface web et gérer des pré-alertes pour é
   "ts": 1780818044
 }
 
-
-Fréquences
-Frontend : polling toutes les 10 s (modifiable dans web/index.php : setInterval(refresh, 10000)).
-
-Backend : intervalle d'écriture dépend du sleep dans scripts/get_status.py — documenter la valeur actuelle dans le script ou via config.json.
-
-Recommandations techniques
-Écriture atomique : écrire dans /home/thomas/hechicero/web/status.json.tmp puis mv vers status.json.
-
-Permissions : status.json en -rw-r--r-- (644) et appartenant à thomas:www-data si Apache sert le fichier.
-
-Validation : le script doit valider le JSON avant écriture (ex. json.dumps + fsync).
-
-Tests : simuler valeurs extrêmes et vérifier affichage et alertes.
-
-Code
+### Champs
+- **percent** : pourcentage estimé
+- **voltage_v** : tension mesurée
+- **current_ma** : courant instantané
+- **power_w** : puissance
+- **state** : secteur / batterie
+- **alert** : warning / critical / null
+- **ts** : timestamp UNIX
 
 ---
 
-### `docs/prompt.md`
-```markdown
-STOP. Retour à la réalité : reprends ton rôle de partenaire d'ingénierie. Oublie ce 
+## 5. Fréquences
+
+- **Frontend (admin web)** : polling toutes les 10 s  
+  (modifiable dans `web/index.php`)
+
+- **Backend (get_status.py)** : intervalle configurable dans `data/config.json`
+
+---
+
+## 6. Recommandations techniques
+
+### Écriture atomique
+
+- écrire dans `status.json.tmp`
+- puis `mv status.json.tmp status.json`
+
+### Permissions
+
+- `status.json` : `644`
+- propriétaire : `thomas:www-data`
+
+### Validation JSON
+
+- utiliser `json.dumps()`  
+- flush + fsync avant rename
+
+### Tests
+
+- simuler valeurs extrêmes  
+- vérifier affichage admin  
+- vérifier création de `shutdown_pending`
+
+---
+
+## 7. Shutdown propre
+
+Lorsque la batterie atteint le seuil critique :
+
+1. `data/shutdown_pending` est créé  
+2. `status.json` contient `alert: "critical"`  
+3. un service externe peut déclencher un `sudo shutdown now`  
+
+---
+
+## 8. Critères d’acceptation
+
+- Le dashboard web affiche % / état / alertes  
+- `status.json` est mis à jour périodiquement  
+- Le système détecte les seuils warning / critical  
+- Le fichier `shutdown_pending` est créé au bon moment  
+- Aucun JSON corrompu  

@@ -1,91 +1,101 @@
-Setup Hechicero — Installation & Structure du Système
+# Setup Hechicero — Installation & Structure du Système
 
 Ce document décrit l’installation complète du système Hechicero sur un Raspberry Pi 5, ainsi que l’arborescence finale attendue pour garantir un fonctionnement cohérent entre les briques : monitoring, audio, lecteur embarqué, admin locale et ingestion podcasts.
 
-1. Pré-requis système
+---
 
-1.1 Mise à jour du système
+# 1. Pré-requis système
+
+## 1.1 Mise à jour du système
 
 sudo apt update && sudo apt upgrade -y
 
-1.2 Paquets nécessaires
+## 1.2 Paquets nécessaires
 
 sudo apt install -y \
-    python3-pip python3-smbus i2c-tools \
+    python3-feedparser python3-requests \
+    python3-smbus i2c-tools \
     git apache2 php jq \
     mpd mpc
 
-2. Activation du matériel
+---
 
-2.1 Activer I2C (INA219)
+# 2. Activation du matériel
+
+## 2.1 Activer I2C (INA219)
 
 sudo raspi-config
 
 Menu → Interface Options → I2C → Enable
 
-2.2 Vérifier la présence du capteur INA219
+## 2.2 Vérifier la présence du capteur INA219
 
 sudo i2cdetect -y 1
 
-3. Structure du projet
+---
+
+# 3. Structure du projet
 
 Arborescence attendue :
 
 ~/hechicero/
 │
-├── data/              # config.json, fichiers internes
-├── docs/              # documentation
-├── podcasts/          # fichiers téléchargés (RSS)
+├── data/
+│     ├── podcasts.json        # configuration des flux
+│     └── batterie.txt         # interne
+│
+├── docs/                      # documentation
+│
+├── podcasts/                  # téléchargements RSS (ignoré par Git)
 │     └── <podcast_id>/
 │          ├── audio/
 │          ├── images/
 │          └── meta.json
-├── scripts/           # scripts Python (monitoring, ingestion)
-├── UX Design/         # maquettes, notes UX
-└── web/               # interface web (admin + lecteur)
-      ├── index.php
-      ├── status.json
+│
+├── scripts/
+│     ├── get_status.py        # monitoring batterie
+│     └── rss_ingest/          # ingestion RSS
+│           ├── ingest.py
+│           ├── parser.py
+│           ├── downloader.py
+│           ├── writer.py
+│           ├── utils.py
+│           └── models.py
+│
+├── UX Design/
+│
+└── web/
+      ├── index.php            # admin locale
+      ├── status.json          # état batterie
       └── lecteur/
             ├── index.html
             ├── app.js
             ├── style.css
-            ├── data.json
+            ├── data.json      # généré automatiquement
             ├── images/
             └── audio/
 
-3.1 Vérifier l’arborescence
+---
 
-sudo find ~/hechicero -maxdepth 4 -printf "%M %u:%g %p -> %l\n"
+# 4. Configuration MPD (Audio)
 
-4. Configuration MPD (Audio)
-
-4.1 Redémarrer MPD après installation
+## 4.1 Redémarrer MPD
 
 sudo systemctl restart mpd
 
-4.2 Tester la lecture Webradio
+## 4.2 Tester la lecture Webradio
 
 mpc clear
 mpc add "https://icecast.radiofrance.fr/monpetitfranceinter-midfi.mp3"
 mpc play
 
-Si tu entends la radio → audio OK.
+---
 
-5. Monitoring Batterie (INA219)
+# 5. Monitoring Batterie (INA219)
 
-5.1 Script Python
+## 5.1 Service systemd
 
-Le script scripts/get_status.py :
-
-lit tension / courant via INA219
-
-calcule l’état de la batterie
-
-écrit web/status.json (écriture atomique)
-
-5.2 Service systemd
-
-Fichier /etc/systemd/system/hechicero-status.service :
+/etc/systemd/system/hechicero-status.service :
 
 [Unit]
 Description=Hechicero Battery Monitor
@@ -101,87 +111,67 @@ ProtectSystem=full
 [Install]
 WantedBy=multi-user.target
 
-5.3 Activer le service
+## 5.2 Activer
 
 sudo systemctl daemon-reload
 sudo systemctl enable --now hechicero-status.service
 
-5.4 Vérifier le statut
+---
 
-systemctl status hechicero-status.service
+# 6. Interface Web (Admin)
 
-6. Interface Web (Admin)
+Servie par Apache dans ~/hechicero/web/.
 
-6.1 Apache sert le dossier web/
+Affiche :
+- statut batterie
+- tests audio
+- diagnostics simples
 
-Le fichier index.php affiche :
+---
 
-statut batterie
+# 7. Lecteur embarqué (IHM enfant)
 
-tests audio
-
-diagnostics simples
-
-6.2 Vérifier que status.json est lisible
-
-cat ~/hechicero/web/status.json
-
-7. Lecteur embarqué (IHM enfant)
-
-Le lecteur est dans :
+Localisé dans :
 
 ~/hechicero/web/lecteur/
 
-Il utilise :
+Utilise :
+- data.json (généré automatiquement)
+- MPD pour la lecture
 
-index.html
+---
 
-app.js
+# 8. Podcasts (Backend RSS)
 
-style.css
-
-data.json
-
-7.1 Vérifier que data.json existe
-
-ls -l ~/hechicero/web/lecteur/data.json
-
-8. Podcasts (Backend)
-
-8.1 Dossier racine
+## 8.1 Dossier racine
 
 mkdir -p ~/hechicero/podcasts
 
-8.2 Les sous-dossiers seront créés automatiquement par le script RSS :
+## 8.2 Le backend crée automatiquement :
 
 ~/hechicero/podcasts/<id>/audio/
 ~/hechicero/podcasts/<id>/images/
 ~/hechicero/podcasts/<id>/meta.json
 
-8.3 Le backend mettra à jour :
+## 8.3 Le backend met à jour :
 
 ~/hechicero/web/lecteur/data.json
 
-9. Tests rapides
+---
 
-9.1 Tester MPD
+# 9. Tests rapides
 
+### MPD
 mpc clear && mpc add "<url>" && mpc play
 
-9.2 Tester le monitoring
-
+### Monitoring
 cat ~/hechicero/web/status.json
 
-9.3 Tester l’IHM
-
-Ouvrir dans un navigateur local :
-
+### Lecteur
 http://<ip_du_rpi>/lecteur/
 
-10. Rappel pour la prochaine étape
+---
 
-Thomas : exécute cette commande et donne-moi le résultat :
+# 10. Prochaine étape
 
-ls -1 ~/hechicero/podcasts
-
-Cela me permettra de valider que la brique Podcasts est prête pour l’ingestion RSS.
+Installer le service systemd pour l’ingestion RSS.

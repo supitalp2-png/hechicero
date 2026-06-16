@@ -17,28 +17,28 @@ Le projet est **local**, **hors-cloud**, **robuste**, **simple**, **documenté**
 ## 2. Architecture du projet
 
 Arborescence réelle :
-    ~/hechicero/
-    │
-    ├── data/              # config.json, fichiers internes
-    ├── docs/              # documentation
-    ├── podcasts/          # fichiers téléchargés (RSS)
-    │     └── <podcast_id>/
-    │          ├── audio/
-    │          ├── images/
-    │          └── meta.json
-    ├── scripts/           # scripts Python (monitoring, ingestion)
-    ├── UX Design/         # maquettes, notes UX
-    └── web/               # interface web (admin + lecteur)
-    ├── index.php
-    ├── status.json
-    └── lecteur/
-    ├── index.html
-    ├── app.js
-    ├── style.css
-    ├── data.json
-    ├── images/
-    └── audio/
 
+~/hechicero/
+│
+├── data/              # config.json, fichiers internes
+├── docs/              # documentation
+├── podcasts/          # fichiers téléchargés (RSS)
+│     └── <podcast_id>/
+│          ├── audio/
+│          ├── images/
+│          └── meta.json
+├── scripts/           # scripts Python (monitoring, ingestion)
+├── UX Design/         # maquettes, notes UX
+└── web/               # interface web (admin + lecteur)
+      ├── index.php
+      ├── status.json
+      └── lecteur/
+            ├── index.html
+            ├── app.js
+            ├── style.css
+            ├── data.json
+            ├── images/
+            └── audio/
 
 Règles :
 
@@ -152,17 +152,18 @@ Tu dois :
 ## 8. Commandes utiles (rappel)
 
 Lister l’arborescence :
-    sudo find ~/hechicero -maxdepth 4 -printf "%M %u:%g %p -> %l\n"
 
+sudo find ~/hechicero -maxdepth 4 -printf "%M %u:%g %p -> %l\n"
 
 Tester MPD :
-    mpc clear
-    mpc add "<url>"
-    mpc play
+
+mpc clear
+mpc add "<url>"
+mpc play
 
 Vérifier la batterie :
-    cat ~/hechicero/web/status.json
 
+cat ~/hechicero/web/status.json
 
 ---
 
@@ -191,4 +192,3 @@ Vérifier la batterie :
 ## 10. Phrase de reset
 
 > “Tu es dans le contexte Hechicero. Reprends à partir de ce prompt.”
-
