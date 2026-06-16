@@ -5,13 +5,12 @@
 ## En cours / Priorité haute
 - [x] TICKET-001 — chore — Refactoriser emplacement web et corriger lien symbolique `/var/www/html` — (prio: High) — owner: infra
 - [x] TICKET-002 — infra — Architecture Service : monitoring batterie en service systemd (JSON) — (prio: High) — owner: infra
-- [ ] TICKET-003 — feat — Brique Audio : driver HiFiBerry Amp4, config MPD — (prio: High) — owner: audio
+- [x] TICKET-003 — feat — Brique Audio : driver HiFiBerry Amp4 + config ALSA + installation/configuration MPD + test lecture — (prio: High) — owner: audio
 - [ ] TICKET-022 — feat — Brique Lecteur : interface embarquée HTML/JS + data.json — (prio: High) — owner: web
 
 ## À venir / Priorité moyenne
 - [ ] TICKET-004 — feat — Brique Contenu : structure dossiers Podcasts/Radios (ESP/FR) — (prio: Med) — owner: content
 - [ ] TICKET-005 — feat — Brique IHM Web : prototype dashboard navigation — (prio: Med) — owner: web
-- [ ] TICKET-006 — feat — Brique IHM Physique : écran + boutons (Merlin-like) — (prio: Med) — owner: hw
 - [ ] TICKET-007 — feat — Brique Admin : interface configuration flux — (prio: Med) — owner: web
 
 ## Backlog / Priorité basse
@@ -29,3 +28,4 @@
 - [ ] TICKET-019 — ux — Vérifier et corriger les cas d’erreur dans le frontend (messages) — (prio: Low) — owner: web
 - [ ] TICKET-020 — feat — Ajouter page d’administration locale (logs, redémarrage) — (prio: Low) — owner: web
 - [ ] TICKET-021 — sec — Revue sécurité et pentest basique — (prio: Low) — owner: security
+- [ ] TICKET-023 — feat — Ajouter “startup sound” amusant (MVP+ ; prio basse) — (prio: Low) — owner: audio

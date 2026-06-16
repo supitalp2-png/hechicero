@@ -66,8 +66,23 @@ journalctl -u hechicero.service -n 200 --no-pager pour logs service.
 
 Code
 
----
 
-### Commit message recommandé
-```text
-docs: standardize docs, add numbered backlog tickets and setup/permissions guidance
+Installation de MPD + MPC
+
+Activation du service MPD
+
+Configuration de /etc/mpd.conf
+
+Ajout de la sortie audio HiFiBerry (hw:2,0)
+
+Dossier musique MPD (/var/lib/mpd/music/)
+
+Droits mpd:audio
+
+Commandes de test (mpc update, mpc add, mpc play)
+
+Réglage du volume (mpc volume 30)
+
+
+
+

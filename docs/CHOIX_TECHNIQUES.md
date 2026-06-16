@@ -26,6 +26,18 @@
 - **Audio** : HiFiBerry Amp4 (2 HP passifs Bose).
 - **Écran** : écran tactile (IHM type Merlin).
 
+
+      Choix du HiFiBerry Amp4 comme sortie audio matérielle
+      Justification : ampli intégré, qualité, simplicité, support ALSA
+      Choix de MPD comme moteur audio :
+      robuste
+      contrôlable en HTTP / TCP
+      compatible avec ton lecteur HTML/JS
+      parfait pour un système embarqué
+      Architecture audio :
+      HTML/JS → API MPD → ALSA → HiFiBerry Amp4 → enceintes
+
+
 ## Approche Logicielle
 
 - **Monitoring** : script Python (`get_status.py`) exécuté en service systemd.  
