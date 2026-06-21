@@ -1,0 +1,12 @@
+[Unit]
+Description=Clear MPD queue on boot
+After=mpd.service
+Requires=mpd.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/mpc clear
+User=thomas
+
+[Install]
+WantedBy=multi-user.target
