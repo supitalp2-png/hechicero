@@ -179,44 +179,57 @@ Le lecteur doit fonctionner **sans lag** sur un Raspberry Pi 5.
 
 ## 12. État réel au 2026-06-21
 
-### Implémenté
-- Navigation 4 écrans : home → podcasts → chapitres → player
+### Implémenté et validé
+- Navigation fonctionnelle bout en bout : accueil → podcasts → épisodes → lecteur
 - Filtre par langue via drapeaux FR/🇨🇴 (champ `langue` dans `data.json`)
-- Animation card au clic (scale 1.09 + border accent, 140 ms)
-- Formatage durée (secondes ou HH:MM:SS)
-- Compatibilité défensive `chapitres` ou `episodes` dans `data.json`
-- Commandes MPD via `radio.php` (play, pause, volup, voldown, status)
+- Commandes MPD via `radio.php` (play, pause, playfile, volup, voldown, status)
+- Paramètre `path` uniformisé dans toutes les actions (`playTrack`, `playBtn`)
+- Polling MPD conditionnel (actif uniquement sur l'écran lecteur)
+- Bouton webradio France Inter fonctionnel
+- Mode kiosque Chromium au boot (TICKET-039 ✅)
+- Pipeline RSS → téléchargement → conversion M4A→MP3 → MPD opérationnel
+- `normalize_path` retourne des URI absolues `file://` (compatible MPD music_directory `/var/lib/mpd/music`)
 
-### Bugs connus (TICKET-028)
-- Paramètre incohérent : `playTrack()` envoie `{ track }`, `playBtn` envoie `{ path }`
-- Balise `<a href="radio.php">` orpheline après `</html>`
-- Texte de debug visible dans l'écran player (non conforme UX enfant)
-- `setInterval(refreshPlayerStatus, 1000)` actif dès le chargement (pas seulement en lecture)
-- `app.js` est une ancienne version non connectée — code mort (TICKET-040)
+### Batterie (TICKET-051) — fix appliqué, non validé
+- `navigator.getBattery()` bloqué dans Chromium sur Pi — l'icône batterie restait absente
+- Fix (2026-06-21) : dual approach dans `index.html`
+  - essaie `getBattery` d'abord ; fallback : `fetch('../status.json')` toutes les 30 s
+  - champ lu : `d.percent` (validé : `{"percent": 91, "voltage_v": 4.1, "current_ma": 19, ...}`)
+  - détection charge : `d.state.toLowerCase().includes('charge') && !includes('sur batterie')`
+- **À valider** sur le Pi à la prochaine session
 
-### Non implémenté (delta UX)
-- Appui sur image = pause/lecture (TICKET-041)
-- Barre de progression (TICKET-042)
-- Reprise automatique de position (TICKET-043)
-- Flèches épisode suivant/précédent (TICKET-044)
-- Jaquettes ≥ 300×300 px (TICKET-045)
-- Aucun contenu ES dans `data.json` (TICKET-004)
+### En cours — Refonte visuelle (TICKET-050)
+Architecture cible validée le 2026-06-21 :
+- **5 écrans** : Accueil → Podcasts+Radio → [Catalogue radio | Épisodes] → Lecteur
+- **Viewport** : 1024×600 px paysage (écran CUQI 7 pouces IPS)
+- **Design** : dark mode, accent cyan (#00c8ff), accent radio ambre (#c8a050), boutons arrondis
+- **Écran lecteur** : layout splitté (jaquette gauche 45% / contrôles droite 55%)
+- **Barre de statut** : heure + batterie (fallback status.json) + indicateur charge
+- **Boutons retour** : pill-shaped, 36px, suffisamment grands pour usage tactile enfant
+- Tickets couverts : 041 (tap image), 042 (progress bar), 043 (reprise localStorage), 044 (flèches épisodes), 045 (jaquettes ≥ 300px)
 
-## 13. Évolutions prévues
-- Appui sur image = toggle play/pause (TICKET-041)
-- Barre de progression temps réel (TICKET-042)
-- Reprise automatique via `localStorage` (TICKET-043)
-- Flèches épisode suivant/précédent (TICKET-044)
-- Jaquettes ≥ 300×300 px (TICKET-045)
-- Carrousel pour les jaquettes (TICKET-047)
-- Animations simples (fade, slide) (TICKET-037)
-- Son de confirmation au lancement (TICKET-023)
-- Support des boutons physiques (GPIO)
-- Migration possible vers une IHM native (Qt, Flutter, Kivy)
+### Non implémenté
+- Contenu ES dans `data.json` (TICKET-004)
+- Catalogue radios hispanófonas (TICKET-050, phase 2)
+- `app.js` : code mort à supprimer (TICKET-040)
+- Images podcasts non affichées (TICKET-049)
 
 ---
 
-## 13. Référence UX
+## 13. Évolutions prévues
+- Refonte visuelle complète `index.html` (TICKET-050) ← EN COURS
+- Images podcasts : jaquette podcast + image par épisode dans `data.json` (TICKET-049)
+- Contenu ES : podcasts en espagnol (TICKET-004)
+- Script d'intégrité audio/images/data.json (TICKET-048)
+- Carrousel pour les jaquettes (TICKET-047)
+- Favoris (TICKET-046)
+- Animations simples (fade, slide) (TICKET-037)
+- Son de confirmation au lancement (TICKET-023)
+- Support des boutons physiques (GPIO)
+
+---
+
+## 14. Référence UX
 Les règles UX détaillées sont décrites dans :
 - `docs/25-UX_GUIDELINES.md`
 - dossier `UX Design/` (vision, personas, parcours, spécifications)

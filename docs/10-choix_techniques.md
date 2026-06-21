@@ -33,9 +33,14 @@ Justification :
 - intégration simple avec MPD
 
 ### 🔹 Écran tactile
+Modèle : **CUQI 7 pouces IPS HD 1024×600** (compatible Raspberry Pi 3/4/5)  
 Rôle : interface enfant principale  
-Décision récente :
-- l’IHM enfant tourne **directement sur l’écran** via Chromium
+Orientation : **paysage** (1024×600 px)  
+Décision :
+- l’IHM enfant tourne **directement sur l’écran** via Chromium en mode kiosque
+- viewport cible pour l’IHM enfant : **1024×600 px paysage**
+- grille podcasts : 3–4 colonnes
+- écran lecteur : layout splitté (jaquette gauche / contrôles droite)
 
 ### 🔹 Waveshare UPS HAT (D)
 Rôle : autonomie + monitoring batterie  
