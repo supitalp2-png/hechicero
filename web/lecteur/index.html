@@ -80,6 +80,10 @@
         <div style="margin-top:18px">
           <button id="enterBtn">Voir tous</button>
         </div>
+
+        <div style="margin-top:12px">
+          <button id="radioBtn" style="background:#1a6b3c">📻 France Inter</button>
+        </div>
       </div>
 
       <div id="podcasts" class="hidden">
@@ -296,6 +300,9 @@
 
     btnFR.addEventListener('click', ()=>setLanguage('FR'));
     btnES.addEventListener('click', ()=>setLanguage('ES'));
+    el('radioBtn').addEventListener('click', () => {
+      fetch('radio.php?action=play', { cache: 'no-store' });
+    });
 
     // Enter button: show all podcasts (no filter)
     enterBtn.addEventListener('click', async ()=>{

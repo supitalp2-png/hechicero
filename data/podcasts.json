@@ -3,11 +3,11 @@
     {
       "id": "lesodyssees",
       "label": "Les Odyssées",
-      "rss": "https://radiofrance-podcast.net/podcast09/rss_14312.xml",
+      "rss": "https://radio-france-rss.aerion.workers.dev/rss/c361798b-d6e3-4282-ba0a-ebb051b9e424",
       "enabled": true,
       "language": "fr",
       "image": "images/lesodyssees.jpg",
-      "max_episodes": 50
+      "max_episodes": 10
     }
   ]
 }

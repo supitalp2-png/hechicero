@@ -1,9 +1,58 @@
 import requests
+import subprocess
 from pathlib import Path
 from utils import log, md5sum
 import time
 
 CHUNK_SIZE = 256 * 1024  # 256 KB — évite de charger l'entier MP3 en RAM
+
+
+def is_m4a_container(path: Path) -> bool:
+    """Détecte si le fichier est un conteneur M4A/MP4 (malgré l'extension .mp3).
+    Les fichiers M4A ont le marqueur 'ftyp' à l'offset 4.
+    """
+    try:
+        with open(path, "rb") as f:
+            f.seek(4)
+            return f.read(4) == b"ftyp"
+    except Exception:
+        return False
+
+
+def convert_m4a_to_mp3(src: Path, dest: Path) -> bool:
+    """Convertit un fichier M4A/AAC en vrai MP3 via ffmpeg.
+    Supprime src en cas de succès.
+    """
+    tmp = dest.with_suffix(".converting.mp3")
+    try:
+        result = subprocess.run(
+            [
+                "ffmpeg", "-y",
+                "-i", str(src),
+                "-vn",                      # ignore la jaquette embarquée
+                "-codec:a", "libmp3lame",
+                "-q:a", "2",                # VBR ~190 kbps
+                str(tmp),
+            ],
+            capture_output=True,
+            timeout=600,
+        )
+        if result.returncode == 0:
+            tmp.rename(dest)
+            src.unlink()
+            log(f"Converted M4A→MP3: {dest}")
+            return True
+        else:
+            log(f"ffmpeg error for {src}: {result.stderr.decode()[-300:]}")
+            if tmp.exists():
+                tmp.unlink()
+            return False
+    except Exception as e:
+        log(f"Conversion exception for {src}: {e}")
+        if tmp.exists():
+            tmp.unlink()
+        return False
+
 
 def download_file(url: str, dest: Path) -> Path | None:
     if dest.exists():
@@ -33,6 +82,7 @@ def download_file(url: str, dest: Path) -> Path | None:
     log(f"Failed to download: {url}")
     return None
 
+
 def download_episode(podcast_id: str, ep):
     base = Path(f"/home/thomas/hechicero/podcasts/{podcast_id}")
 
@@ -42,6 +92,17 @@ def download_episode(podcast_id: str, ep):
     if ep.audio_url:
         downloaded = download_file(ep.audio_url, audio_path)
         if downloaded:
+            # Radio France sert parfois du AAC/M4A renommé en .mp3.
+            # MPD ne détecte pas le conteneur MP4 via l'extension → durée erronée + bruit.
+            # On convertit en vrai MP3 si nécessaire.
+            if is_m4a_container(downloaded):
+                log(f"M4A container detected in {downloaded.name}, converting…")
+                raw = downloaded.with_suffix(".m4a.raw")
+                downloaded.rename(raw)
+                if not convert_m4a_to_mp3(raw, downloaded):
+                    # Échec de conversion : on remet l'original pour ne pas perdre le fichier
+                    raw.rename(downloaded)
+                    log(f"Kept original (conversion failed): {downloaded}")
             ep.local_audio = str(downloaded)
 
     if ep.image_url:

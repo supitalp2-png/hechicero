@@ -123,8 +123,8 @@ if (isset($_GET['action'])) {
         }
     }
 
-    if ($action === "playfile" && isset($_GET['track'])) {
-        $path = normalize_path((string)$_GET['track'], $projectRoot);
+    if ($action === "playfile" && isset($_GET['path'])) {
+        $path = normalize_path((string)$_GET['path'], $projectRoot);
         if ($path !== '') {
             $responses = mpd_add_and_play($path);
             if (isset($_GET['debug'])) {
