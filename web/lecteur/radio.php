@@ -4,7 +4,7 @@ $stream = "https://icecast.radiofrance.fr/monpetitfranceinter-midfi.mp3";
 $projectRoot = "/home/thomas/hechicero";
 
 function mpd_command(string $command): string {
-    $socket = @fsockopen('127.0.0.1', 6600, $errno, $errstr, 1.5);
+    $socket = @fsockopen('unix:///run/mpd/socket', 0, $errno, $errstr, 1.5);
     if (!$socket) {
         return "MPD connection failed: $errstr";
     }
@@ -30,7 +30,7 @@ function mpd_command(string $command): string {
 }
 
 function mpd_batch(array $commands): string {
-    $socket = @fsockopen('127.0.0.1', 6600, $errno, $errstr, 1.5);
+    $socket = @fsockopen('unix:///run/mpd/socket', 0, $errno, $errstr, 1.5);
     if (!$socket) {
         return "MPD connection failed: $errstr";
     }
@@ -94,12 +94,19 @@ function normalize_path(string $path, string $projectRoot): string {
         return '';
     }
 
+    // /podcasts/... → file:///home/thomas/hechicero/podcasts/...
     if (str_starts_with($path, '/podcasts/')) {
-        return 'podcasts/' . ltrim(substr($path, strlen('/podcasts/')), '/');
+        return 'file://' . $projectRoot . $path;
     }
 
-    if (str_starts_with($path, $projectRoot . '/podcasts/')) {
-        return 'podcasts/' . ltrim(substr($path, strlen($projectRoot . '/podcasts/')), '/');
+    // Chemin absolu déjà complet → file://...
+    if (str_starts_with($path, $projectRoot)) {
+        return 'file://' . $path;
+    }
+
+    // URI déjà formée (file://, http://)
+    if (str_starts_with($path, 'file://') || str_starts_with($path, 'http')) {
+        return $path;
     }
 
     return $path;
@@ -110,7 +117,15 @@ if (isset($_GET['action'])) {
     $action = $_GET['action'];
 
     if ($action === "play") {
-        mpd_add_and_play($stream);
+        $playUrl = $stream;
+        if (isset($_GET['url']) && $_GET['url'] !== '') {
+            $candidate = (string)$_GET['url'];
+            if (filter_var($candidate, FILTER_VALIDATE_URL) &&
+                (str_starts_with($candidate, 'https://') || str_starts_with($candidate, 'http://'))) {
+                $playUrl = $candidate;
+            }
+        }
+        mpd_add_and_play($playUrl);
     }
 
     if ($action === "pause") {
@@ -138,7 +153,17 @@ if (isset($_GET['action'])) {
     if ($action === "volup") {
         $status = mpd_status();
         $volume = isset($status['volume']) ? (int)$status['volume'] : 10;
-        mpd_command('setvol ' . min(100, $volume + 5));
+        mpd_command('setvol ' . min(50, $volume + 5));
+    }
+
+    if ($action === 'setvol' && isset($_GET['vol'])) {
+        $vol = max(0, min(100, (int)$_GET['vol']));
+        mpd_command("setvol $vol");
+    }
+
+    if ($action === 'seekcur' && isset($_GET['time'])) {
+        $time = (int)$_GET['time'];
+        mpd_command("seekcur $time");
     }
 
     if ($action === "voldown") {
@@ -150,6 +175,12 @@ if (isset($_GET['action'])) {
     if ($action === "status") {
         echo mpd_status()['_raw'];
         exit;
+    }
+
+    if ($action === "seekid" && isset($_GET['id']) && isset($_GET['time'])) {
+        $songid = (int)$_GET['id'];
+        $secs   = (int)$_GET['time'];
+        mpd_command('seekid ' . $songid . ' ' . $secs);
     }
 }
 ?>
