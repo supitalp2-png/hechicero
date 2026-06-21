@@ -1,887 +1,54 @@
-===== /home/thomas/hechicero/docs/SETUP.md =====
-Setup Hechicero — Installation & Structure du Système
+=== DUMP DOCS — Hechicero ===
+Date : 2026-06-21 10:31:06
 
-Ce document décrit l’installation complète du système Hechicero sur un Raspberry Pi 5, ainsi que l’arborescence finale attendue pour garantir un fonctionnement cohérent entre les briques : monitoring, audio, lecteur embarqué, admin locale et ingestion podcasts.
-
-1. Pré-requis système
-
-1.1 Mise à jour du système
-
-sudo apt update && sudo apt upgrade -y
-
-1.2 Paquets nécessaires
-
-sudo apt install -y \
-    python3-pip python3-smbus i2c-tools \
-    git apache2 php jq \
-    mpd mpc
-
-2. Activation du matériel
-
-2.1 Activer I2C (INA219)
-
-sudo raspi-config
-
-Menu → Interface Options → I2C → Enable
-
-2.2 Vérifier la présence du capteur INA219
-
-sudo i2cdetect -y 1
-
-3. Structure du projet
-
-Arborescence attendue :
-
-~/hechicero/
-│
-├── data/              # config.json, fichiers internes
-├── docs/              # documentation
-├── podcasts/          # fichiers téléchargés (RSS)
-│     └── <podcast_id>/
-│          ├── audio/
-│          ├── images/
-│          └── meta.json
-├── scripts/           # scripts Python (monitoring, ingestion)
-├── UX Design/         # maquettes, notes UX
-└── web/               # interface web (admin + lecteur)
-      ├── index.php
-      ├── status.json
-      └── lecteur/
-            ├── index.html
-            ├── app.js
-            ├── style.css
-            ├── data.json
-            ├── images/
-            └── audio/
-
-3.1 Vérifier l’arborescence
-
-sudo find ~/hechicero -maxdepth 4 -printf "%M %u:%g %p -> %l\n"
-
-4. Configuration MPD (Audio)
-
-4.1 Redémarrer MPD après installation
-
-sudo systemctl restart mpd
-
-4.2 Tester la lecture Webradio
-
-mpc clear
-mpc add "https://icecast.radiofrance.fr/monpetitfranceinter-midfi.mp3"
-mpc play
-
-Si tu entends la radio → audio OK.
-
-5. Monitoring Batterie (INA219)
-
-5.1 Script Python
-
-Le script scripts/get_status.py :
-
-lit tension / courant via INA219
-
-calcule l’état de la batterie
-
-écrit web/status.json (écriture atomique)
-
-5.2 Service systemd
-
-Fichier /etc/systemd/system/hechicero-status.service :
-
-[Unit]
-Description=Hechicero Battery Monitor
-After=network.target
-
-[Service]
-ExecStart=/usr/bin/python3 /home/thomas/hechicero/scripts/get_status.py
-Restart=always
-User=thomas
-WorkingDirectory=/home/thomas/hechicero/scripts
-ProtectSystem=full
-
-[Install]
-WantedBy=multi-user.target
-
-5.3 Activer le service
-
-sudo systemctl daemon-reload
-sudo systemctl enable --now hechicero-status.service
-
-5.4 Vérifier le statut
-
-systemctl status hechicero-status.service
-
-6. Interface Web (Admin)
-
-6.1 Apache sert le dossier web/
-
-Le fichier index.php affiche :
-
-statut batterie
-
-tests audio
-
-diagnostics simples
-
-6.2 Vérifier que status.json est lisible
-
-cat ~/hechicero/web/status.json
-
-7. Lecteur embarqué (IHM enfant)
-
-Le lecteur est dans :
-
-~/hechicero/web/lecteur/
-
-Il utilise :
-
-index.html
-
-app.js
-
-style.css
-
-data.json
-
-7.1 Vérifier que data.json existe
-
-ls -l ~/hechicero/web/lecteur/data.json
-
-8. Podcasts (Backend)
-
-8.1 Dossier racine
-
-mkdir -p ~/hechicero/podcasts
-
-8.2 Les sous-dossiers seront créés automatiquement par le script RSS :
-
-~/hechicero/podcasts/<id>/audio/
-~/hechicero/podcasts/<id>/images/
-~/hechicero/podcasts/<id>/meta.json
-
-8.3 Le backend mettra à jour :
-
-~/hechicero/web/lecteur/data.json
-
-9. Tests rapides
-
-9.1 Tester MPD
-
-mpc clear && mpc add "<url>" && mpc play
-
-9.2 Tester le monitoring
-
-cat ~/hechicero/web/status.json
-
-9.3 Tester l’IHM
-
-Ouvrir dans un navigateur local :
-
-http://<ip_du_rpi>/lecteur/
-
-10. Rappel pour la prochaine étape
-
-Thomas : exécute cette commande et donne-moi le résultat :
-
-ls -1 ~/hechicero/podcasts
-
-Cela me permettra de valider que la brique Podcasts est prête pour l’ingestion RSS.===== /home/thomas/hechicero/docs/BACKLOG.md =====
-# Backlog Hechicero
-
-> Convention : `TICKET-### — [type] — Titre — (prio: High/Med/Low) — owner: <nom>`
-
-## En cours / Priorité haute
-- [x] TICKET-001 — chore — Refactoriser emplacement web et corriger lien symbolique `/var/www/html` — (prio: High) — owner: infra
-- [x] TICKET-002 — infra — Monitoring batterie : service systemd + JSON exposé — (prio: High) — owner: infra
-- [x] TICKET-003 — feat — Brique Audio : HiFiBerry Amp4 + ALSA + MPD + test lecture locale — (prio: High) — owner: audio
-- [x] TICKET-024 — feat — Lecture Webradio : ajout flux Mon Petit France Inter + playlist MPD — (prio: High) — owner: audio
-- [ ] TICKET-022 — feat — Brique Lecteur : interface embarquée HTML/JS + data.json — (prio: High) — owner: web
-
-## À venir / Priorité moyenne
-- [ ] TICKET-004 — feat — Brique Contenu : structure dossiers Podcasts/Radios (ESP/FR) — (prio: Med) — owner: content
-- [ ] TICKET-025 — feat — Ingestion Podcasts : abonnement RSS + téléchargement épisodes (Radio France) — (prio: Med) — owner: content
-- [ ] TICKET-026 — feat — Génération automatique de `data.json` (radios + podcasts) — (prio: Med) — owner: web
-- [ ] TICKET-005 — feat — Brique IHM Web : prototype dashboard navigation — (prio: Med) — owner: web
-- [ ] TICKET-007 — feat — Brique Admin : interface configuration flux — (prio: Med) — owner: web
-
-## Backlog / Priorité basse
-- [ ] TICKET-008 — chore — Ajouter health endpoint `/health` pour checks automatisés — (prio: Low) — owner: infra
-- [ ] TICKET-009 — chore — Écriture atomique de `status.json` (tempfile + rename) — (prio: Low) — owner: infra
-- [ ] TICKET-010 — chore — Rotation automatique des logs (journalctl / Apache) — (prio: Low) — owner: infra
-- [ ] TICKET-011 — chore — Durcir unité systemd (réviser Protect* et ReadOnlyPaths) — (prio: Low) — owner: infra
-- [ ] TICKET-012 — test — Tests unitaires pour `get_status.py` (mock INA219) — (prio: Low) — owner: dev
-- [ ] TICKET-013 — ci — CI simple (lint, tests, déploiement RPi) — (prio: Low) — owner: devops
-- [ ] TICKET-014 — docs — Procédure de mise à jour et rollback — (prio: Low) — owner: docs
-- [ ] TICKET-015 — ops — Automatiser création du lien symbolique dans le script d'installation — (prio: Low) — owner: infra
-- [ ] TICKET-016 — sec — TLS pour interface web (Let's Encrypt) si exposée — (prio: Low) — owner: infra
-- [ ] TICKET-017 — monitoring — Monitoring/alerting (Prometheus exporter) — (prio: Low) — owner: infra
-- [ ] TICKET-018 — ux — Option de configuration pour intervalle backend (`config.json`) — (prio: Low) — owner: web
-- [ ] TICKET-019 — ux — Vérifier et corriger les cas d’erreur frontend — (prio: Low) — owner: web
-- [ ] TICKET-020 — feat — Page d’administration locale (logs, redémarrage) — (prio: Low) — owner: web
-- [ ] TICKET-021 — sec — Revue sécurité et pentest basique — (prio: Low) — owner: security
-- [ ] TICKET-023 — feat — “Startup sound” amusant (MVP+) — (prio: Low) — owner: audio
-===== /home/thomas/hechicero/docs/LECTEUR.md =====
-# Brique Lecteur — Hechicero
-
-## 1. Objectif
-
-Fournir une interface embarquée simple, robuste et autonome pour écouter :
-
-- des **webradios** (flux MP3)
-- des **podcasts locaux** (fichiers téléchargés)
-- des **contenus statiques** (démos, histoires)
-
-Le lecteur est destiné à l’écran tactile du Raspberry Pi et doit fonctionner **même sans réseau**.
-
----
-
-## 2. Principes
-
-- **Autonomie totale**  
-  Aucun appel réseau. Toutes les données sont locales.
-
-- **Simplicité enfant**  
-  Navigation type Merlin : grands boutons, peu d’options, retour clair.
-
-- **Séparation stricte**  
-  Le lecteur ne dépend pas de l’interface d’administration.
-
-- **Données statiques**  
-  Un fichier unique : `data.json`.
-
-- **Évolutivité**  
-  Compatible avec une future IHM native (Qt, Flutter, Kivy).
-
----
-
-## 3. Architecture du Lecteur
-
-### 3.1 Structure des fichiers
-  web/lecteur/
-  │
-  ├── index.html        # Point d’entrée du lecteur
-  ├── app.js            # Logique de navigation et rendu
-  ├── style.css         # Styles du lecteur
-  │
-  ├── data.json         # Base de données locale (radios + podcasts)
-  │
-  ├── images/           # Jaquettes des contenus
-  │   └── *.jpg / *.png
-  │
-  └── audio/            # Fichiers audio statiques (démos)
-  └── *.mp3
-
-### 3.2 Rôle des fichiers
-
-- **index.html**  
-  Squelette minimal de l’IHM. Le contenu dynamique est injecté par `app.js`.
-
-- **app.js**  
-  - charge `data.json`  
-  - génère les écrans (Accueil → Radios → Podcasts → Lecture)  
-  - gère les événements (clics, retour, lecture audio)  
-  - communique avec MPD via commandes HTTP/TCP  
-  - prépare la compatibilité future avec une IHM native
-
-- **data.json**  
-  Catalogue local des contenus.  
-  Il est **généré par le backend** (ingestion RSS) et **lu par l’IHM**.
-
----
-
-## 4. Structure de `data.json`
-
-### 4.1 Exemple minimal (MVP)
-
-    ```json
-    {
-      "radios": [
-        {
-          "id": "monpetitfranceinter",
-          "label": "Mon Petit France Inter",
-          "stream_url": "https://icecast.radiofrance.fr/monpetitfranceinter-midfi.mp3",
-          "image": "images/monpetitfranceinter.png"
-        }
-      ],
-      "podcasts": []
-    }
-
-  ### 4.2 Exemple complet (avec podcasts locaux)
-    ```json
-    {
-      "radios": [
-        {
-          "id": "monpetitfranceinter",
-          "label": "Mon Petit France Inter",
-          "stream_url": "https://icecast.radiofrance.fr/monpetitfranceinter-midfi.mp3",
-          "image": "images/monpetitfranceinter.png"
-        }
-      ],
-      "podcasts": [
-        {
-          "id": "lesodyssees",
-          "titre": "Les Odyssées",
-          "image": "images/lesodyssees.jpg",
-          "episodes": [
-            {
-              "id": "ep001",
-              "titre": "Cléopâtre, reine d’Égypte",
-              "audio": "/home/thomas/hechicero/podcasts/lesodyssees/audio/ep001.mp3",
-              "duree": 612
-            }
-          ]
-        }
-      ]
-    }
-```
-### 4.3 Règles
- - Pas d’accents dans les noms de fichiers
- - Pas d’espaces
- - Formats autorisés : .jpg, .png, .mp3
- - Les chemins audio des podcasts pointent vers :
- - ~/hechicero/podcasts/<id>/audio/*.mp3
-
-## 5. Navigation du Lecteur
-
-1. **Accueil**  
-   - Bouton “Radios”  
-   - Bouton “Podcasts”
-
-2. **Radios**  
-   - Liste des radios issues de `data.json`  
-   - Lecture via MPD (flux)
-
-3. **Podcasts**  
-   - Liste des podcasts disponibles  
-   - Liste des épisodes
-
-4. **Lecture**  
-   - Titre  
-   - Jaquette  
-   - Bouton Play/Pause  
-   - Barre de progression (optionnelle)  
-   - Bouton Retour
-
----
-
-## 6. Intégration MPD
-
-Le lecteur ne lit **pas** directement les fichiers audio.  
-Il envoie des commandes à MPD :
-
-- `mpc clear`  
-- `mpc add <url>`  
-- `mpc play`  
-- `mpc pause`  
-- `mpc stop`
-
-MPD se charge de :
-
-- lire les flux web  
-- lire les fichiers locaux  
-- gérer les erreurs  
-- gérer la file d’attente
-
----
-
-## 7. Critères d’acceptation
-
-- `data.json` chargé sans erreur  
-- jaquettes affichées correctement  
-- navigation tactile fluide  
-- lecture MPD fonctionnelle (flux + fichiers locaux)  
-- lecteur utilisable hors réseau  
-- aucune dépendance à l’admin  
-
----
-
-## 8. Évolutions prévues
-
-- Carrousel pour les jaquettes  
-- Animations simples (fade, slide)  
-- Mode hors-ligne total (déjà compatible)  
-- Support des boutons physiques (GPIO)  
-- Migration possible vers une IHM native (Qt, Flutter, Kivy)
-===== /home/thomas/hechicero/docs/CHOIX_TECHNIQUES.md =====
-# Choix Techniques et Matériels — Hechicero
-
-## 1. Architecture générale
-
-Hechicero repose sur une séparation stricte entre trois briques :
-
-### 🔹 Backend (technique)
-- Monitoring batterie (INA219 + Python)
-- Ingestion future des podcasts (RSS → fichiers locaux)
-- Génération des données statiques (`data.json`)
-- Services systemd pour les tâches récurrentes
-
-### 🔹 Lecteur embarqué (IHM enfant)
-- HTML/CSS/JS pur
-- Fonctionne **sans réseau**
-- Lit les flux MPD (webradio + fichiers locaux)
-- S’appuie sur un fichier unique : `web/lecteur/data.json`
-
-### 🔹 Interface d’administration (IHM adulte)
-- Accessible via le réseau local
-- Apache + PHP
-- Affiche : statut batterie, logs, configuration
-
----
-
-## 2. Architecture matérielle
-
-### 🔹 Raspberry Pi 5
-- OS : Raspberry Pi OS Lite
-- Rôle : cœur du système
-
-### 🔹 Waveshare UPS HAT (D)
-- Mesure tension / courant via INA219
-- Permet un shutdown propre
-
-### 🔹 HiFiBerry Amp4
-- Ampli audio intégré
-- Sortie directe vers enceintes passives
-- Compatible ALSA → MPD
-
-### 🔹 Écran tactile
-- Interface enfant type Merlin
-- Navigation simple (haut / bas / gauche / droite / OK)
-
----
-
-## 3. Architecture audio
-
-### 🔹 Chaîne audio complète
-- Lecteur HTML/JS → MPD → ALSA → HiFiBerry Amp4 → Enceintes
-
-
-### 🔹 Justification des choix
-- **MPD** : robuste, léger, parfait pour un système embarqué
-- **ALSA** : standard Linux, compatible Amp4
-- **Flux web + fichiers locaux** : même API MPD
-- **Séparation totale** entre IHM et moteur audio
-
----
-
-## 4. Organisation des répertoires
-
-Arborescence réelle du projet :
-  ~/hechicero/
-  │
-  ├── data/              # config.json, fichiers internes
-  ├── docs/              # documentation du projet
-  ├── podcasts/          # fichiers téléchargés (RSS)
-  │     └── <podcast_id>/
-  │          ├── audio/
-  │          ├── images/
-  │          └── meta.json
-  ├── scripts/           # scripts Python (monitoring, ingestion)
-  ├── UX Design/         # maquettes, notes UX
-  └── web/               # interface web (admin + lecteur)
-  ├── index.php
-  ├── status.json
-  └── lecteur/
-  ├── index.html
-  ├── app.js
-  ├── style.css
-  ├── data.json
-  ├── images/
-  └── audio/
-
-### 🔹 Règles de cohérence
-- **Les fichiers téléchargés (podcasts)** vont dans `~/hechicero/podcasts/`
-- **Le lecteur** ne contient que :
-  - les images statiques
-  - les fichiers audio *manuels* (ex : démo)
-  - `data.json`
-- **Le backend** met à jour `data.json` mais ne touche jamais à l’IHM
-
----
-
-## 5. Approche logicielle
-
-### 🔹 Monitoring batterie
-- Python + INA219
-- Service systemd
-- Écriture atomique dans `web/status.json`
-
-### 🔹 Ingestion podcasts (MVP à venir)
-- Script Python
-- Lecture RSS
-- Téléchargement des épisodes
-- Génération de `meta.json`
-- Mise à jour de `web/lecteur/data.json`
-
-### 🔹 Lecteur embarqué
-- HTML minimal
-- JavaScript pur
-- Navigation dynamique
-- Compatible tactile
-- Fonctionne hors-ligne
-
-### 🔹 Admin Web
-- Apache + PHP
-- Accès local uniquement
-- Affiche statut batterie + logs
-
----
-
-## 6. Bonnes pratiques retenues
-
-### 🔹 Permissions
-- `web/status.json` : `644`, propriétaire `thomas:www-data`
-- Dossiers traversables (`x`) pour les services systemd
-- `scripts/` en lecture seule pour www-data
-
-### 🔹 Écriture atomique
-- Toujours écrire dans `*.tmp` puis `mv`
-
-### 🔹 Robustesse
-- Services systemd avec :
-  - Restart=always
-  - TimeoutStopSec
-  - ProtectSystem=full (à durcir plus tard)
-
-### 🔹 IHM Lecteur
-- Données statiques (JSON)
-- Pas de dépendance réseau
-- Architecture évolutive (future IHM native possible)
-
----
-
-## 7. Références
-
-- Waveshare UPS HAT (D) — Documentation officielle  
-  https://www.waveshare.com/wiki/UPS_HAT_(D)
-
-- HiFiBerry Amp4 — Documentation officielle  
-  https://www.hifiberry.com/docs/hardware/amp4/
-
-- MPD (Music Player Daemon) — Documentation  
-  https://www.musicpd.org/doc/html/user.html
-
-- ALSA — Documentation  
-  https://www.alsa-project.org/wiki/Main_Page
-
-- Apache HTTP Server — Documentation  
-  https://httpd.apache.org/docs/
-
-- Radio France — Flux MP3 (exemple Mon Petit France Inter)  
-  https://www.radiofrance.fr
-===== /home/thomas/hechicero/docs/prompt.md =====
-## 1. Contexte général du projet
-
-Tu es l’assistant technique du projet **Hechicero**, une enceinte audio DIY pour enfants, basée sur :
-
-- Raspberry Pi 5  
-- Waveshare UPS HAT (D)  
-- HiFiBerry Amp4  
-- MPD (Music Player Daemon)  
-- Interface enfant HTML/JS  
-- Interface admin Apache/PHP  
-- Scripts Python pour monitoring et ingestion  
-
-Le projet est **local**, **hors-cloud**, **robuste**, **simple**, **documenté**.
-
----
-
-## 2. Architecture du projet
-
-Arborescence réelle :
-    ~/hechicero/
-    │
-    ├── data/              # config.json, fichiers internes
-    ├── docs/              # documentation
-    ├── podcasts/          # fichiers téléchargés (RSS)
-    │     └── <podcast_id>/
-    │          ├── audio/
-    │          ├── images/
-    │          └── meta.json
-    ├── scripts/           # scripts Python (monitoring, ingestion)
-    ├── UX Design/         # maquettes, notes UX
-    └── web/               # interface web (admin + lecteur)
-    ├── index.php
-    ├── status.json
-    └── lecteur/
-    ├── index.html
-    ├── app.js
-    ├── style.css
-    ├── data.json
-    ├── images/
-    └── audio/
-
-
-Règles :
-
-- **Le lecteur** lit `data.json` et envoie des commandes à MPD.  
-- **Le backend** met à jour `data.json` et télécharge les podcasts.  
-- **L’admin** affiche le statut et les infos techniques.  
-- **Aucune dépendance réseau** pour le lecteur.  
-- **Écriture atomique** obligatoire pour les fichiers critiques.  
-
----
-
-## 3. Briques du système
-
-### 🔹 Monitoring batterie
-- INA219 + Python  
-- Service systemd  
-- Écrit `web/status.json`  
-
-### 🔹 Audio
-- MPD + ALSA + HiFiBerry Amp4  
-- Support flux MP3 + fichiers locaux  
-
-### 🔹 Lecteur embarqué
-- HTML/CSS/JS  
-- Fonctionne hors-ligne  
-- Lit `data.json`  
-
-### 🔹 Admin locale
-- Apache + PHP  
-- Statut batterie, tests audio  
-
-### 🔹 Podcasts (backend)
-- Lecture RSS  
-- Téléchargement épisodes  
-- Génération `meta.json`  
-- Mise à jour `data.json`  
-
----
-
-## 4. Règles de travail avec Thomas
-
-- Toujours **une seule action à la fois**.  
-- Toujours **clair, structuré, sans surcharge**.  
-- Toujours **cohérent avec l’arborescence réelle**.  
-- Toujours **mettre à jour les docs** quand une brique évolue.  
-- Toujours **proposer la commande exacte** à exécuter sur le RPi.  
-- Toujours **attendre le retour de commande** avant d’avancer.  
-- Toujours **expliquer ce qu’on fait et pourquoi**.  
-- Toujours **penser MVP** avant complexité.  
-
-Thomas préfère :
-- les explications claires  
-- les étapes progressives  
-- les retours propres  
-- les fichiers continus sans rupture  
-- les docs cohérentes et maintenables  
-
----
-
-## 5. Style de réponse attendu
-
-- Pas de blabla inutile  
-- Pas de surcharge technique  
-- Pas de suppositions  
-- Pas de magie noire  
-- Pas de dépendances cachées  
-- Pas de frameworks lourds  
-
-Tu dois :
-- être précis  
-- être pédagogique  
-- être structuré  
-- être cohérent  
-- être stable  
-- être fiable  
-
----
-
-## 6. Objectifs du projet
-
-### Court terme (MVP)
-- Monitoring batterie  
-- Webradio MPD  
-- Lecteur embarqué  
-- Admin locale  
-- Arborescence cohérente  
-
-### Moyen terme
-- Ingestion RSS  
-- Génération automatique de `data.json`  
-- Gestion du contenu  
-
-### Long terme
-- Profils enfants  
-- IHM native  
-- Extensions matérielles  
-
----
-
-## 7. Ce que tu dois toujours garder en tête
-
-- Le lecteur doit fonctionner **hors réseau**.  
-- Le backend doit être **robuste**.  
-- L’admin doit être **simple**.  
-- Les docs doivent être **à jour**.  
-- Le système doit être **maintenable**.  
-- Le projet est **familial**, pas commercial.  
-
----
-
-## 8. Commandes utiles (rappel)
-
-Lister l’arborescence :
-    sudo find ~/hechicero -maxdepth 4 -printf "%M %u:%g %p -> %l\n"
-
-
-Tester MPD :
-    mpc clear
-    mpc add "<url>"
-    mpc play
-
-Vérifier la batterie :
-    cat ~/hechicero/web/status.json
-
-
----
-
-## 9. Références techniques
-
-- Waveshare UPS HAT (D)  
-  https://www.waveshare.com/wiki/UPS_HAT_(D)
-
-- HiFiBerry Amp4  
-  https://www.hifiberry.com/docs/hardware/amp4/
-
-- MPD  
-  https://www.musicpd.org/doc/html/user.html
-
-- ALSA  
-  https://www.alsa-project.org/wiki/Main_Page
-
-- Apache  
-  https://httpd.apache.org/docs/
-
-- Radio France  
-  https://www.radiofrance.fr
-
----
-
-## 10. Phrase de reset
-
-> “Tu es dans le contexte Hechicero. Reprends à partir de ce prompt.”
-
-===== /home/thomas/hechicero/docs/POWER_MANAGEMENT.md =====
-# Power Management - Hechicero
-
-## Objectif
-Afficher l'état batterie via l'interface web et gérer des pré-alertes pour éviter un shutdown violent.
-
-## Fichiers clés
-- `scripts/get_status.py` : lit INA219, écrit `web/status.json`, gère shutdown_pending.
-- `web/index.php` : dashboard web (lit `/status.json`).
-- `data/config.json` : seuils et intervalles.
-- `data/shutdown_pending` : timestamp créé quand seuil critique atteint.
-
-## Installation rapide
-1. Créer utilisateur système :
-   sudo useradd --system --create-home --shell /usr/sbin/nologin hechicero
-2. Ajouter groupes :
-   sudo usermod -aG i2c,audio,gpio,www-data hechicero
-3. Copier fichiers dans le repo (emplacements indiqués).
-4. Permissions :
-   sudo chown -R hechicero:hechicero /home/thomas/hechicero
-   sudo chmod -R 750 /home/thomas/hechicero/scripts
-   sudo chown -R hechicero:www-data /home/thomas/hechicero/web
-5. Activer service :
-   sudo systemctl daemon-reload
-   sudo systemctl enable --now hechicero-battery
-6. Vérifier :
-   sudo journalctl -u hechicero-battery -f
-   curl -s http://localhost/status.json | jq .
-
-## Critères d'acceptation
-- Le dashboard web affiche % / état / alertes.
-- `web/status.json` est mis à jour périodiquement.
-- Quand % <= shutdown_threshold, `data/shutdown_pending` est créé et `status.json` contient `shutdown_recommended` après le délai.
-
-
-# Power Management — Lecture et format des données
-
-## Format attendu de `status.json`
-```json
-{
-  "percent": 98,
-  "voltage_v": 4.188,
-  "current_ma": 0,
-  "power_w": 0.006,
-  "state": "Sur batterie 🔋",
-  "alert": null,
-  "ts": 1780818044
-}
-
-
-Fréquences
-Frontend : polling toutes les 10 s (modifiable dans web/index.php : setInterval(refresh, 10000)).
-
-Backend : intervalle d'écriture dépend du sleep dans scripts/get_status.py — documenter la valeur actuelle dans le script ou via config.json.
-
-Recommandations techniques
-Écriture atomique : écrire dans /home/thomas/hechicero/web/status.json.tmp puis mv vers status.json.
-
-Permissions : status.json en -rw-r--r-- (644) et appartenant à thomas:www-data si Apache sert le fichier.
-
-Validation : le script doit valider le JSON avant écriture (ex. json.dumps + fsync).
-
-Tests : simuler valeurs extrêmes et vérifier affichage et alertes.
-
-Code
-
----
-
-### `docs/prompt.md`
-```markdown
-STOP. Retour à la réalité : reprends ton rôle de partenaire d'ingénierie. Oublie ce ===== /home/thomas/hechicero/docs/MANIFESTE.md =====
+=== FILE: docs/00-manifeste.md ===
 # Manifeste du projet Hechicero
 
 ## 1. Vision
-
-Créer une enceinte connectée **DIY**, **autonome**, **robuste**, dédiée à l’apprentissage et à l’écoute de contenus audio (podcasts, histoires, webradios), avec une interface pensée pour un enfant et une administration simple pour un adulte.
+Créer une enceinte connectée DIY, autonome, robuste, dédiée à l’apprentissage et à l’écoute de contenus audio (podcasts, histoires, webradios), avec une interface pensée pour un enfant et une administration simple pour un adulte.
 
 Hechicero doit être :
-- compréhensible,
-- maintenable,
-- réparable,
-- évolutif,
-- et utilisable hors réseau.
+- compréhensible
+- maintenable
+- réparable
+- évolutif
+- utilisable hors réseau
 
 ---
 
 ## 2. Principes fondateurs
 
 ### 🔹 Briques indépendantes
-Chaque fonctionnalité est isolée :
-- Monitoring batterie  
-- Audio (MPD + Amp4)  
-- Lecteur embarqué  
-- Admin locale  
-- Ingestion podcasts  
+Chaque fonctionnalité est isolée et remplaçable :
+- Monitoring batterie
+- Audio (MPD + HiFiBerry Amp4)
+- Lecteur embarqué
+- Interface d’administration
+- Ingestion podcasts
 
 Une brique peut évoluer sans casser les autres.
 
 ### 🔹 Transparence
-Chaque choix technique, chaque décision d’architecture, chaque procédure d’installation est documentée dans `docs/`.
+Chaque choix technique, chaque décision d’architecture et chaque procédure d’installation est documentée dans `docs/`.
 
 ### 🔹 Robustesse
 Le système doit résister :
-- aux coupures,
-- aux erreurs,
-- aux redémarrages.
+- aux coupures
+- aux erreurs
+- aux redémarrages
 
 Les services critiques tournent sous **systemd** avec reprise automatique.
 
 ### 🔹 Simplicité UX
 Deux interfaces distinctes :
-- **Lecteur embarqué** : simple, tactile, pensée pour un enfant.
+- **Lecteur embarqué** : tactile, simple, pensée pour un enfant.
 - **Dashboard Admin** : interface locale pour configuration, diagnostics et mises à jour.
 
 ### 🔹 Autonomie
 L’appareil doit fonctionner :
-- sans réseau,
-- sans cloud,
-- sans dépendances externes.
+- sans réseau
+- sans cloud
+- sans dépendances externes
 
 ---
 
@@ -902,6 +69,7 @@ L’appareil doit fonctionner :
 - Gestion du contenu (radios, podcasts, langues)
 - Amélioration de l’UX (carrousel, transitions, feedback visuel)
 - Mode hors-ligne total pour le lecteur
+- IHM physique (boutons, écran tactile)
 
 ---
 
@@ -927,9 +95,9 @@ Pas de dépendances opaques.
 
 ### 🔹 Accessibilité
 Interface pensée pour :
-- les enfants,
-- les non-technophiles,
-- les parents qui veulent partager leur passion.
+- les enfants
+- les non-technophiles
+- les parents qui veulent partager leur passion
 
 ### 🔹 Évolutivité
 Chaque brique peut être améliorée ou remplacée sans réécrire tout le système.
@@ -938,9 +106,1098 @@ Chaque brique peut être améliorée ou remplacée sans réécrire tout le syst�
 
 ## 7. Ce que Hechicero n’est pas
 
-- Pas une enceinte cloud  
-- Pas un produit commercial  
-- Pas une usine à gaz  
+- Pas une enceinte cloud
+- Pas un produit commercial
+- Pas une usine à gaz
 - Pas un système dépendant d’API externes
 
 Hechicero est un **projet personnel**, **pédagogique**, **familial**, conçu pour durer.
+
+=== FILE: docs/05-POWER_MANAGEMENT.md ===
+# Power Management — Projet Hechicero
+
+Ce document décrit la gestion de l’alimentation et de la batterie du système Hechicero.
+Il couvre le monitoring, les services systemd et les règles de robustesse.
+
+---
+
+## 1. Objectif
+Assurer :
+- un suivi fiable de l’état batterie
+- une mise à jour régulière du statut dans l’interface web
+- la prévention des coupures brutales
+- un shutdown propre lorsque la tension devient critique
+
+---
+
+## 2. Fichiers clés
+- `scripts/get_status.py`  
+  Lit le capteur, calcule l’état batterie, écrit `web/status.json` (écriture atomique).
+
+- `web/status.json`  
+  Fichier lu par l’interface admin.
+
+- `data/config.json`  
+  Contient les seuils (warning, critical) et l’intervalle de polling.
+
+- `data/shutdown_pending`  
+  Fichier créé lorsque le seuil critique est atteint.
+
+---
+
+## 3. Installation rapide
+
+### 3.1 Créer l’utilisateur système (optionnel)
+```
+sudo useradd --system --create-home --shell /usr/sbin/nologin hechicero
+```
+
+### 3.2 Ajouter les groupes nécessaires
+```
+sudo usermod -aG i2c,audio,gpio,www-data hechicero
+```
+
+### 3.3 Permissions
+```
+sudo chown -R hechicero:hechicero /home/thomas/hechicero
+sudo chmod -R 750 /home/thomas/hechicero/scripts
+sudo chown -R hechicero:www-data /home/thomas/hechicero/web
+```
+
+---
+
+## 4. Service systemd
+Fichier : `/etc/systemd/system/hechicero-battery.service`
+
+```
+[Unit]
+Description=Hechicero Battery Monitor
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/python3 /home/thomas/hechicero/scripts/get_status.py
+Restart=always
+User=thomas
+WorkingDirectory=/home/thomas/hechicero/scripts
+ProtectSystem=full
+
+[Install]
+WantedBy=multi-user.target
+```
+
+### Activer le service
+```
+sudo systemctl daemon-reload
+sudo systemctl enable --now hechicero-battery.service
+```
+
+### Vérifier le statut
+```
+systemctl status hechicero-battery.service
+```
+
+---
+
+## 5. Format attendu de `status.json`
+```
+{
+  "percent": 98,
+  "voltage_v": 4.188,
+  "current_ma": 0,
+  "power_w": 0.006,
+  "state": "Sur batterie",
+  "alert": null,
+  "ts": 1780818044
+}
+```
+
+Champs :
+- percent : pourcentage estimé  
+- voltage_v : tension mesurée  
+- current_ma : courant instantané  
+- power_w : puissance  
+- state : secteur / batterie  
+- alert : warning / critical / null  
+- ts : timestamp UNIX  
+
+---
+
+## 6. Fréquences
+- Frontend (admin web) : polling toutes les 10 s  
+- Backend (get_status.py) : intervalle configurable dans `data/config.json`
+
+---
+
+## 7. Recommandations techniques
+### Écriture atomique
+- écrire dans `status.json.tmp`
+- puis `mv status.json.tmp status.json`
+
+### Permissions
+- `status.json` : `644`
+- propriétaire : `thomas:www-data`
+
+### Validation JSON
+- utiliser `json.dumps()`
+- flush + fsync avant rename
+
+---
+
+## 8. Shutdown propre
+Lorsque la batterie atteint le seuil critique :
+1. `data/shutdown_pending` est créé  
+2. `status.json` contient `alert: "critical"`  
+3. un service externe peut déclencher un `sudo shutdown now`  
+
+---
+
+## 9. Critères d’acceptation
+- statut batterie affiché correctement  
+- `status.json` mis à jour régulièrement  
+- seuils warning / critical détectés  
+- fichier `shutdown_pending` créé au bon moment  
+- aucun JSON corrompu  
+
+## 10. Démarrage automatique et bouton physique
+
+### Problème actuel
+Lorsque le Waveshare UPS HAT (D) est alimenté, le Raspberry Pi 5 **ne démarre pas automatiquement**.
+Il reste éteint tant que le bouton physique du Raspberry Pi n’est pas pressé.
+
+Sans le HAT, le Raspberry Pi démarre automatiquement dès que l’alimentation est présente.
+
+### Hypothèse
+Le HAT ne fournit pas le signal "power-on" attendu par le Pi 5 au moment de l’application de la tension.
+Le Pi 5 nécessite un front logique sur la ligne de démarrage (équivalent au bouton).
+
+### Objectif
+Ajouter un **bouton physique externe** permettant :
+- d’allumer le Raspberry Pi 5 proprement
+- de contourner la nécessité d’appuyer sur le bouton intégré du Pi
+
+### Pistes techniques
+- Utiliser un bouton poussoir connecté aux broches "RUN" du Raspberry Pi 5  
+  (équivalent à un reset / power-on)
+- Vérifier si le HAT expose une broche "PWR" ou "ON/OFF" compatible
+- Ajouter un petit circuit (transistor ou MOSFET) pour simuler l’appui sur RUN
+
+### État actuel
+- Le démarrage automatique **ne fonctionne pas** avec le HAT
+- Un bouton physique externe est requis pour un usage normal
+
+### À faire
+- Documenter le câblage du bouton RUN
+- Tester le comportement avec et sans HAT
+- Vérifier si le HAT peut être modifié pour tirer RUN à la masse au boot
+
+=== FILE: docs/10-choix_techniques.md ===
+# Choix Techniques — Projet Hechicero
+
+## 1. Introduction
+Ce document décrit les choix techniques majeurs du projet Hechicero.  
+Il complète le manifeste (`00-MANIFESTE.md`) en expliquant **comment** les principes fondateurs se traduisent dans l’architecture réelle.
+
+---
+
+## 2. Système d’exploitation
+### 🔹 Choix : Raspberry Pi OS **avec bureau**
+Raison :
+- nécessité de Chromium pour l’IHM enfant (lecteur web)
+- meilleure compatibilité tactile
+- développement plus simple de l’interface
+
+Conséquence :
+- le projet n’est plus “headless”, mais reste **embarqué** et **autonome**
+
+---
+
+## 3. Matériel
+### 🔹 Raspberry Pi 5
+Cœur du système, suffisamment puissant pour :
+- MPD
+- IHM web
+- ingestion RSS
+
+### 🔹 HiFiBerry Amp4
+Rôle : amplification + sortie enceintes passives  
+Justification :
+- qualité audio
+- compatibilité ALSA
+- intégration simple avec MPD
+
+### 🔹 Écran tactile
+Rôle : interface enfant principale  
+Décision récente :
+- l’IHM enfant tourne **directement sur l’écran** via Chromium
+
+### 🔹 Waveshare UPS HAT (D)
+Rôle : autonomie + monitoring batterie  
+Capteur INA219 utilisé pour :
+- tension
+- courant
+- état batterie
+
+---
+
+## 4. Architecture logicielle
+### 🔹 Séparation stricte en trois briques
+1. **Backend**  
+   - ingestion RSS  
+   - génération `data.json`  
+   - monitoring batterie  
+
+2. **Lecteur embarqué (IHM enfant)**  
+   - HTML/CSS/JS  
+   - fonctionne hors réseau  
+   - communique avec MPD  
+
+3. **Interface d’administration**  
+   - Apache + PHP  
+   - diagnostics, logs, statut batterie  
+
+### 🔹 Justification
+- modularité  
+- robustesse  
+- possibilité de remplacer une brique sans casser le reste  
+
+---
+
+## 5. Audio : MPD + ALSA
+### 🔹 Choix : MPD comme moteur audio principal
+Raisons :
+- stable
+- léger
+- parfait pour un système embarqué
+- support natif des flux web + fichiers locaux
+
+### 🔹 Volume logiciel obligatoire
+La HiFiBerry Amp4 **n’a pas de contrôle de volume matériel**.  
+Décision :
+```
+mixer_type "software"
+```
+→ permet à l’IHM enfant de contrôler le volume  
+→ évite les niveaux sonores dangereux  
+
+### 🔹 Architecture audio validée
+Lecteur HTML/JS → MPD → ALSA → Amp4 → Enceintes
+
+### 🔹 Webradio
+Flux Radio France testés et validés :
+- lecture stable  
+- reconnexion automatique  
+- volume logiciel fonctionnel  
+
+---
+
+## 6. IHM enfant (Lecteur)
+### 🔹 Choix : commencer en **HTML/CSS/JS**
+Raisons :
+- rapidité de développement  
+- facilité de debug  
+- compatibilité immédiate avec l’écran tactile  
+- migration possible vers une IHM native plus tard  
+
+### 🔹 Fonctionnement hors réseau
+Le lecteur utilise uniquement :
+- `data.json`  
+- MPD local  
+→ aucune dépendance cloud  
+
+### 🔹 Données statiques
+`data.json` est la **source unique** pour :
+- radios  
+- podcasts  
+- images  
+
+---
+
+## 7. Backend (Ingestion RSS)
+### 🔹 Choix : scripts Python
+Raisons :
+- simplicité  
+- lisibilité  
+- robustesse  
+
+### 🔹 Pipeline validé
+RSS → téléchargement épisodes → `meta.json` → `data.json` → lecteur  
+
+### 🔹 Service systemd (à finaliser)
+Un timer déclenchera l’ingestion périodique.
+
+---
+
+## 8. Monitoring batterie
+### 🔹 Choix : INA219 + Python
+- lecture tension / courant  
+- calcul état batterie  
+- écriture atomique dans `web/status.json`  
+
+### 🔹 Service systemd
+- redémarrage automatique  
+- robustesse en cas de coupure  
+
+---
+
+## 9. Invariants techniques
+Ces règles ne doivent **jamais** être violées :
+- le lecteur doit fonctionner hors réseau  
+- `data.json` doit toujours être valide  
+- écriture atomique obligatoire pour les fichiers critiques  
+- MPD doit démarrer automatiquement au boot  
+- aucune dépendance cloud  
+
+---
+
+## 10. Conclusion
+Ces choix techniques garantissent un système :
+- robuste  
+- simple  
+- maintenable  
+- évolutif  
+- adapté à un usage enfant  
+
+Ils sont alignés avec le manifeste et servent de base à toutes les évolutions futures.
+
+---
+
+## Références pour le RTFM :
+
+- Waveshare UPS HAT (D) — Documentation officielle  
+  https://www.waveshare.com/wiki/UPS_HAT_(D)
+
+- HiFiBerry Amp4 — Documentation officielle  
+  https://www.hifiberry.com/docs/hardware/amp4/
+
+=== FILE: docs/20-SETUP_SYSTEME.md ===
+# Installation & Setup du Système — Projet Hechicero
+
+Ce document décrit l’installation complète du système Hechicero sur un Raspberry Pi 5, dans sa configuration actuelle.
+Il reflète les choix techniques décrits dans `01-CHOIX_TECHNIQUES.md`.
+
+---
+
+## 1. Pré-requis
+
+### 🔹 Matériel
+- Raspberry Pi 5
+- Carte microSD (32 Go minimum)
+- HiFiBerry Amp4
+- Écran tactile compatible Raspberry Pi
+- Waveshare UPS HAT (D)
+- Enceintes passives
+
+### 🔹 OS recommandé
+**Raspberry Pi OS avec bureau**  
+Justification :
+- nécessaire pour Chromium (IHM enfant)
+- meilleure compatibilité tactile
+
+---
+
+## 2. Installation du système
+
+### 2.1 Installer Raspberry Pi OS (avec bureau)
+Utiliser Raspberry Pi Imager :
+- OS : Raspberry Pi OS (32-bit) — Desktop
+- Activer SSH si souhaité
+- Configurer WiFi (optionnel)
+
+Démarrer le Pi et effectuer les mises à jour :
+```
+sudo apt update && sudo apt upgrade -y
+```
+
+---
+
+## 3. Configuration de l’écran tactile
+
+### 3.1 Vérifier la détection
+L’écran doit être reconnu automatiquement par Raspberry Pi OS.
+
+### 3.2 Rotation (si nécessaire)
+```
+sudo nano /boot/firmware/config.txt
+```
+Ajouter par exemple :
+```
+display_lcd_rotate=2
+```
+
+### 3.3 Activer le mode kiosque (plus tard)
+Le lecteur enfant tournera dans Chromium en mode plein écran.
+
+---
+
+## 4. Installation des dépendances
+
+### 4.1 Paquets système
+```
+sudo apt install -y \
+    mpd mpc \
+    apache2 php \
+    python3 python3-pip python3-requests python3-feedparser \
+    python3-smbus i2c-tools \
+    jq git
+```
+
+### 4.2 Activer I2C (INA219)
+```
+sudo raspi-config
+```
+Menu → Interface Options → I2C → Enable
+
+Vérifier :
+```
+sudo i2cdetect -y 1
+```
+
+---
+
+## 5. Installation du projet Hechicero
+
+### 5.1 Cloner le dépôt
+```
+cd ~
+git clone https://github.com/<ton_repo>/hechicero
+```
+
+### 5.2 Arborescence attendue
+```
+~/hechicero/
+├── data/
+├── docs/
+├── podcasts/
+├── scripts/
+├── UX Design/
+└── web/
+```
+
+---
+
+## 6. Configuration MPD
+
+### 6.1 Fichier `/etc/mpd.conf`
+Points essentiels :
+- utiliser la carte HiFiBerry (`hw:2,0`)
+- activer le volume logiciel
+
+Extrait :
+```
+audio_output {
+    type        "alsa"
+    name        "HiFiBerry Amp4"
+    device      "hw:2,0"
+    mixer_type  "software"
+}
+```
+
+### 6.2 Redémarrer MPD
+```
+sudo systemctl restart mpd
+```
+
+### 6.3 Test audio
+```
+mpc clear
+mpc add "https://icecast.radiofrance.fr/monpetitfranceinter-midfi.mp3"
+mpc play
+```
+
+---
+
+## 7. Installation du backend (RSS + batterie)
+
+### 7.1 Monitoring batterie
+Le script `scripts/get_status.py` :
+- lit INA219  
+- calcule l’état batterie  
+- écrit `web/status.json` (écriture atomique)  
+
+### 7.2 Service systemd
+Fichier : `/etc/systemd/system/hechicero-battery.service`
+
+Activer :
+```
+sudo systemctl daemon-reload
+sudo systemctl enable --now hechicero-battery.service
+```
+
+### 7.3 Ingestion RSS
+Pipeline :
+RSS → téléchargement → meta.json → data.json → lecteur  
+
+Service systemd + timer à finaliser.
+
+---
+
+## 8. Interface Web (Admin)
+
+Servie par Apache dans `~/hechicero/web/`.
+Fonctionnalités actuelles :
+- statut batterie  
+- tests audio  
+- diagnostics simples  
+
+---
+
+## 9. Lecteur embarqué (IHM enfant)
+
+Localisé dans :
+`~/hechicero/web/lecteur/`
+
+Fonctionne via Chromium en mode plein écran.
+
+Utilise :
+- `data.json`  
+- MPD local  
+→ fonctionne hors réseau  
+
+---
+
+## 10. Tests de validation
+
+### 🔹 Test MPD
+```
+mpc status
+```
+
+### 🔹 Test batterie
+```
+cat ~/hechicero/web/status.json
+```
+
+### 🔹 Test lecteur
+Ouvrir Chromium → `http://localhost/lecteur/`
+
+=== FILE: docs/30-LECTEUR.md ===
+# Lecteur Embarqué — Projet Hechicero
+
+Ce document décrit la brique “Lecteur embarqué”, l’interface principale destinée à l’enfant.
+Il reflète l’état actuel du développement et les choix techniques validés.
+
+---
+
+## 1. Objectif
+Fournir une interface tactile simple, robuste et autonome pour écouter :
+- des webradios
+- des podcasts locaux
+- des contenus statiques
+
+Le lecteur doit fonctionner **même sans réseau**, directement sur l’écran tactile du Raspberry Pi.
+
+---
+
+## 2. Principes
+- **Simplicité enfant** : grands boutons, navigation claire, zéro texte inutile.
+- **Autonomie totale** : aucune dépendance réseau, aucune API externe.
+- **Robustesse** : pas d’écriture disque, pas de logique complexe côté client.
+- **Séparation stricte** : le lecteur ne dépend pas de l’interface d’administration.
+- **Données statiques** : un seul fichier `data.json` comme source de vérité.
+
+---
+
+## 3. Architecture du Lecteur
+
+### 3.1 Structure des fichiers
+Le lecteur est localisé dans :
+`~/hechicero/web/lecteur/`
+
+Contenu :
+- `index.html` : point d’entrée
+- `app.js` : logique de navigation et commandes MPD
+- `style.css` : styles adaptés au tactile
+- `data.json` : catalogue local (radios + podcasts)
+- `images/` : jaquettes
+- `audio/` : fichiers audio statiques (démos)
+
+### 3.2 Rôle des fichiers
+- **index.html** : squelette minimal, tout est injecté par JS
+- **app.js** :
+  - charge `data.json`
+  - génère les écrans (Accueil → Radios → Podcasts → Lecture)
+  - gère les événements tactiles
+  - envoie les commandes à MPD
+- **data.json** :
+  - généré automatiquement par le backend
+  - contient radios, podcasts, images, chemins audio
+
+---
+
+## 4. Fonctionnement sur écran tactile
+Le lecteur tourne dans **Chromium**, en mode plein écran.
+
+Décisions récentes :
+- utilisation de Raspberry Pi OS **avec bureau**
+- affichage direct sur l’écran tactile
+- boutons larges et zones cliquables généreuses
+- aucune barre d’adresse, aucun élément du navigateur visible
+
+Objectif : une expérience type “Merlin” pour enfant.
+
+---
+
+## 5. Structure de `data.json`
+`data.json` est la **source unique** du lecteur.
+Il contient :
+- la liste des radios
+- la liste des podcasts
+- les chemins audio locaux
+- les images associées
+
+Règles :
+- pas d’accents dans les noms de fichiers
+- pas d’espaces
+- formats autorisés : `.jpg`, `.png`, `.mp3`
+- chemins audio des podcasts → `~/hechicero/podcasts/<id>/audio/*.mp3`
+
+---
+
+## 6. Navigation du Lecteur
+1. **Accueil**
+   - Bouton “Radios”
+   - Bouton “Podcasts”
+
+2. **Radios**
+   - Liste des radios issues de `data.json`
+   - Lecture via MPD (flux web)
+
+3. **Podcasts**
+   - Liste des podcasts
+   - Liste des épisodes
+
+4. **Lecture**
+   - Titre
+   - Jaquette
+   - Bouton Play/Pause
+   - Barre de progression (optionnelle)
+   - Bouton Retour
+
+---
+
+## 7. Intégration MPD
+Le lecteur **ne lit pas directement** les fichiers audio.
+Il envoie des commandes à MPD :
+- `mpc clear`
+- `mpc add <url>`
+- `mpc play`
+- `mpc pause`
+- `mpc stop`
+
+MPD gère :
+- les flux web
+- les fichiers locaux
+- les erreurs
+- la file d’attente
+
+### Volume logiciel
+Obligatoire pour la HiFiBerry Amp4 :
+`mixer_type "software"`
+
+→ permet un contrôle du volume depuis l’IHM enfant  
+→ évite les niveaux sonores dangereux  
+
+---
+
+## 8. Fonctionnement hors réseau
+Le lecteur doit fonctionner **même sans WiFi**.
+
+Garanties :
+- `data.json` est local
+- MPD lit les fichiers locaux
+- les flux web sont optionnels
+- aucune dépendance cloud
+
+---
+
+## 9. Critères d’acceptation
+- `data.json` chargé sans erreur
+- jaquettes affichées correctement
+- navigation tactile fluide
+- lecture MPD fonctionnelle (flux + fichiers locaux)
+- lecteur utilisable hors réseau
+- volume logiciel opérationnel
+
+---
+
+## 10. Évolutions prévues
+- Carrousel pour les jaquettes
+- Animations simples (fade, slide)
+- Mode hors-ligne total
+- Support des boutons physiques (GPIO)
+- Migration possible vers une IHM native (Qt, Flutter, Kivy)
+=== FILE: docs/40-BACKEND_RSS.md ===
+# Backend RSS — Projet Hechicero
+
+Ce document décrit la brique backend responsable de l’ingestion des podcasts,
+du téléchargement des épisodes et de la génération des fichiers utilisés par le lecteur.
+
+---
+
+## 1. Objectif
+Le backend a pour rôle :
+- de lire les flux RSS (podcasts)
+- de télécharger les épisodes audio
+- de générer les métadonnées (`meta.json`)
+- de produire `data.json` pour le lecteur embarqué
+
+Il fonctionne **hors réseau**, sauf pour la récupération des flux RSS.
+
+---
+
+## 2. Architecture du backend
+Le backend est composé de scripts Python situés dans :
+`~/hechicero/scripts/`
+
+Structure recommandée :
+```
+scripts/
+├── get_status.py          # monitoring batterie
+└── rss_ingest/
+      ├── ingest.py
+      ├── parser.py
+      ├── downloader.py
+      ├── writer.py
+      ├── utils.py
+      └── models.py
+```
+
+Chaque fichier a un rôle clair et isolé.
+
+---
+
+## 3. Pipeline d’ingestion
+Le pipeline complet est le suivant :
+
+1. Lecture du flux RSS  
+   - via `feedparser`
+   - extraction des épisodes
+
+2. Téléchargement des fichiers audio  
+   - stockage dans `~/hechicero/podcasts/<id>/audio/`
+
+3. Téléchargement des images  
+   - stockage dans `~/hechicero/podcasts/<id>/images/`
+
+4. Génération de `meta.json`  
+   - titre
+   - durée
+   - chemins audio
+   - date de publication
+
+5. Mise à jour de `web/lecteur/data.json`  
+   - radios
+   - podcasts
+   - images
+   - épisodes
+
+---
+
+## 4. Organisation des fichiers podcasts
+Chaque podcast est stocké dans :
+`~/hechicero/podcasts/<podcast_id>/`
+
+Structure :
+```
+<podcast_id>/
+├── audio/
+│     └── *.mp3
+├── images/
+│     └── cover.jpg
+└── meta.json
+```
+
+Règles :
+- pas d’accents dans les noms de fichiers
+- pas d’espaces
+- formats autorisés : `.mp3`, `.jpg`, `.png`
+
+---
+
+## 5. Fichier `data.json`
+`data.json` est la **source unique** du lecteur embarqué.
+Il est généré automatiquement par le backend.
+
+Contient :
+- radios
+- podcasts
+- épisodes
+- images
+- chemins audio locaux
+
+Le lecteur ne modifie jamais ce fichier.
+
+---
+
+## 6. Service systemd (ingestion automatique)
+Un service systemd + un timer permettront :
+- une ingestion périodique
+- une reprise automatique en cas d’erreur
+
+Statut actuel :
+- scripts fonctionnels
+- service systemd à finaliser
+
+---
+
+## 7. Tests de validation
+### 🔹 Test RSS
+```
+python3 scripts/rss_ingest/ingest.py
+```
+
+### 🔹 Vérifier les fichiers téléchargés
+```
+ls ~/hechicero/podcasts/<id>/audio/
+```
+
+### 🔹 Vérifier `data.json`
+```
+cat ~/hechicero/web/lecteur/data.json
+```
+
+---
+
+## 8. Critères d’acceptation
+- tous les épisodes sont téléchargés
+- `meta.json` est valide
+- `data.json` est mis à jour
+- le lecteur affiche les nouveaux contenus
+- aucun JSON corrompu
+
+---
+
+## 9. Évolutions prévues
+- gestion multi-podcasts (FR/ES)
+- quotas de stockage (`max_episodes`)
+- interface admin pour configurer les flux
+- service systemd + timer
+- logs détaillés
+=== FILE: docs/90-BACKLOG.md ===
+# Backlog Hechicero
+
+> Convention : `TICKET-### — [type] — Titre — (prio) — owner`
+
+---
+
+# ✔️ Terminé
+
+- [x] TICKET-001 — infra — Structure projet + liens Apache
+- [x] TICKET-002 — infra — Monitoring batterie (INA219 + service systemd)
+- [x] TICKET-003 — audio — HiFiBerry Amp4 + MPD opérationnel
+- [x] TICKET-024 — audio — Lecture Webradio
+- [x] TICKET-025 — backend — Ingestion RSS (Radio France)
+- [x] TICKET-026 — backend — Génération automatique de `data.json`
+- [x] TICKET-032 — infra — Installation Raspberry Pi OS avec bureau
+- [x] TICKET-033 — hardware — Installation écran tactile + tests IHM
+- [x] TICKET-034 — web — Activation du volume logiciel MPD
+
+---
+
+# 🔥 Priorité haute (en cours)
+
+- [ ] TICKET-022 — web — Lecteur embarqué (IHM enfant)
+- [ ] TICKET-027 — infra — Service systemd + timer pour ingestion RSS
+- [ ] TICKET-028 — web — Nettoyage et finalisation du lecteur
+- [ ] TICKET-031 — feature — Sortie casque via dongle USB + détection jack GPIO
+- [ ] TICKET-035 — docs — Mise à jour des documents essentiels (phase 1)
+- [ ] TICKET-038 — hardware — Bouton physique RUN pour démarrage du Raspberry Pi 5
+      - Problème : le Pi 5 ne démarre pas automatiquement avec le Waveshare UPS HAT (D)
+      - Objectif : ajouter un bouton externe relié aux broches RUN
+      - Étapes :
+          • Identifier les broches RUN
+          • Ajouter un bouton poussoir externe
+          • Tester avec et sans HAT
+          • Documenter le câblage
+      - Priorité : Haute (bloquant pour usage enfant)
+
+---
+
+# 🟡 Priorité moyenne
+
+- [ ] TICKET-004 — content — Gestion multi-podcasts (FR/ES)
+- [ ] TICKET-005 — web — Dashboard Admin (config flux)
+- [ ] TICKET-007 — web — Interface configuration `podcasts.json`
+- [ ] TICKET-029 — backend — Quotas stockage (`max_episodes`)
+- [ ] TICKET-036 — web — Mode “grands boutons” optimisé tactile
+
+---
+
+# 🟢 Priorité basse
+
+- [ ] TICKET-008 — infra — Endpoint `/health`
+- [ ] TICKET-010 — infra — Rotation logs
+- [ ] TICKET-011 — sec — Durcir unités systemd
+- [ ] TICKET-012 — test — Tests unitaires ingestion RSS
+- [ ] TICKET-014 — docs — Procédure de mise à jour
+- [ ] TICKET-017 — monitoring — Exporter Prometheus
+- [ ] TICKET-020 — web — Page admin avancée
+- [ ] TICKET-023 — audio — Startup sound
+- [ ] TICKET-030 — feature — Égaliseur audio paramétrable
+- [ ] TICKET-037 — UX — Animations simples (fade/slide) dans l’IHM enfant
+
+---
+
+# 🧩 Notes
+- Le backlog suit les principes du manifeste
+- Chaque ticket doit pointer vers un fichier de documentation
+- Les tickets hardware sont isolés pour éviter les régressions
+
+=== FILE: docs/99-prompt.md ===
+Tu es dans le contexte du projet **Hechicero**. Reprends à partir de ce prompt.
+
+# 1. Contexte général du projet
+
+Hechicero est une enceinte audio **DIY**, **locale**, **hors-cloud**, destinée aux enfants.  
+Elle repose sur :
+
+- Raspberry Pi 5  
+- Waveshare UPS HAT (D)  
+- HiFiBerry Amp4  
+- MPD (Music Player Daemon)  
+- Interface enfant HTML/JS  
+- Interface admin Apache/PHP  
+- Scripts Python (monitoring + ingestion RSS)
+
+Le projet doit être **robuste**, **simple**, **maintenable**, **documenté**, et utilisable **hors réseau**.
+
+---
+
+# 2. Architecture du projet
+
+Arborescence réelle :
+
+~/hechicero/
+├── data/              # config.json, fichiers internes
+├── docs/              # documentation
+├── podcasts/          # contenus téléchargés (RSS)
+│     └── <podcast_id>/
+│          ├── audio/
+│          ├── images/
+│          └── meta.json
+├── scripts/           # Python : monitoring + ingestion
+├── UX Design/         # maquettes, notes
+└── web/               # interface web (admin + lecteur)
+      ├── index.php
+      ├── status.json
+      └── lecteur/
+            ├── index.html
+            ├── app.js
+            ├── style.css
+            ├── data.json
+            ├── images/
+            └── audio/
+
+Règles fondamentales :
+- Le **lecteur** lit `data.json` et contrôle MPD.  
+- Le **backend** met à jour `data.json` et télécharge les podcasts.  
+- L’**admin** affiche le statut et les infos techniques.  
+- Le lecteur doit fonctionner **hors réseau**.  
+- Les écritures critiques doivent être **atomiques**.  
+
+---
+
+# 3. Briques du système
+
+### 🔹 Monitoring batterie
+- INA219 + Python  
+- Service systemd  
+- Écrit `web/status.json`  
+
+### 🔹 Audio
+- MPD + ALSA + HiFiBerry Amp4  
+- Volume logiciel obligatoire  
+- Support flux MP3 + fichiers locaux  
+
+### 🔹 Lecteur embarqué (IHM enfant)
+- HTML/CSS/JS  
+- Fonctionne hors-ligne  
+- Lit `data.json`  
+- Tourne sur l’écran tactile via Chromium  
+
+### 🔹 Admin locale
+- Apache + PHP  
+- Statut batterie, tests audio, diagnostics  
+
+### 🔹 Backend RSS
+- Lecture RSS  
+- Téléchargement épisodes  
+- Génération `meta.json`  
+- Mise à jour `data.json`  
+
+---
+
+# 4. Règles de travail avec Thomas
+
+- Toujours **une seule action à la fois**.  
+- Toujours **clair, structuré, sans surcharge**.  
+- Toujours **cohérent avec l’arborescence réelle**.  
+- Toujours **mettre à jour les docs** quand une brique évolue.  
+- Toujours **proposer les commandes exactes** à exécuter sur le RPi.  
+- Toujours **attendre le retour de commande** avant d’avancer.  
+- Toujours **expliquer ce qu’on fait et pourquoi**.  
+- Toujours **penser MVP** avant complexité.  
+
+Thomas préfère :
+- les explications claires  
+- les étapes progressives  
+- les retours propres  
+- les fichiers continus sans rupture  
+- les docs cohérentes et maintenables  
+
+---
+
+# 5. Style attendu
+
+Tu dois être :
+- précis  
+- pédagogique  
+- structuré  
+- cohérent  
+- stable  
+- fiable  
+
+Tu dois éviter :
+- le blabla inutile  
+- les suppositions  
+- les dépendances cachées  
+- les frameworks lourds  
+- la magie noire  
+
+---
+
+# 6. Objectifs du projet
+
+### Court terme (MVP)
+- Monitoring batterie  
+- Webradio MPD  
+- Lecteur embarqué  
+- Admin locale  
+- Arborescence cohérente  
+
+### Moyen terme
+- Ingestion RSS  
+- Génération automatique de `data.json`  
+- Gestion du contenu  
+
+### Long terme
+- Profils enfants  
+- IHM native  
+- Extensions matérielles  
+
+---
+
+# 7. Invariants (à ne jamais violer)
+
+- Le lecteur doit fonctionner **hors réseau**.  
+- `data.json` doit toujours être **valide**.  
+- MPD doit démarrer automatiquement.  
+- Aucune dépendance cloud.  
+- Robustesse avant fonctionnalités.  
+
+---
+
+# 8. Phrase de reset
+
+> “Tu es dans le contexte Hechicero. Reprends à partir de ce prompt.”
+
