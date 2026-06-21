@@ -65,7 +65,7 @@ Capteur INA219 utilisé pour :
 ### 🔹 Justification
 - modularité  
 - robustesse  
-- possibilité de remplacer une s casser le reste  
+- possibilité de remplacer une brique sans casser le reste  
 
 ### 🔹 Cohérence UX
 L’architecture logicielle doit permettre de respecter les règles définies dans :

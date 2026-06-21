@@ -177,10 +177,40 @@ Le lecteur doit fonctionner **sans lag** sur un Raspberry Pi 5.
 
 ---
 
-## 12. Évolutions prévues
-- Carrousel pour les jaquettes
-- Animations simples (fade, slide)
-- Mode hors-ligne total
+## 12. État réel au 2026-06-21
+
+### Implémenté
+- Navigation 4 écrans : home → podcasts → chapitres → player
+- Filtre par langue via drapeaux FR/🇨🇴 (champ `langue` dans `data.json`)
+- Animation card au clic (scale 1.09 + border accent, 140 ms)
+- Formatage durée (secondes ou HH:MM:SS)
+- Compatibilité défensive `chapitres` ou `episodes` dans `data.json`
+- Commandes MPD via `radio.php` (play, pause, volup, voldown, status)
+
+### Bugs connus (TICKET-028)
+- Paramètre incohérent : `playTrack()` envoie `{ track }`, `playBtn` envoie `{ path }`
+- Balise `<a href="radio.php">` orpheline après `</html>`
+- Texte de debug visible dans l'écran player (non conforme UX enfant)
+- `setInterval(refreshPlayerStatus, 1000)` actif dès le chargement (pas seulement en lecture)
+- `app.js` est une ancienne version non connectée — code mort (TICKET-040)
+
+### Non implémenté (delta UX)
+- Appui sur image = pause/lecture (TICKET-041)
+- Barre de progression (TICKET-042)
+- Reprise automatique de position (TICKET-043)
+- Flèches épisode suivant/précédent (TICKET-044)
+- Jaquettes ≥ 300×300 px (TICKET-045)
+- Aucun contenu ES dans `data.json` (TICKET-004)
+
+## 13. Évolutions prévues
+- Appui sur image = toggle play/pause (TICKET-041)
+- Barre de progression temps réel (TICKET-042)
+- Reprise automatique via `localStorage` (TICKET-043)
+- Flèches épisode suivant/précédent (TICKET-044)
+- Jaquettes ≥ 300×300 px (TICKET-045)
+- Carrousel pour les jaquettes (TICKET-047)
+- Animations simples (fade, slide) (TICKET-037)
+- Son de confirmation au lancement (TICKET-023)
 - Support des boutons physiques (GPIO)
 - Migration possible vers une IHM native (Qt, Flutter, Kivy)
 

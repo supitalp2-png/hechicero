@@ -46,3 +46,16 @@ body {
     color: white;
     text-decoration: none;
 }
+
+/* Animation de sélection de jaquette */
+.podcast {
+    cursor: pointer;
+    user-select: none;
+    transition: transform 140ms ease, box-shadow 140ms ease;
+    will-change: transform;
+}
+
+.podcast--selected {
+    transform: scale(1.09);
+    box-shadow: 0 10px 32px rgba(0, 0, 0, 0.7), 0 0 0 3px #ffb86b;
+}

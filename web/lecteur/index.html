@@ -17,8 +17,10 @@
     button{background:var(--accent);border:0;padding:12px 18px;border-radius:10px;font-weight:600;cursor:pointer}
     .screen{min-height:60vh;background:linear-gradient(180deg,rgba(255,255,255,0.02),transparent);border-radius:12px;padding:16px;box-sizing:border-box}
     .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px}
-    .card{background:var(--card);padding:8px;border-radius:8px;text-align:center;cursor:pointer;user-select:none}
-    .card img{width:100%;height:100px;object-fit:cover;border-radius:6px}
+    .card{background:var(--card);padding:8px;border-radius:8px;text-align:center;cursor:pointer;user-select:none;transition:transform 140ms ease,box-shadow 140ms ease;will-change:transform}
+    .card img{width:100%;height:100px;object-fit:cover;border-radius:6px;transition:opacity 140ms ease}
+    .card--selected{transform:scale(1.09);box-shadow:0 10px 32px rgba(0,0,0,0.7),0 0 0 3px var(--accent)}
+    .card--selected img{opacity:0.88}
     .title{margin-top:8px;font-size:0.95rem}
     .back{background:transparent;border:1px solid rgba(255,255,255,0.06);color:var(--text);padding:8px 12px;border-radius:8px;cursor:pointer}
     .list{display:flex;flex-direction:column;gap:8px}
@@ -104,8 +106,15 @@
           <strong id="trackTitle">Lecture</strong>
           <div style="width:48px"></div>
         </div>
-        <div id="cover" style="width:100%;max-width:360px;margin:0 auto 12px"></div>
-        <audio id="audio" controls preload="none"></audio>
+        <div style="max-width:720px;margin:0 auto;display:flex;flex-direction:column;gap:12px">
+          <div style="display:flex;gap:10px;flex-wrap:wrap">
+            <button id="playBtn">▶ Lire</button>
+            <button id="pauseBtn">⏸ Pause</button>
+            <button id="volUpBtn">🔊 +</button>
+            <button id="volDownBtn">🔉 -</button>
+          </div>
+          <pre id="statusBox" style="white-space:pre-wrap;background:rgba(255,255,255,0.03);padding:12px;border-radius:12px;min-height:80px;margin:0"></pre>
+        </div>
       </div>
     </main>
   </div>
@@ -119,17 +128,21 @@
     const enterBtn = el('enterBtn');
     const podGrid = el('podGrid');
     const chapList = el('chapList');
-    const audioEl = el('audio');
     const trackTitle = el('trackTitle');
     const podTitle = el('podTitle');
-    const cover = el('cover');
     const podHeader = el('podHeader');
+    const statusBox = el('statusBox');
+    const playBtn = el('playBtn');
+    const pauseBtn = el('pauseBtn');
+    const volUpBtn = el('volUpBtn');
+    const volDownBtn = el('volDownBtn');
 
     const btnFR = el('btn-fr');
     const btnES = el('btn-es');
 
     let DATA = null;
     let currentPodcast = null;
+    let currentTrack = null;
     let selectedLang = null; // 'FR' or 'ES' or null
 
     // Fetch data.json (relative path)
@@ -142,6 +155,29 @@
         console.error(e);
         podGrid.innerHTML = '<div style="padding:12px;color:#f88">Erreur: impossible de charger data.json</div>';
       }
+    }
+
+    async function sendRadio(action, params = {}) {
+      const url = new URL('radio.php', window.location.href);
+      url.searchParams.set('action', action);
+      Object.entries(params).forEach(([key, value]) => url.searchParams.set(key, value));
+      const response = await fetch(url.toString(), { cache: 'no-store' });
+      return await response.text();
+    }
+
+    async function refreshPlayerStatus() {
+      try {
+        const text = await sendRadio('status');
+        statusBox.textContent = text || '(statut vide)';
+      } catch (error) {
+        statusBox.textContent = 'Statut indisponible';
+      }
+    }
+
+    // Animate card then run callback (UX : agrandissement + ouverture, < 200 ms)
+    function animateCard(cardEl, callback) {
+      cardEl.classList.add('card--selected');
+      setTimeout(callback, 150);
     }
 
     // Render podcasts (filtered by selectedLang if set)
@@ -158,8 +194,8 @@
         c.className = 'card';
         c.tabIndex = 0;
         c.innerHTML = `<img src="${p.image}" alt="${p.titre}"><div class="title">${p.titre}</div>`;
-        c.addEventListener('click', ()=>openPodcast(p.id));
-        c.addEventListener('keydown', (ev)=>{ if(ev.key==='Enter') openPodcast(p.id) });
+        c.addEventListener('click', ()=>animateCard(c, ()=>openPodcast(p.id)));
+        c.addEventListener('keydown', (ev)=>{ if(ev.key==='Enter') animateCard(c, ()=>openPodcast(p.id)) });
         podGrid.appendChild(c);
       });
     }
@@ -175,7 +211,13 @@
 
     function renderChapters(p){
       chapList.innerHTML = '';
-      p.chapitres.forEach(ch=>{
+      // Défensif : accepte "chapitres" (nouveau) et "episodes" (ancien)
+      const items = p.chapitres || p.episodes || [];
+      if(items.length === 0){
+        chapList.innerHTML = '<div style="padding:12px;color:#9fb0c8">Aucun épisode disponible.</div>';
+        return;
+      }
+      items.forEach(ch=>{
         const row = document.createElement('div');
         row.className = 'episode';
         row.tabIndex = 0;
@@ -187,23 +229,54 @@
     }
 
     function playTrack(ch){
+      currentTrack = ch;
       trackTitle.textContent = ch.titre;
-      audioEl.src = ch.audio;
-      audioEl.play().catch(()=>{ /* autoplay may be blocked; user can press play */ });
-      cover.innerHTML = currentPodcast.image ? `<img src="${currentPodcast.image}" alt="" style="width:100%;max-width:360px;border-radius:8px">` : '';
+      statusBox.textContent = 'Chargement de la lecture…';
+      sendRadio('playfile', { path: ch.audio })
+        .then(() => refreshPlayerStatus())
+        .catch(() => { statusBox.textContent = 'Erreur pendant le lancement de la lecture'; });
       show('player');
+      if(!window._pollInterval) window._pollInterval = setInterval(refreshPlayerStatus, 3000);
     }
 
     function formatDuration(s){
       if(!s && s!==0) return '';
-      const m = Math.floor(s/60), sec = s%60;
+      // Compatibilité : accepte un int (secondes) ou un string "HH:MM:SS" / "MM:SS"
+      if(typeof s === 'string' && s.includes(':')){
+        const parts = s.split(':').map(Number);
+        if(parts.length === 3) s = parts[0]*3600 + parts[1]*60 + parts[2];
+        else if(parts.length === 2) s = parts[0]*60 + parts[1];
+        else s = parseInt(s, 10);
+      }
+      const m = Math.floor(s/60), sec = Math.round(s%60);
       return `${m}:${sec.toString().padStart(2,'0')}`;
     }
 
     // Navigation buttons
     el('backFromPod').addEventListener('click', ()=>show('home'));
     el('backFromCh').addEventListener('click', ()=>show('podcasts'));
-    el('backFromPlayer').addEventListener('click', ()=>show('chapters'));
+    el('backFromPlayer').addEventListener('click', ()=>{ clearInterval(window._pollInterval); window._pollInterval = null; show('chapters'); });
+
+    playBtn.addEventListener('click', async ()=>{
+      if(!currentTrack) return;
+      await sendRadio('playfile', { path: currentTrack.audio });
+      await refreshPlayerStatus();
+    });
+
+    pauseBtn.addEventListener('click', async ()=>{
+      await sendRadio('pause');
+      await refreshPlayerStatus();
+    });
+
+    volUpBtn.addEventListener('click', async ()=>{
+      await sendRadio('volup');
+      await refreshPlayerStatus();
+    });
+
+    volDownBtn.addEventListener('click', async ()=>{
+      await sendRadio('voldown');
+      await refreshPlayerStatus();
+    });
 
     // Language buttons
     function setLanguage(lang){
@@ -237,7 +310,7 @@
 
     // Auto-load data in background
     loadData();
+    // polling démarré uniquement quand le player est affiché
   </script>
 </body>
 </html>
-<a href="radio.php">Radio</a>

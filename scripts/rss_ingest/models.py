@@ -26,4 +26,5 @@ class PodcastConfig:
 class PodcastMeta:
     id: str
     label: str
+    language: str
     episodes: List[Episode]

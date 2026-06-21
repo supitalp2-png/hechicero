@@ -3,24 +3,32 @@ from pathlib import Path
 from utils import log, md5sum
 import time
 
-def download_file(url: str, dest: Path):
+CHUNK_SIZE = 256 * 1024  # 256 KB — évite de charger l'entier MP3 en RAM
+
+def download_file(url: str, dest: Path) -> Path | None:
     if dest.exists():
         log(f"Already exists: {dest}")
         return dest
 
     log(f"Downloading: {url}")
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    tmp = dest.with_suffix(".tmp")
+
     for attempt in range(3):
         try:
-            r = requests.get(url, timeout=10)
-            if r.status_code == 200:
-                dest.parent.mkdir(parents=True, exist_ok=True)
-                with open(dest, "wb") as f:
-                    f.write(r.content)
-                log(f"Downloaded: {dest}")
-                return dest
+            with requests.get(url, timeout=30, stream=True) as r:
+                r.raise_for_status()
+                with open(tmp, "wb") as f:
+                    for chunk in r.iter_content(chunk_size=CHUNK_SIZE):
+                        f.write(chunk)
+            tmp.rename(dest)  # écriture atomique
+            log(f"Downloaded: {dest}")
+            return dest
         except Exception as e:
-            log(f"Error downloading {url}: {e}")
-            time.sleep(2)
+            log(f"Error downloading {url} (attempt {attempt + 1}/3): {e}")
+            if tmp.exists():
+                tmp.unlink()
+            time.sleep(2 ** attempt)  # back-off exponentiel
 
     log(f"Failed to download: {url}")
     return None

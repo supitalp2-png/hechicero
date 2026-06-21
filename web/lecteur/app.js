@@ -14,6 +14,12 @@ function goTo(screen, params = {}) {
     screens[screen](params);
 }
 
+// 3b) Animation de sélection de jaquette (agrandissement + ouverture, UX < 200ms)
+function selectCard(el, screen, params) {
+    el.classList.add('podcast--selected');
+    setTimeout(() => goTo(screen, params), 150);
+}
+
 // 4) Définition des écrans (on les remplira plus tard)
 const screens = {
     accueil: () => {
@@ -32,7 +38,7 @@ const screens = {
 
         data.podcasts.forEach(p => {
             html += `
-                <div class="podcast" onclick="goTo('choixChapitre', { id: '${p.id}' })">
+                <div class="podcast" onclick="selectCard(this, 'choixChapitre', { id: '${p.id}' })">
                     <img src="${p.image}">
                     <p>${p.titre}</p>
                 </div>

@@ -5,10 +5,13 @@ from pathlib import Path
 import tempfile
 import json
 
-LOG_PATH = "/var/log/hechicero/rss_ingest.log"
+BASE_DIR = Path(__file__).resolve().parents[2]
+LOG_PATH = BASE_DIR / "logs" / "rss_ingest.log"
+
+LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
 
 logging.basicConfig(
-    filename=LOG_PATH,
+    filename=str(LOG_PATH),
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s"
 )

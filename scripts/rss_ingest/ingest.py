@@ -1,4 +1,8 @@
 import json
+import os
+import sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
 from pathlib import Path
 from parser import parse_rss
 from downloader import download_episode
@@ -32,6 +36,7 @@ def ingest():
         meta = PodcastMeta(
             id=cfg.id,
             label=cfg.label,
+            language=cfg.language,
             episodes=downloaded
         )
 
