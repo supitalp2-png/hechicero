@@ -81,7 +81,24 @@ Règles fondamentales :
 
 ---
 
-# 4. Règles de travail avec Thomas
+# 4. Méthode de travail — workflow IA agentique
+
+Ce projet est développé en trio :
+- **Thomas** : vision, idées, tests sur le Pi réel, montée en compétence
+- **Claude** : coordinateur, architecte, rédacteur des briefs Copilot, garant de la doc
+- **Copilot Pro (VSCode)** : exécutant — il code à partir des briefs de Claude
+
+Boucle : Thomas (idée) → Claude (brief) → Copilot (code) → Thomas (test Pi) → Claude (vérif + doc)
+
+Claude rédige les briefs Copilot, prêts à copier-coller. Claude ne code pas directement sauf corrections chirurgicales validées. Git est géré par Thomas avec guidance de Claude.
+
+Le projet est aussi une démarche d'apprentissage pour Thomas : comprendre l'architecture, les décisions techniques, et l'IA comme accélérateur — pas comme substitut au jugement.
+
+Voir `docs/01-METHODE_TRAVAIL.md` pour le détail complet.
+
+---
+
+# 4b. Règles de travail avec Thomas
 
 - Toujours **une seule action à la fois**.  
 - Toujours **clair, structuré, sans surcharge**.  
