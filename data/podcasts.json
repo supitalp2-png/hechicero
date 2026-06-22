@@ -8,6 +8,15 @@
       "language": "fr",
       "image": "images/lesodyssees.jpg",
       "max_episodes": 10
+    },
+    {
+      "id": "professeurcaillou",
+      "label": "Professeur Caillou",
+      "rss": "https://radiofrance-podcast.net/podcast09/podcast_9cfc0cf4-6d0d-4ffa-a327-0c099c366d3c.xml",
+      "enabled": true,
+      "language": "fr",
+      "image": "images/professeurcaillou.jpg",
+      "max_episodes": 999
     }
   ]
 }

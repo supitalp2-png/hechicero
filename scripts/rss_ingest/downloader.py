@@ -1,10 +1,16 @@
 import requests
 import subprocess
+import urllib3
 from pathlib import Path
 from utils import log, md5sum
 import time
 
 CHUNK_SIZE = 256 * 1024  # 256 KB — évite de charger l'entier MP3 en RAM
+
+# proxycast.radiofrance.fr présente une chaîne SSL incomplète non validée par Python.
+# On désactive la vérification uniquement pour ce domaine.
+SSL_NO_VERIFY_HOSTS = {"proxycast.radiofrance.fr"}
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
 def is_m4a_container(path: Path) -> bool:
@@ -63,9 +69,12 @@ def download_file(url: str, dest: Path) -> Path | None:
     dest.parent.mkdir(parents=True, exist_ok=True)
     tmp = dest.with_suffix(".tmp")
 
+    from urllib.parse import urlparse
+    verify_ssl = urlparse(url).hostname not in SSL_NO_VERIFY_HOSTS
+
     for attempt in range(3):
         try:
-            with requests.get(url, timeout=30, stream=True) as r:
+            with requests.get(url, timeout=30, stream=True, verify=verify_ssl) as r:
                 r.raise_for_status()
                 with open(tmp, "wb") as f:
                     for chunk in r.iter_content(chunk_size=CHUNK_SIZE):
