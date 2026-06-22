@@ -52,6 +52,7 @@ def update_data_json(all_podcasts):
                     "id": e.id,
                     "titre": e.title,
                     "audio": _to_web_path(e.local_audio) if e.local_audio else "",
+                    "image": _to_web_path(e.local_image) if e.local_image else "",
                     "duree": e.duration  # int secondes
                 }
                 for e in meta.episodes
