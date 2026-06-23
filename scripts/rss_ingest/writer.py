@@ -47,7 +47,8 @@ def update_data_json(all_podcasts):
     # Remplacer la section podcasts
     data["podcasts"] = []
     for meta in all_podcasts:
-        cover_web = _to_web_path(meta.cover_image) if meta.cover_image else f"images/{meta.id}.jpg"
+        # La cover est dans web/lecteur/images/{id}.jpg → chemin relatif depuis le lecteur
+        cover_web = f"images/{meta.id}.jpg"
         data["podcasts"].append({
             "id": meta.id,
             "titre": meta.label,

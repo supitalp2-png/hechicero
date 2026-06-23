@@ -188,14 +188,10 @@
     .ep-meta          { flex: 1; min-width: 0; }
     .ep-titre         { font-weight: 600; font-size: 0.9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .ep-duree         { font-size: 0.78rem; color: var(--muted); margin-top: 3px; }
-    .btn-play-ep {
-      width: 40px; height: 40px; border-radius: 50%;
-      background: var(--surface); border: 1.5px solid var(--border);
-      color: var(--accent); font-size: 0.95rem;
-      display: flex; align-items: center; justify-content: center;
-      flex-shrink: 0;
+    .radio-thumb {
+      width: 52px; height: 52px; border-radius: 8px;
+      object-fit: cover; flex-shrink: 0;
     }
-    .btn-play-ep:hover { background: var(--border); }
 
     /* ══════════════════════════════ */
     /* SCREEN 4 — PLAYER             */
@@ -555,18 +551,9 @@ if ('getBattery' in navigator) {
 }
 
 // ═══════════════════════════════════════
-// RADIO STATIONS
+// RADIO STATIONS — chargées depuis data.json (clé radios)
 // ═══════════════════════════════════════
-const STATIONS = {
-  fr: [
-    { name: 'France Inter',   desc: 'Généraliste · Radio France', url: 'https://icecast.radiofrance.fr/monpetitfranceinter-midfi.mp3', image: 'images/radio/franceinter.jpg' },
-    { name: 'FIP',            desc: 'Musique · Radio France',      url: 'https://icecast.radiofrance.fr/fip-midfi.mp3',                image: 'images/radio/fip.jpg' },
-    { name: 'France Culture', desc: 'Culture · Radio France',      url: 'https://icecast.radiofrance.fr/franceculture-midfi.mp3',      image: 'images/radio/franceculture.jpg' },
-  ],
-  es: [
-    { name: 'Radio Nacional', desc: 'Colombia', url: 'https://www.radionacional.co/stream', image: 'images/radio/radionacional.jpg' },
-  ],
-};
+let STATIONS = { fr: [], es: [] };
 let currentStation = null;
 
 // ═══════════════════════════════════════
@@ -601,6 +588,11 @@ async function loadData() {
       const cfg = await rCfg.json();
       if (cfg.volume?.speakers_max   != null) VOLUME_MAX_SPEAKERS   = cfg.volume.speakers_max;
       if (cfg.volume?.headphones_max != null) VOLUME_MAX_HEADPHONES = cfg.volume.headphones_max;
+    }
+    // Construire STATIONS depuis data.json (radios gérées par l'admin)
+    if (Array.isArray(DATA.radios) && DATA.radios.length > 0) {
+      STATIONS.fr = DATA.radios.filter(r => (r.lang || r.langue || 'fr') === 'fr');
+      STATIONS.es = DATA.radios.filter(r => (r.lang || r.langue || 'fr') === 'es');
     }
   } catch(e) { console.error('Impossible de charger data.json', e); }
 }
@@ -728,12 +720,12 @@ function openRadioCatalog() {
     const row = document.createElement('div');
     row.className = 'radio-row';
     row.innerHTML = `
-      <span class="radio-dot"></span>
+      <img class="radio-thumb" src="${st.image || ''}" onerror="this.style.display='none'" alt="${st.name}" loading="lazy">
       <div class="radio-info">
         <div class="radio-name">${st.name}</div>
         <div class="radio-desc">${st.desc}</div>
       </div>
-      <span class="btn-play-radio" aria-hidden="true">▶</span>`;
+      <span class="radio-dot"></span>`;
     row.addEventListener('click', () => openRadioPlayer(st));
     list.appendChild(row);
   });
@@ -806,16 +798,14 @@ function renderChapters() {
   items.forEach((ch, idx) => {
     const row = document.createElement('div');
     row.className = 'ep-row';
+    const fallback = currentPodcast.image || '';
     row.innerHTML = `
-      <img class="ep-thumb" src="${ch.image || currentPodcast.image}" alt="" loading="lazy">
+      <img class="ep-thumb" src="${ch.image || fallback}" onerror="this.onerror=null;this.src='${fallback}'" alt="" loading="lazy">
       <div class="ep-meta">
         <div class="ep-titre">${ch.titre}</div>
         <div class="ep-duree">${fmtDur(ch.duree)}</div>
-      </div>
-      <button class="btn-play-ep">▶</button>`;
-    const play = () => playTrack(idx);
-    row.querySelector('.btn-play-ep').addEventListener('click', e => { e.stopPropagation(); play(); });
-    row.addEventListener('click', play);
+      </div>`;
+    row.addEventListener('click', () => playTrack(idx));
     list.appendChild(row);
   });
 }

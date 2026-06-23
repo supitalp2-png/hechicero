@@ -76,9 +76,12 @@ Structure :
 │     └── *.mp3
 ├── images/
 │     └── <ep_id>.jpg     # jaquette par épisode
-├── cover.jpg              # couverture du podcast (téléchargée depuis le RSS)
 └── meta.json
 ```
+
+La **cover podcast** est téléchargée depuis le RSS et enregistrée directement dans :
+`web/lecteur/images/{id}.jpg` — chemin web-accessible via Apache.
+C'est ce chemin qui est injecté dans `data.json` comme `"image": "images/{id}.jpg"` (relatif au lecteur).
 
 Règles :
 - pas d’accents dans les noms de fichiers
@@ -110,21 +113,25 @@ Le backend lit un fichier de configuration listant les podcasts à ingérer.
 {
   "podcasts": [
     {
-      "id": "les_odyssees",
-      "name": "Les Odyssées",
+      "id": "lesodyssees",
+      "label": "Les Odyssées",
       "rss": "https://...",
-      "lang": "fr",
-      "enabled": true
+      "language": "fr",
+      "enabled": true,
+      "max_episodes": 20
     }
   ]
 }
 ```
 
+> ⚠️ Les champs exacts sont `label` (pas `name`) et `language` (pas `lang`).
+> Voir `docs/50-PODCASTS_CONFIG.md` pour le format complet avec la section `radios`.
+
 ### Règles
 - `id` : unique, sans espace, sans accent  
 - `rss` : URL valide  
 - `enabled` : permet d’activer/désactiver un podcast  
-- `lang` : `fr`, `es`, `en`…  
+- `language` : `fr`, `es`, `en`…  
 
 ### Ajouter un podcast
 - ajouter un bloc dans `podcasts.json`  
@@ -145,8 +152,10 @@ Le backend doit être **robuste** et **ne jamais casser `data.json`**.
 - ne pas écraser les données existantes  
 
 ### Fichier audio manquant
-- skip de l’épisode  
-- log  
+- l’épisode est **inclus dans `data.json`** avec `"audio": ""`
+- le lecteur affiche l’épisode (titre + durée) mais ne peut pas le lire
+- le prochain ingest télécharge l’audio manquant et met à jour `data.json`
+- log de l’erreur dans les logs ingest  
 
 ### Image introuvable
 - utiliser une image par défaut  
@@ -170,14 +179,16 @@ Le backend doit être **robuste** et **ne jamais casser `data.json`**.
 
 ---
 
-## 9. Service systemd (ingestion automatique)
-Un service systemd + un timer permettent :
-- une ingestion périodique
-- une reprise automatique en cas d’erreur
+## 9. Ingestion automatique
+L’ingestion est déclenchée par **cron** (crontab de l’utilisateur `thomas`).
 
-Statut actuel :
-- scripts fonctionnels
-- service systemd opérationnel
+Ligne active :
+```
+0 3 * * * umask 002 && python3 /home/thomas/hechicero/scripts/rss_ingest/ingest.py >> /tmp/hechicero_ingest.log 2>&1
+```
+
+> ⚠️ Le service/timer systemd (`hechicero-rss.timer`) est **désactivé** pour éviter les conflits.
+> Ne pas réactiver sans désactiver le cron d’abord. Voir `docs/70-SERVICES_SYSTEMD.md`.
 
 ---
 

@@ -31,23 +31,16 @@ Le lecteur est localisé dans :
 `~/hechicero/web/lecteur/`
 
 Contenu :
-- `index.html` : point d’entrée
-- `app.js` : logique de navigation et commandes MPD
-- `style.css` : styles adaptés au tactile
-- `data.json` : catalogue local (radios + podcasts)
-- `images/` : jaquettes
-- `audio/` : fichiers audio statiques (démos)
+- `index.html` : **fichier unique** — HTML + CSS + JS intégrés
+- `data.json` : catalogue local (radios + podcasts), généré par le backend
+- `images/` : jaquettes podcasts (`{id}.jpg`) et radios (`radio/{id}.jpg`)
+
+> `app.js` est présent dans le dépôt mais est du code mort (TICKET-040 — à supprimer).
+> `style.css` n’existe plus, les styles sont intégrés dans `index.html`.
 
 ### 3.2 Rôle des fichiers
-- **index.html** : squelette minimal, tout est injecté par JS
-- **app.js** :
-  - charge `data.json`
-  - génère les écrans (Accueil → Radios → Podcasts → Lecture)
-  - gère les événements tactiles
-  - envoie les commandes à MPD
-- **data.json** :
-  - généré automatiquement par le backend
-  - contient radios, podcasts, images, chemins audio
+- **index.html** : contient toute la logique — chargement de `data.json`, rendu des 5 écrans, événements tactiles, commandes MPD
+- **data.json** : généré automatiquement par le backend (`writer.py`), jamais modifié par le lecteur
 
 ---
 
@@ -80,25 +73,20 @@ Règles :
 
 ---
 
-## 6. Navigation du Lecteur
-1. **Accueil**
-   - Bouton “Radios”
-   - Bouton “Podcasts”
+## 6. Navigation du Lecteur (5 écrans)
 
-2. **Radios**
-   - Liste des radios issues de `data.json`
-   - Lecture via MPD (flux web)
+```
+Accueil (drapeaux FR / 🇨🇴)
+   └─→ Grille (podcasts + webradio — filtrés par langue)
+          ├─→ Catalogue webradio  →  Player radio (streaming live)
+          └─→ Liste épisodes      →  Player podcast (fichier local)
+```
 
-3. **Podcasts**
-   - Liste des podcasts
-   - Liste des épisodes
-
-4. **Lecture**
-   - Titre
-   - Jaquette
-   - Bouton Play/Pause
-   - Barre de progression (optionnelle)
-   - Bouton Retour
+1. **Accueil** : deux drapeaux, sélection de la langue active
+2. **Grille** : tuile Webradio (toujours en tête) + jaquettes podcasts en grille 2 colonnes
+3. **Catalogue webradio** : liste des stations (image + nom + indicateur live animé)
+4. **Liste épisodes** : vignette + titre + durée par épisode, scroll tactile, clic = lecture directe
+5. **Player** : jaquette (gauche 45%) + titre + barre de progression + Play/Pause + ⏮⏭ (droite 55%) + volume
 
 ---
 
@@ -177,55 +165,54 @@ Le lecteur doit fonctionner **sans lag** sur un Raspberry Pi 5.
 
 ---
 
-## 12. État réel au 2026-06-21
+## 12. État réel au 2026-06-23
 
 ### Implémenté et validé
-- Navigation fonctionnelle bout en bout : accueil → podcasts → épisodes → lecteur
+- Navigation 5 écrans fonctionnelle bout en bout (TICKET-050 ✅)
 - Filtre par langue via drapeaux FR/🇨🇴 (champ `langue` dans `data.json`)
-- Commandes MPD via `radio.php` (play, pause, playfile, volup, voldown, status)
-- Paramètre `path` uniformisé dans toutes les actions (`playTrack`, `playBtn`)
+- Commandes MPD via `radio.php` (play, pause, playfile, volup, voldown, status, seekcur, seekid)
 - Polling MPD conditionnel (actif uniquement sur l'écran lecteur)
-- Bouton webradio France Inter fonctionnel
+- Webradio France Inter + Radio Nacional fonctionnelles
 - Mode kiosque Chromium au boot (TICKET-039 ✅)
-- Pipeline RSS → téléchargement → conversion M4A→MP3 → MPD opérationnel
-- `normalize_path` retourne des URI absolues `file://` (compatible MPD music_directory `/var/lib/mpd/music`)
+- Pipeline RSS → téléchargement → MPD opérationnel (18 podcasts, 2 radios)
+- Jaquettes podcasts dans `web/lecteur/images/{id}.jpg` (accessible Apache) (TICKET-049 ✅)
+- Images épisodes dans liste épisodes avec fallback jaquette podcast (TICKET-054 ✅)
+- Grille 2 colonnes pour podcasts et épisodes (TICKET-053 ✅)
+- Barre de statut : heure + batterie (fallback `status.json`) + indicateur charge (TICKET-052 ✅)
+- Reprise automatique de la position de lecture via `localStorage` (TICKET-043 ✅)
+- Barre de progression + scrubbing tactile (TICKET-042 ✅)
+- Appui sur la jaquette player = pause/lecture via overlay (TICKET-041 ✅)
+- Flèches ⏮⏭ épisode précédent/suivant dans le player (TICKET-044 ✅)
+- Barres de progression synchronisation en temps réel dans l'IHM parent (TICKET-063 ✅)
+- Volume logiciel MPD depuis l'IHM enfant (TICKET-034 ✅)
+- Webradio en premier dans la grille (TICKET-060 ✅)
 
-### Batterie (TICKET-051) — fix appliqué, non validé
-- `navigator.getBattery()` bloqué dans Chromium sur Pi — l'icône batterie restait absente
-- Fix (2026-06-21) : dual approach dans `index.html`
-  - essaie `getBattery` d'abord ; fallback : `fetch('../status.json')` toutes les 30 s
-  - champ lu : `d.percent` (validé : `{"percent": 91, "voltage_v": 4.1, "current_ma": 19, ...}`)
-  - détection charge : `d.state.toLowerCase().includes('charge') && !includes('sur batterie')`
-- **À valider** sur le Pi à la prochaine session
+### Architecture technique
+- `index.html` : fichier unique (HTML + CSS + JS)
+- Viewport : 1024×600 px paysage (CUQI 7" IPS)
+- Dark mode, accent cyan `#00c8ff`, accent radio ambre `#c8a050`
+- Cover podcasts : `web/lecteur/images/{id}.jpg` (chemin relatif dans `data.json`)
+- Audio épisodes : chemin filesystem MPD (`/home/thomas/hechicero/podcasts/{id}/audio/*.mp3`)
 
-### En cours — Refonte visuelle (TICKET-050)
-Architecture cible validée le 2026-06-21 :
-- **5 écrans** : Accueil → Podcasts+Radio → [Catalogue radio | Épisodes] → Lecteur
-- **Viewport** : 1024×600 px paysage (écran CUQI 7 pouces IPS)
-- **Design** : dark mode, accent cyan (#00c8ff), accent radio ambre (#c8a050), boutons arrondis
-- **Écran lecteur** : layout splitté (jaquette gauche 45% / contrôles droite 55%)
-- **Barre de statut** : heure + batterie (fallback status.json) + indicateur charge
-- **Boutons retour** : pill-shaped, 36px, suffisamment grands pour usage tactile enfant
-- Tickets couverts : 041 (tap image), 042 (progress bar), 043 (reprise localStorage), 044 (flèches épisodes), 045 (jaquettes ≥ 300px)
-
-### Non implémenté
-- Contenu ES dans `data.json` (TICKET-004)
-- Catalogue radios hispanófonas (TICKET-050, phase 2)
+### Non implémenté (tickets ouverts)
+- Enchainement automatique des épisodes (TICKET-069)
+- Durées des épisodes via ffprobe (TICKET-059)
+- Son de confirmation / retour visuel au choix (TICKET-023)
+- Contenu ES complet dans `data.json` (TICKET-004)
 - `app.js` : code mort à supprimer (TICKET-040)
-- Images podcasts non affichées (TICKET-049)
 
 ---
 
 ## 13. Évolutions prévues
-- Refonte visuelle complète `index.html` (TICKET-050) ← EN COURS
-- Images podcasts : jaquette podcast + image par épisode dans `data.json` (TICKET-049)
-- Contenu ES : podcasts en espagnol (TICKET-004)
+- Enchainement automatique des épisodes (TICKET-069)
+- Durées épisodes via `ffprobe` (TICKET-059)
 - Script d'intégrité audio/images/data.json (TICKET-048)
 - Carrousel pour les jaquettes (TICKET-047)
 - Favoris (TICKET-046)
 - Animations simples (fade, slide) (TICKET-037)
 - Son de confirmation au lancement (TICKET-023)
 - Support des boutons physiques (GPIO)
+- Série easter egg "Décisions Prises" (TICKET-058)
 
 ---
 

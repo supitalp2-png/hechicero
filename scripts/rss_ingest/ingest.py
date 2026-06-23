@@ -44,13 +44,12 @@ def ingest():
                 downloaded.append(ep)
                 progress.episode_done(error=f"{cfg.id}/{ep.id} : {str(e)[:120]}")
 
-        # Télécharger la cover du podcast depuis le RSS
+        # Télécharger la cover dans web/lecteur/images/ (accessible Apache)
         cover_local = None
         if episodes and episodes[0].image_url:
-            from pathlib import Path
             from downloader import download_file
             cover_url = episodes[0].image_url
-            cover_path = Path(f"/home/thomas/hechicero/podcasts/{cfg.id}/cover.jpg")
+            cover_path = Path(f"/home/thomas/hechicero/web/lecteur/images/{cfg.id}.jpg")
             result = download_file(cover_url, cover_path)
             if result:
                 cover_local = str(result)

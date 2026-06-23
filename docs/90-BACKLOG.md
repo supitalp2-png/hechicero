@@ -134,6 +134,13 @@
       - Épisodes saison 2 (mai 2025) : L'or, lithium, silicium, néodyme, cuivre, indium
       - RSS alternatif `rss_25664.xml` inexistant
       - Piste : chercher manuellement les URLs directes via kidcasts.fr ou radiofrance.fr
+- [ ] TICKET-069 — UX — Enchainement automatique des épisodes
+      - Comportement attendu : quand un épisode se termine, passer automatiquement au suivant
+      - Cause : `refreshStatus()` détecte l'état MPD (`stop`) mais ne déclenche pas `playTrack(currentIdx + 1)`
+      - Fix : dans `refreshStatus()`, détecter la transition `play → stop` quand `currentPodcast` est actif et qu'il reste des épisodes
+      - Attention : ne pas enchainer sur le dernier épisode (rester sur `stop`)
+      - Bonus : afficher un indicateur visuel "épisode suivant…" avant l'enchainement
+
 - [ ] TICKET-059 — backend — Durée des épisodes absente (affiche "--:--")
       - Cause : le flux Aerion ne publie pas `itunes:duration` pour Les Odyssées
       - Fix : après téléchargement, lire la durée réelle avec `ffprobe` et l'écrire dans `meta.json`
@@ -160,11 +167,17 @@
 - [ ] TICKET-007 — web — Interface configuration `podcasts.json`
 - [ ] TICKET-029 — backend — Quotas stockage (`max_episodes`)
 - [ ] TICKET-036 — web — Mode "grands boutons" optimisé tactile
-- [ ] TICKET-041 — UX — Appui sur image = pause/lecture (spec UX A5-1.3)
-- [ ] TICKET-042 — UX — Barre de progression dans l'écran player (spec UX A5-1.3)
-- [ ] TICKET-043 — UX — Reprise automatique de la position de lecture (spec UX A5-4.2)
-      - Sauvegarder position dans `localStorage` par épisode
-- [ ] TICKET-044 — UX — Flèches épisode suivant / précédent (spec UX A5-1.3)
+- [x] TICKET-041 — UX — Appui sur image = pause/lecture (2026-06-22)
+      - ✅ overlay `.art-overlay` sur la jaquette player, toggle pause/play au tap
+- [x] TICKET-042 — UX — Barre de progression dans l'écran player (2026-06-22)
+      - ✅ `#prog-fill` + scrubbing tactile via `touchstart/touchmove` sur la barre
+- [x] TICKET-043 — UX — Reprise automatique de la position de lecture (2026-06-22)
+      - ✅ position sauvegardée dans `localStorage` (`hech_prog`), restaurée au lancement d'un épisode
+- [x] TICKET-044 — UX — Flèches épisode suivant / précédent (2026-06-22)
+      - ✅ boutons ⏮⏭ (`btn-prev` / `btn-next`) dans le player
+- ~~TICKET-NAV~~ — UX — Navigation par flèches directionnelles dans la grille
+      - **Non retenu** (2026-06-23) : navigation par menu tactile validée par le persona enfant
+      - Le tap sur une jaquette suffit — aucune flèche directionnelle nécessaire
 - [ ] TICKET-045 — UX — Taille des jaquettes ≥ 300×300 px (spec UX A5-1.2)
 - [ ] TICKET-048 — backend — Script de vérification d'intégrité audio/images/data.json
       - Détecter : fichiers manquants, orphelins, M4A déguisés en .mp3, taille 0

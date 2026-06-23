@@ -190,3 +190,61 @@ Objectif : **zéro surprise, zéro magie, zéro casse**.
 # 9. Phrase de reset
 
 > “Tu es dans le contexte Hechicero. Reprends à partir de ce prompt.”
+
+---
+
+# 10. État du projet au 2026-06-23 (session 3)
+
+## Ce qui est fait et validé
+- 18 podcasts FR + 2 podcasts ES ingérés et fonctionnels (pipeline RSS complet)
+- 2 webradios (France Inter FR, Radio Nacional ES)
+- IHM enfant 5 écrans complète et validée sur le Pi
+- Interface admin parent complète (mode normal + expert, barres de progression temps réel)
+- Jaquettes podcasts servies depuis `web/lecteur/images/{id}.jpg` (Apache-accessible)
+- Images épisodes avec fallback jaquette podcast dans la liste épisodes
+- Permissions Pi correctes (`thomas:www-data`, cron 3h, umask 002)
+- Documentation synchronisée avec l'état réel du code
+
+## Source de vérité — rappel critique
+- `data/podcasts.json` → config podcasts ET radios (écrit par l'admin PHP)
+- `writer.py` → lit les radios depuis `podcasts.json`, génère `web/lecteur/data.json`
+- `web/` → seul répertoire servi par Apache (les chemins `/podcasts/` ne sont PAS accessibles HTTP)
+
+## Tickets ouverts prioritaires
+- TICKET-069 : enchainement automatique des épisodes (détecter `play → stop` dans `refreshStatus()`)
+- TICKET-059 : durées via ffprobe
+- TICKET-038 : bouton RUN physique Pi
+- TICKET-058 : série easter egg “Décisions Prises” (FR uniquement)
+
+---
+
+# 11. Message à Copilot Pro — retour session 3
+
+> Ce bloc documente ce qui n'a pas fonctionné ce matin pour améliorer la collaboration future.
+
+**Trois bugs introduits en cascade :**
+
+**Bug 1 — Filtre `if e.local_audio` dans `writer.py`**
+Un filtre a été ajouté supposant que les épisodes sans audio téléchargé devaient être exclus.
+C'est l'inverse : les épisodes sont TOUJOURS inclus dans `data.json`, avec `”audio”: “”` si le
+téléchargement est en cours ou a échoué. Le filtre a vidé silencieusement tous les podcasts du lecteur.
+
+**Bug 2 — Source des radios changée vers `data.json`**
+Avant de lire `index.php`, une hypothèse incorrecte a conduit à changer la source des radios
+dans `writer.py`. La réalité : l'admin PHP écrit les radios dans `data/podcasts.json` (pas `data.json`).
+Ce bug n'a été détecté qu'après audit complet de `index.php`.
+
+**Bug 3 — Covers déplacées vers un chemin non-accessible Apache**
+Les covers ont été proposées à `podcasts/{id}/cover.jpg` sans vérifier que ce chemin n'est pas
+servi par Apache. Le webroot est `web/`, pas la racine du projet.
+Résultat : toutes les jaquettes sont devenues des images cassées.
+
+**Ce qui aurait évité ces trois bugs :**
+- Lire le fichier cible (`index.php`, `.htaccess` ou config Apache) AVANT de toucher à la logique
+- Poser la question “est-ce que ce chemin est servi par Apache ?” avant de proposer un path
+- Un seul changement à la fois, validé sur le Pi avant le suivant
+- Ne pas “corriger” du code sans comprendre pourquoi il est écrit comme il est
+
+**Pour les prochaines sessions :**
+Quand l'architecture n'est pas certaine (chemins, sources de données, rôle d'un fichier),
+lire le fichier ou poser la question. Ne pas supposer.
