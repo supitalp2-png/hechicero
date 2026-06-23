@@ -58,10 +58,11 @@ def update_data_json(all_podcasts):
                     "titre": e.title,
                     "audio": _to_web_path(e.local_audio) if e.local_audio else "",
                     "image": _to_web_path(e.local_image) if e.local_image else "",
-                    "duree": e.duration  # int secondes
+                    "duree": e.duration
                 }
                 for e in meta.episodes
-                if e.local_audio  # exclure les épisodes non téléchargés
+                # On inclut tous les épisodes, audio vide = épisode pas encore téléchargé.
+                # Le lecteur gère le cas audio="" (sera retéléchargé au prochain ingest).
             ]
         })
 
