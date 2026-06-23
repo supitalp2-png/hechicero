@@ -9,7 +9,10 @@ CHUNK_SIZE = 256 * 1024  # 256 KB — évite de charger l'entier MP3 en RAM
 
 # proxycast.radiofrance.fr présente une chaîne SSL incomplète non validée par Python.
 # On désactive la vérification uniquement pour ce domaine.
-SSL_NO_VERIFY_HOSTS = {"proxycast.radiofrance.fr"}
+# proxycast.radiofrance.fr présente une chaîne SSL incomplète.
+# radio-france-rss.aerion.workers.dev redirige vers ce même hôte,
+# donc verify=False doit être activé dès l'URL d'origine pour suivre la redirection.
+SSL_NO_VERIFY_HOSTS = {"proxycast.radiofrance.fr", "radio-france-rss.aerion.workers.dev"}
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 

@@ -6,9 +6,16 @@ import tempfile
 import json
 
 BASE_DIR = Path(__file__).resolve().parents[2]
-LOG_PATH = BASE_DIR / "logs" / "rss_ingest.log"
+_preferred_log = BASE_DIR / "logs" / "rss_ingest.log"
 
-LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+# Essaie le dossier projet, retombe sur /tmp si l'utilisateur courant
+# (www-data quand lancé depuis l'IHM) n'a pas accès en écriture.
+try:
+    _preferred_log.parent.mkdir(parents=True, exist_ok=True)
+    _preferred_log.touch(exist_ok=True)
+    LOG_PATH = _preferred_log
+except PermissionError:
+    LOG_PATH = Path(tempfile.gettempdir()) / "hechicero_rss_ingest.log"
 
 logging.basicConfig(
     filename=str(LOG_PATH),

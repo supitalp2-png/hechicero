@@ -27,26 +27,31 @@ def write_meta(podcast_id: str, meta: PodcastMeta):
 
 def update_data_json(all_podcasts):
     path = Path("/home/thomas/hechicero/web/lecteur/data.json")
+    podcasts_cfg_path = Path("/home/thomas/hechicero/data/podcasts.json")
 
-    # Charger l'existant (radios conservées, invariant 1.6)
-    if path.exists():
-        try:
+    # Préserver les radios depuis data.json existant (géré par l'interface admin)
+    try:
+        if path.exists():
             with open(path) as f:
-                data = json.load(f)
-        except (json.JSONDecodeError, OSError):
-            log("WARNING: data.json invalide ou illisible, réinitialisation.")
-            data = {"radios": [], "podcasts": []}
-    else:
-        data = {"radios": [], "podcasts": []}
+                existing = json.load(f)
+            radios = existing.get("radios", [])
+        else:
+            radios = []
+    except (json.JSONDecodeError, OSError):
+        log("WARNING: data.json illisible, radios préservées à vide.")
+        radios = []
+
+    data = {"radios": radios, "podcasts": []}
 
     # Remplacer la section podcasts
     data["podcasts"] = []
     for meta in all_podcasts:
+        cover_web = _to_web_path(meta.cover_image) if meta.cover_image else f"images/{meta.id}.jpg"
         data["podcasts"].append({
             "id": meta.id,
             "titre": meta.label,
             "langue": meta.language,
-            "image": f"images/{meta.id}.jpg",
+            "image": cover_web,
             "chapitres": [
                 {
                     "id": e.id,

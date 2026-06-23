@@ -27,4 +27,5 @@ class PodcastMeta:
     id: str
     label: str
     language: str
+    cover_image: Optional[str]
     episodes: List[Episode]

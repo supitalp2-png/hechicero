@@ -1,7 +1,7 @@
 # Backlog Hechicero
 
 > Convention : `TICKET-### — [type] — Titre — (prio) — owner`
-> Dernière mise à jour : 2026-06-22
+> Dernière mise à jour : 2026-06-23 (session 3)
 
 ---
 
@@ -29,11 +29,53 @@
       - ✅ index.html : ep-thumb utilise `ch.image` avec fallback jaquette podcast
 - [x] TICKET-060 — UX — Webradio en premier dans la grille (2026-06-22)
       - ✅ `grid.insertBefore(w, grid.firstChild)` dans `renderPodcasts()`
+- [x] TICKET-062 — content — Ajout 11 podcasts FR + 3 podcasts ES (2026-06-22)
+      - FR : Olma, Allô Olma, Bestioles, Bestioles sous l'océan, Bestioles fossiles, Bestioles olympiques
+      - ES : Cráneo, Camaleón, Buenas noches Cráneo (Cumbre Kids — accent latinoaméricain)
+      - Professeur Caillou : RSS migré vers Aerion (saison 2 potentiellement disponible)
+      - Typo corrigé : `bestiolesympiques` → `bestiolesolympiques`
 - [x] TICKET-051 — web — Affichage batterie dans la barre de statut (2026-06-22)
       - ✅ `navigator.getBattery()` bloqué dans Chromium → fallback `fetch('../status.json')` toutes les 30 s
       - ✅ Champ lu : `d.percent` (validé sur le Pi : `{"percent": 91, ...}`)
       - ✅ Détection charge via `d.state`
       - ✅ Validé après reboot : batterie visible dans la barre de statut
+
+- [x] TICKET-005 — web — Interface d'administration complète (2026-06-23)
+      - ✅ `web/index.php` : état système, gestion podcasts/radios, config volume, synchro
+      - ✅ Mode normal / expert (localStorage)
+      - ✅ Deux colonnes FR | ES pour podcasts et radios
+      - ✅ Formulaires en haut (mode expert), edit inline par item
+      - ✅ Copier l'URL du flux (mode expert)
+      - ✅ Select max épisodes (5/10/20/50/∞) modifiable par podcast
+      - ✅ Image webradio : URL → téléchargement automatique sur le Pi (shell curl)
+      - ✅ Validation des flux avant ajout (RSS + stream)
+      - ✅ Responsive automatique via media query (≤900px → colonne unique)
+      - ✅ Batterie : chemin STATUS_JSON corrigé (`web/status.json`)
+
+- [x] TICKET-063 — UX — Barres de progression synchronisation (2026-06-23)
+      - ✅ `progress.py` : fichier JSON temps réel `/tmp/hechicero_progress.json`
+      - ✅ `ingest.py` : appels progress à chaque podcast + épisode
+      - ✅ IHM : barre podcasts (dorée) + barre épisodes (bleue) + message final
+      - ✅ Erreurs résumées proprement (pas de log brut dans l'IHM)
+      - ✅ Logs techniques en accordéon mode expert uniquement
+
+- [x] TICKET-064 — backend — Cover podcast téléchargée automatiquement à l'ingest (2026-06-23)
+      - ✅ `models.py` : champ `cover_image` dans `PodcastMeta`
+      - ✅ `ingest.py` : téléchargement `cover.jpg` depuis l'image RSS épisode 1
+      - ✅ `writer.py` : `cover_web` injecté dans `data.json` à la place de `images/{id}.jpg`
+
+- [x] TICKET-065 — infra — Permissions Pi + cron nocturne (2026-06-23)
+      - ✅ `sudo chown -R thomas:www-data` + `chmod 775` sur podcasts/, web/lecteur/, data/, logs/
+      - ✅ `thomas` ajouté au groupe www-data (plus de conflits futurs)
+      - ✅ `php-mbstring` installé (Fatal Error sur slugify() résolu)
+      - ✅ Cron 3h du matin : `umask 002 && python3 ingest.py`
+
+- [x] TICKET-066 — infra — SSL proxycast.radiofrance.fr (2026-06-23)
+      - ✅ `SSL_NO_VERIFY_HOSTS` étendu à `radio-france-rss.aerion.workers.dev`
+      - ✅ Le flag `verify=False` suit maintenant la chaîne de redirection → épisodes téléchargés
+
+- [x] TICKET-067 — infra — Robustesse logs ingest (2026-06-23)
+      - ✅ `utils.py` : fallback `/tmp/hechicero_rss_ingest.log` si `logs/` non accessible par www-data
 
 ---
 
@@ -102,10 +144,7 @@
 - [ ] TICKET-004 — content — Gestion multi-podcasts (FR/ES)
       - `data.json` ne contient que du contenu FR (lesodyssees)
       - Ajouter au moins un podcast ES pour valider le filtre langue
-- [ ] TICKET-005 — web — Dashboard Admin (config flux) ← PRIORITÉ REMONTÉE
-      - Interface d'administration locale : ajout/suppression podcasts, état système, logs
-      - Objectif : permettre à un parent de gérer les contenus sans toucher au terminal
-      - Stack : Apache + PHP (déjà en place)
+- [x] TICKET-005 — web — Dashboard Admin → voir section ✔️ (2026-06-23)
 - [ ] TICKET-007 — web — Interface configuration `podcasts.json`
 - [ ] TICKET-029 — backend — Quotas stockage (`max_episodes`)
 - [ ] TICKET-036 — web — Mode "grands boutons" optimisé tactile

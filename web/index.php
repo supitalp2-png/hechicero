@@ -1,66 +1,1171 @@
 <?php
-// index.php - Hechicero battery dashboard (minimal, copy/paste)
-header('Content-Type: text/html; charset=utf-8');
+// ============================================================
+// Hechicero — Interface d'administration
+// Accès : http://<rpi>/
+// Réseau local uniquement — pas d'authentification requise
+// ============================================================
+
+define('PROJECT_ROOT',  '/home/thomas/hechicero');
+define('PODCASTS_JSON', PROJECT_ROOT . '/data/podcasts.json');
+define('DATA_JSON',     PROJECT_ROOT . '/web/lecteur/data.json');
+define('CONFIG_JSON',   PROJECT_ROOT . '/web/lecteur/config.json');
+define('STATUS_JSON',   PROJECT_ROOT . '/web/status.json');   // servi à /status.json
+define('INGEST_LOG',    '/tmp/hechicero_ingest.log');
+define('INGEST_PID',    '/tmp/hechicero_ingest.pid');
+define('INGEST_SCRIPT', PROJECT_ROOT . '/scripts/rss_ingest/ingest.py');
+
+// ── Helpers ──────────────────────────────────────────────────
+
+function read_json(string $path): array {
+    if (!file_exists($path)) return [];
+    $d = json_decode(file_get_contents($path), true);
+    return is_array($d) ? $d : [];
+}
+
+function write_json_atomic(string $path, array $data): bool {
+    $dir = dirname($path);
+    if (!is_dir($dir)) mkdir($dir, 0755, true);
+    $tmp = $path . '.tmp';
+    $ok  = file_put_contents($tmp, json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+    if ($ok === false) return false;
+    return rename($tmp, $path);
+}
+
+function pid_alive(string $f): bool {
+    if (!file_exists($f)) return false;
+    $pid = (int)file_get_contents($f);
+    return $pid > 0 && file_exists('/proc/' . $pid);
+}
+
+function slugify(string $s): string {
+    $s = mb_strtolower($s, 'UTF-8');
+    $s = strtr($s, ['à'=>'a','â'=>'a','é'=>'e','è'=>'e','ê'=>'e','ë'=>'e','î'=>'i','ï'=>'i',
+                     'ô'=>'o','ù'=>'u','û'=>'u','ü'=>'u','ç'=>'c','œ'=>'oe','æ'=>'ae',
+                     'á'=>'a','í'=>'i','ó'=>'o','ú'=>'u','ñ'=>'n']);
+    return substr(preg_replace('/[^a-z0-9]+/', '', $s), 0, 40);
+}
+
+// ── MPD ──────────────────────────────────────────────────────
+
+function mpd_cmd(string $cmd): string {
+    $s = @fsockopen('unix:///run/mpd/socket', 0, $e1, $e2, 1.5);
+    if (!$s) return '';
+    stream_set_timeout($s, 2);
+    fgets($s);
+    fwrite($s, $cmd . "\n");
+    $r = '';
+    while (!feof($s)) {
+        $l = fgets($s);
+        if ($l === false) break;
+        $r .= $l;
+        if (trim($l) === 'OK' || str_starts_with($l, 'ACK')) break;
+    }
+    fclose($s);
+    return $r;
+}
+
+function mpd_status(): array {
+    $out = [];
+    foreach (preg_split('/\r?\n/', mpd_cmd('status')) as $l) {
+        if (($p = strpos($l, ': ')) !== false)
+            $out[trim(substr($l, 0, $p))] = trim(substr($l, $p + 2));
+    }
+    return $out;
+}
+
+// ── Radios ────────────────────────────────────────────────────
+
+function get_radios(): array {
+    $d = read_json(PODCASTS_JSON);
+    return $d['radios'] ?? [];
+}
+
+function save_radios(array $radios): bool {
+    $d = read_json(PODCASTS_JSON);
+    $d['radios'] = array_values($radios);
+    return write_json_atomic(PODCASTS_JSON, $d);
+}
+
+// Variante avec message d'erreur explicite
+function save_radios_r(array $radios): array {
+    $d = read_json(PODCASTS_JSON);
+    $d['radios'] = array_values($radios);
+    if (!is_writable(PODCASTS_JSON) && !is_writable(dirname(PODCASTS_JSON))) {
+        return ['ok'=>false,'msg'=>
+            'Fichier non modifiable par le serveur web. ' .
+            'Sur le Pi : sudo chown www-data:www-data ' . PODCASTS_JSON .
+            ' && sudo chmod g+w ' . dirname(PODCASTS_JSON)];
+    }
+    $ok = write_json_atomic(PODCASTS_JSON, $d);
+    return ['ok'=>$ok,'msg'=>$ok?'':'Écriture échouée — vérifiez les permissions sur ' . PODCASTS_JSON];
+}
+
+// Exécute curl en ligne de commande (évite la dépendance à l'extension PHP curl)
+function shell_curl(string $url, array $opts = []): array {
+    if (!@shell_exec('which curl 2>/dev/null')) {
+        return ['ok'=>false,'code'=>0,'body'=>'','msg'=>"curl n'est pas installé sur le Pi — sudo apt install curl"];
+    }
+    $timeout  = $opts['timeout']  ?? 15;
+    $connect  = $opts['connect']  ?? 6;
+    $head     = !empty($opts['head']);
+    $range    = $opts['range']    ?? null;   // ex: '0-4095'
+    $out_file = $opts['out_file'] ?? null;
+    $safe_url = escapeshellarg($url);
+
+    $cmd = "curl -s -L --max-time {$timeout} --connect-timeout {$connect} -A 'Hechicero/1.0'";
+    if ($head)      $cmd .= ' -I';
+    if ($range)     $cmd .= ' -r ' . escapeshellarg($range);
+    if ($out_file)  $cmd .= ' -o ' . escapeshellarg($out_file);
+    $cmd .= " -w '\n__META__%{http_code}__%{content_type}__%{size_download}' $safe_url 2>/dev/null";
+
+    $raw  = (string)shell_exec($cmd);
+    $sep  = strrpos($raw, "\n__META__");
+    $body = $sep !== false ? substr($raw, 0, $sep) : $raw;
+    $meta = $sep !== false ? explode('__', substr($raw, $sep + 9)) : [];
+    $code  = (int)($meta[0] ?? 0);
+    $ctype = strtolower(trim($meta[1] ?? ''));
+    $size  = (int)($meta[2] ?? 0);
+
+    return ['ok'=>($code>0 && $code<400),'code'=>$code,'ctype'=>$ctype,'size'=>$size,'body'=>$body];
+}
+
+// Télécharge une image depuis une URL distante et la sauvegarde localement
+function download_radio_image(string $url, string $id): array {
+    $dir  = PROJECT_ROOT . '/web/lecteur/images/radio/';
+    $file = $dir . $id . '.jpg';
+    $web  = 'images/radio/' . $id . '.jpg';
+    if (!is_dir($dir) && !@mkdir($dir, 0755, true)) {
+        return ['ok'=>false,'msg'=>"Impossible de créer le dossier images/radio/. Sur le Pi : sudo mkdir -p $dir && sudo chown www-data $dir"];
+    }
+    if (!is_writable($dir)) {
+        return ['ok'=>false,'msg'=>"Dossier images/radio/ non modifiable. Sur le Pi : sudo chown www-data $dir"];
+    }
+    // Télécharger directement dans le fichier cible via curl
+    $r = shell_curl($url, ['timeout'=>20,'connect'=>8,'out_file'=>$file]);
+    if (isset($r['msg'])) return ['ok'=>false,'msg'=>$r['msg']];  // curl absent
+    if ($r['code'] === 0)  return ['ok'=>false,'msg'=>"L'image est inaccessible depuis le Pi (vérifiez que l'URL est publique)"];
+    if ($r['code'] >= 400) return ['ok'=>false,'msg'=>"Le serveur répond HTTP {$r['code']} — l'URL est-elle accessible publiquement ?"];
+    if ($r['size'] === 0 || !file_exists($file)) return ['ok'=>false,'msg'=>"Fichier vide reçu — l'URL ne renvoie peut-être pas une image"];
+    // Vérifier le type réel du fichier téléchargé
+    $finfo = new \finfo(FILEINFO_MIME_TYPE);
+    $mime  = $finfo->file($file);
+    if (!str_starts_with($mime, 'image/')) {
+        @unlink($file);
+        return ['ok'=>false,'msg'=>"Ce fichier n'est pas une image (type reçu : $mime). Vérifie l'URL."];
+    }
+    $kb = round($r['size'] / 1024);
+    return ['ok'=>true,'path'=>$web,'msg'=>"Image téléchargée ($kb Ko)"];
+}
+
+// ── API ───────────────────────────────────────────────────────
+
+if (isset($_GET['action'])) {
+    header('Content-Type: application/json; charset=utf-8');
+    $a = $_GET['action'];
+
+    // ── Statut système
+    if ($a === 'status') {
+        $b     = read_json(STATUS_JSON);
+        $mpd   = mpd_status();
+        $free  = @disk_free_space(PROJECT_ROOT) ?: 0;
+        $total = @disk_total_space(PROJECT_ROOT) ?: 0;
+        echo json_encode([
+            'battery' => [
+                'percent'    => isset($b['percent'])    ? (float)$b['percent']    : null,
+                'voltage_v'  => isset($b['voltage_v'])  ? (float)$b['voltage_v']  : null,
+                'current_ma' => isset($b['current_ma']) ? (float)$b['current_ma'] : null,
+                'state'      => $b['state'] ?? '—',
+            ],
+            'mpd'  => ['state' => $mpd['state'] ?? 'unknown', 'volume' => $mpd['volume'] ?? '?'],
+            'disk' => [
+                'free_gb'  => $total > 0 ? round($free  / 1073741824, 1) : 0,
+                'total_gb' => $total > 0 ? round($total / 1073741824, 1) : 0,
+                'used_pct' => $total > 0 ? round(($total - $free) / $total * 100) : 0,
+            ],
+            'ingest_running' => pid_alive(INGEST_PID),
+            'last_ingest_ts' => file_exists(DATA_JSON) ? filemtime(DATA_JSON) : null,
+        ]);
+        exit;
+    }
+
+    // ── Podcasts
+    if ($a === 'get_podcasts') {
+        $cfg    = read_json(PODCASTS_JSON);
+        $data   = read_json(DATA_JSON);
+        $counts = [];
+        foreach ($data['podcasts'] ?? [] as $p) $counts[$p['id']] = count($p['chapitres'] ?? []);
+        $list = $cfg['podcasts'] ?? [];
+        foreach ($list as &$p) $p['episode_count'] = $counts[$p['id']] ?? 0;
+        echo json_encode($list);
+        exit;
+    }
+
+    if ($a === 'toggle_podcast' && isset($_GET['id'], $_GET['enabled'])) {
+        $cfg = read_json(PODCASTS_JSON);
+        $en  = $_GET['enabled'] === '1';
+        foreach ($cfg['podcasts'] as &$p) if ($p['id'] === $_GET['id']) { $p['enabled'] = $en; break; }
+        echo json_encode(['ok' => write_json_atomic(PODCASTS_JSON, $cfg)]);
+        exit;
+    }
+
+    if ($a === 'add_podcast') {
+        $label = trim($_POST['label'] ?? '');
+        $rss   = trim($_POST['rss']   ?? '');
+        $lang  = in_array($_POST['lang'] ?? 'fr', ['fr','es']) ? $_POST['lang'] : 'fr';
+        $max   = (int)($_POST['max_episodes'] ?? 10);
+        $max   = $max <= 0 ? 999 : max(1, $max);
+        if (!$label || !$rss) { echo json_encode(['ok'=>false,'msg'=>'Titre et RSS requis']); exit; }
+        $id  = slugify($label);
+        $cfg = read_json(PODCASTS_JSON);
+        foreach ($cfg['podcasts'] ?? [] as $p) if ($p['id'] === $id) { echo json_encode(['ok'=>false,'msg'=>'ID déjà existant : '.$id]); exit; }
+        $cfg['podcasts'][] = ['id'=>$id,'label'=>$label,'rss'=>$rss,'enabled'=>true,'language'=>$lang,'image'=>'images/'.$id.'.jpg','max_episodes'=>$max];
+        echo json_encode(['ok' => write_json_atomic(PODCASTS_JSON, $cfg), 'id' => $id]);
+        exit;
+    }
+
+    if ($a === 'edit_podcast' && isset($_GET['id'])) {
+        $cfg = read_json(PODCASTS_JSON);
+        foreach ($cfg['podcasts'] as &$p) {
+            if ($p['id'] !== $_GET['id']) continue;
+            if (isset($_POST['label']) && trim($_POST['label'])) $p['label'] = trim($_POST['label']);
+            if (isset($_POST['rss'])   && trim($_POST['rss']))   $p['rss']   = trim($_POST['rss']);
+            if (isset($_POST['lang'])  && in_array($_POST['lang'],['fr','es'])) $p['language'] = $_POST['lang'];
+            if (isset($_POST['max_episodes'])) {
+                $max = (int)$_POST['max_episodes'];
+                $p['max_episodes'] = $max <= 0 ? 999 : max(1, $max);
+            }
+            break;
+        }
+        echo json_encode(['ok' => write_json_atomic(PODCASTS_JSON, $cfg)]);
+        exit;
+    }
+
+    if ($a === 'delete_podcast' && isset($_GET['id'])) {
+        $cfg = read_json(PODCASTS_JSON);
+        $cfg['podcasts'] = array_values(array_filter($cfg['podcasts'] ?? [], fn($p) => $p['id'] !== $_GET['id']));
+        echo json_encode(['ok' => write_json_atomic(PODCASTS_JSON, $cfg)]);
+        exit;
+    }
+
+    // ── Webradios
+    if ($a === 'get_radios') { echo json_encode(get_radios()); exit; }
+
+    if ($a === 'add_radio') {
+        $name     = trim($_POST['name']  ?? '');
+        $url      = trim($_POST['url']   ?? '');
+        $desc     = trim($_POST['desc']  ?? '');
+        $lang     = in_array($_POST['lang'] ?? 'fr', ['fr','es']) ? $_POST['lang'] : 'fr';
+        $image_in = trim($_POST['image'] ?? '');
+        if (!$name || !$url) { echo json_encode(['ok'=>false,'msg'=>'Nom et URL requis']); exit; }
+        $id = slugify($name);
+        $radios = get_radios();
+        foreach ($radios as $r) if ($r['id'] === $id) { echo json_encode(['ok'=>false,'msg'=>'ID déjà existant : '.$id]); exit; }
+        // Télécharger l'image si une URL distante est fournie
+        $image   = 'images/radio/' . $id . '.jpg';
+        $img_msg = '';
+        if ($image_in && str_starts_with($image_in, 'http')) {
+            $dl = download_radio_image($image_in, $id);
+            if (!$dl['ok']) { echo json_encode(['ok'=>false,'msg'=>'Image : '.$dl['msg']]); exit; }
+            $image   = $dl['path'];
+            $img_msg = $dl['msg'];
+        }
+        $radios[] = ['id'=>$id,'name'=>$name,'desc'=>$desc,'lang'=>$lang,'url'=>$url,'image'=>$image];
+        $w = save_radios_r($radios);
+        echo json_encode(['ok'=>$w['ok'],'id'=>$id,'msg'=>$w['ok']?$img_msg:$w['msg']]);
+        exit;
+    }
+
+    if ($a === 'edit_radio' && isset($_GET['id'])) {
+        $radios  = get_radios();
+        $img_msg = '';
+        foreach ($radios as &$r) {
+            if ($r['id'] !== $_GET['id']) continue;
+            if (isset($_POST['name'])  && trim($_POST['name']))  $r['name']  = trim($_POST['name']);
+            if (isset($_POST['url'])   && trim($_POST['url']))   $r['url']   = trim($_POST['url']);
+            if (isset($_POST['desc']))                           $r['desc']  = trim($_POST['desc']);
+            if (isset($_POST['lang'])  && in_array($_POST['lang'],['fr','es'])) $r['lang'] = $_POST['lang'];
+            if (isset($_POST['image']) && trim($_POST['image'])) {
+                $img_in = trim($_POST['image']);
+                if (str_starts_with($img_in, 'http')) {
+                    // URL distante → télécharger sur le Pi
+                    $dl = download_radio_image($img_in, $_GET['id']);
+                    if (!$dl['ok']) { echo json_encode(['ok'=>false,'msg'=>'Image : '.$dl['msg']]); exit; }
+                    $r['image'] = $dl['path'];
+                    $img_msg    = $dl['msg'];
+                } else {
+                    $r['image'] = $img_in; // chemin local déjà valide
+                }
+            }
+            break;
+        }
+        $w = save_radios_r($radios);
+        echo json_encode(['ok'=>$w['ok'],'msg'=>$w['ok']?$img_msg:$w['msg']]);
+        exit;
+    }
+
+    if ($a === 'delete_radio' && isset($_GET['id'])) {
+        $radios = array_values(array_filter(get_radios(), fn($r) => $r['id'] !== $_GET['id']));
+        echo json_encode(['ok' => save_radios($radios)]);
+        exit;
+    }
+
+    // ── Config volume
+    if ($a === 'get_config') { echo json_encode(read_json(CONFIG_JSON)); exit; }
+
+    if ($a === 'save_config') {
+        $cfg = read_json(CONFIG_JSON);
+        if (!isset($cfg['volume'])) $cfg['volume'] = [];
+        if (isset($_GET['speakers_max']))   $cfg['volume']['speakers_max']   = max(0, min(100, (int)$_GET['speakers_max']));
+        if (isset($_GET['headphones_max'])) $cfg['volume']['headphones_max'] = max(0, min(100, (int)$_GET['headphones_max']));
+        echo json_encode(['ok' => write_json_atomic(CONFIG_JSON, $cfg)]);
+        exit;
+    }
+
+    // ── Ingestion
+    if ($a === 'run_ingest') {
+        if (pid_alive(INGEST_PID)) { echo json_encode(['ok'=>false,'msg'=>'Déjà en cours']); exit; }
+        $cmd = 'python3 ' . escapeshellarg(INGEST_SCRIPT) . ' >> ' . escapeshellarg(INGEST_LOG) . ' 2>&1 & echo $!';
+        $pid = trim((string)shell_exec($cmd));
+        file_put_contents(INGEST_PID, $pid);
+        echo json_encode(['ok'=>true,'pid'=>$pid]);
+        exit;
+    }
+
+    if ($a === 'ingest_log') {
+        $lines = file_exists(INGEST_LOG)
+            ? array_slice(file(INGEST_LOG, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) ?: [], -80)
+            : [];
+        echo json_encode(['lines'=>$lines,'running'=>pid_alive(INGEST_PID)]);
+        exit;
+    }
+
+    // ── Validation URL avant ajout
+    if ($a === 'check_url') {
+        $url  = trim($_GET['url']  ?? '');
+        $type = trim($_GET['type'] ?? 'rss');  // 'rss' | 'stream'
+
+        if (!filter_var($url, FILTER_VALIDATE_URL) || !preg_match('/^https?:\/\//', $url)) {
+            echo json_encode(['ok'=>false,'status'=>'error','msg'=>'URL invalide (doit commencer par http:// ou https://)']);
+            exit;
+        }
+
+        if ($type === 'stream') {
+            $r = shell_curl($url, ['timeout'=>8,'connect'=>5,'head'=>true]);
+            if (isset($r['msg'])) { echo json_encode(['ok'=>true,'status'=>'warn','msg'=>'Vérification impossible : '.$r['msg']]); exit; }
+            if ($r['code'] === 0) { echo json_encode(['ok'=>false,'status'=>'error','msg'=>'Flux inaccessible depuis le Pi']); exit; }
+            if ($r['code'] >= 400) { echo json_encode(['ok'=>false,'status'=>'error','msg'=>"HTTP {$r['code']}"]); exit; }
+            $isAudio = str_contains($r['ctype'],'audio') || str_contains($r['ctype'],'mpeg') || str_contains($r['ctype'],'ogg') || str_contains($r['ctype'],'aac');
+            echo json_encode($isAudio
+                ? ['ok'=>true, 'status'=>'ok',   'msg'=>"✓ Flux audio accessible (HTTP {$r['code']})"]
+                : ['ok'=>true, 'status'=>'warn',  'msg'=>"⚠ L'URL répond (HTTP {$r['code']}) mais le type n'est pas reconnu comme audio : {$r['ctype']}"]);
+        } else {
+            $r = shell_curl($url, ['timeout'=>8,'connect'=>5,'range'=>'0-4095']);
+            if (isset($r['msg'])) { echo json_encode(['ok'=>true,'status'=>'warn','msg'=>'Vérification impossible : '.$r['msg']]); exit; }
+            if ($r['code'] === 0) { echo json_encode(['ok'=>false,'status'=>'error','msg'=>'Flux RSS inaccessible depuis le Pi']); exit; }
+            if ($r['code'] >= 400) { echo json_encode(['ok'=>false,'status'=>'error','msg'=>"HTTP {$r['code']}"]); exit; }
+            $isRss = str_contains($r['ctype'],'xml') || str_contains($r['ctype'],'rss')
+                  || str_contains($r['body'],'<rss') || str_contains($r['body'],'<channel') || str_contains($r['body'],'<feed');
+            echo json_encode($isRss
+                ? ['ok'=>true, 'status'=>'ok',   'msg'=>"✓ Flux RSS valide (HTTP {$r['code']})"]
+                : ['ok'=>false,'status'=>'warn',  'msg'=>"⚠ L'URL répond (HTTP {$r['code']}) mais ne ressemble pas à un flux RSS"]);
+        }
+        exit;
+    }
+
+    if ($a === 'get_progress') {
+        $f = '/tmp/hechicero_progress.json';
+        $d = file_exists($f) ? @json_decode(file_get_contents($f), true) : null;
+        if (!$d) { echo json_encode(['status'=>'idle']); exit; }
+        $d['running'] = pid_alive(INGEST_PID);
+        echo json_encode($d);
+        exit;
+    }
+
+    // ── Téléchargement des images manquantes pour les webradios
+    if ($a === 'ensure_radio_images') {
+        $radios  = get_radios();
+        $img_dir = PROJECT_ROOT . '/web/lecteur/images/radio/';
+        $results = [];
+        foreach ($radios as $r) {
+            $id   = $r['id'];
+            $file = $img_dir . $id . '.jpg';
+            if (file_exists($file) && filesize($file) > 0) continue;  // déjà présent
+            $src  = $r['image_url'] ?? null;
+            if (!$src) { $results[$id] = ['ok'=>false,'msg'=>"Pas d'URL image_url pour $id"]; continue; }
+            $results[$id] = download_radio_image($src, $id);
+        }
+        echo json_encode(['ok'=>true,'results'=>$results]);
+        exit;
+    }
+
+    echo json_encode(['error'=>'action inconnue']);
+    exit;
+}
 ?>
-<!doctype html>
-<html>
+<!DOCTYPE html>
+<html lang="fr">
 <head>
-<meta charset="utf-8">
-<title>Hechicero - Batterie</title>
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hechicero — Admin</title>
 <style>
-body{font-family:Arial,Helvetica,sans-serif;padding:18px;max-width:720px;margin:auto}
-h2{margin-bottom:6px}
-.bar{width:100%;max-width:420px;height:28px;border:1px solid #ccc;border-radius:6px;overflow:hidden;background:#f3f3f3}
-.fill{height:100%;background:linear-gradient(90deg,#6cc644,#2ea44f);width:0%;transition:width .6s}
-.status{margin-top:10px;font-weight:600}
-.alert{color:#b22222;font-weight:700}
-.small{font-size:0.9em;color:#666;margin-top:6px}
-.meta{margin-top:12px;font-size:0.85em;color:#444}
-.refresh{margin-top:10px}
-button{padding:6px 10px;border-radius:6px;border:1px solid #bbb;background:#fff;cursor:pointer}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg:      #0d1117;
+  --surface: #161b22;
+  --surf2:   #1c2128;
+  --border:  #30363d;
+  --accent:  #c8a050;
+  --green:   #3fb950;
+  --red:     #f85149;
+  --blue:    #58a6ff;
+  --muted:   #8b949e;
+  --text:    #e6edf3;
+}
+body { background:var(--bg); color:var(--text);
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  font-size:14px; line-height:1.5; padding:20px 16px; max-width:1100px; margin:auto; }
+
+/* ── Header */
+.top-bar { display:flex; align-items:center; justify-content:space-between; margin-bottom:24px; flex-wrap:wrap; gap:10px; }
+.top-bar h1 { font-size:1.3rem; color:var(--accent); }
+.mode-switch { display:flex; border:1px solid var(--border); border-radius:6px; overflow:hidden; }
+.mode-btn { padding:6px 16px; background:transparent; color:var(--muted); border:none; cursor:pointer;
+  font-size:12px; font-weight:600; transition:background .15s,color .15s; }
+.mode-btn.active { background:var(--accent); color:#000; }
+
+/* ── Grille système */
+.sys-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:24px; }
+@media(max-width:600px){ .sys-grid{ grid-template-columns:1fr; } }
+
+/* ── Cards */
+.card { background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:16px; }
+.card-title { font-size:0.72rem; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.08em; margin-bottom:10px; }
+
+/* ── Stats */
+.stat { display:flex; justify-content:space-between; padding:5px 0; border-bottom:1px solid var(--border); }
+.stat:last-child { border-bottom:none; }
+.stat-l { color:var(--muted); font-size:13px; }
+.stat-v { font-weight:600; font-size:13px; }
+.ok   { color:var(--green); }
+.warn { color:var(--accent); }
+.err  { color:var(--red); }
+.bar-wrap { background:var(--border); border-radius:3px; height:6px; margin-top:10px; overflow:hidden; }
+.bar-fill  { height:100%; border-radius:3px; background:var(--green); transition:width .4s; }
+
+/* ── Section */
+section { margin-bottom:24px; }
+.sec-hdr { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
+.sec-hdr h2 { font-size:0.75rem; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.08em; }
+.sec-count { font-size:11px; color:var(--muted); font-weight:400; margin-left:6px; }
+
+/* ── Colonnes FR / ES */
+.lang-cols { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+/* Chaque colonne est un flex-col → la card s'étire jusqu'en bas */
+.lang-cols > div { display:flex; flex-direction:column; }
+.lang-cols > div .card { flex:1; }
+/* Grille "Ajouter" (expert) */
+.add-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+/* ── Responsive mobile (≤900 px) */
+@media(max-width:900px){
+  .lang-cols  { grid-template-columns:1fr; }
+  .add-grid   { grid-template-columns:1fr; }
+  .sys-grid   { grid-template-columns:1fr; }
+  body        { padding:12px 10px; }
+  .card       { padding:12px; }
+  /* Sur mobile l'URL brute n'est pas lisible — on la masque même en mode expert */
+  .item-url   { display:none !important; }
+  /* Boutons d'action : on les descend sous l'info sur mobile */
+  .item-row   { flex-wrap:wrap; }
+  .item-info  { width:100%; }
+  .item-row .btn-ghost, .item-row .btn-danger { margin-top:4px; }
+}
+.lang-col-hdr { display:flex; align-items:center; gap:8px; margin-bottom:8px; height:24px;
+  font-size:12px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; }
+.lang-dot { width:8px; height:8px; border-radius:50%; background:var(--border); flex-shrink:0; }
+.lang-dot-fr { background:#0055A4; }
+.lang-dot-es { background:#c8a050; }
+
+/* ── Items */
+.item-row { display:flex; align-items:center; gap:10px; padding:9px 0; border-bottom:1px solid var(--border); }
+.item-row:last-child { border-bottom:none; }
+.item-info { flex:1; min-width:0; }
+.item-name { font-weight:600; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.item-meta { font-size:11px; color:var(--muted); margin-top:2px; }
+.item-url  { font-size:10px; color:var(--muted); font-family:monospace; white-space:nowrap; overflow:hidden;
+  text-overflow:ellipsis; margin-top:2px; }
+
+/* ── Toggle */
+.toggle { position:relative; width:36px; height:20px; flex-shrink:0; }
+.toggle input { opacity:0; width:0; height:0; position:absolute; }
+.tgl-sl { position:absolute; inset:0; background:var(--border); border-radius:20px; cursor:pointer; transition:background .2s; }
+.tgl-sl::before { content:''; position:absolute; width:14px; height:14px; border-radius:50%;
+  left:3px; top:3px; background:var(--muted); transition:transform .2s,background .2s; }
+.toggle input:checked + .tgl-sl { background:var(--green); }
+.toggle input:checked + .tgl-sl::before { transform:translateX(16px); background:#fff; }
+.toggle input:disabled + .tgl-sl { opacity:.5; cursor:default; }
+
+/* ── Boutons */
+.btn { display:inline-flex; align-items:center; gap:5px; padding:6px 12px; border-radius:6px;
+  border:1px solid var(--border); background:var(--surface); color:var(--text);
+  cursor:pointer; font-size:12px; font-weight:600; transition:background .15s,border-color .15s; white-space:nowrap; }
+.btn:hover    { background:var(--surf2); border-color:var(--accent); }
+.btn:disabled { opacity:.4; cursor:not-allowed; }
+.btn-primary  { background:var(--accent); color:#000; border-color:var(--accent); }
+.btn-primary:hover { background:#b8903c; }
+.btn-danger   { color:var(--red); border-color:var(--red); }
+.btn-danger:hover  { background:#2d0f0e; }
+.btn-ghost    { background:transparent; border-color:transparent; color:var(--muted); padding:4px 6px; }
+.btn-ghost:hover { background:var(--surf2); border-color:var(--border); color:var(--text); }
+.btn-sm { padding:4px 9px; font-size:11px; }
+.btn-xs { padding:3px 7px; font-size:10px; }
+
+/* ── Formulaires */
+.form-card { background:var(--surf2); border:1px solid var(--border); border-radius:8px; padding:16px; margin-bottom:14px; }
+.form-card h3 { font-size:12px; font-weight:700; color:var(--accent); margin-bottom:12px; }
+.form-row { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+@media(max-width:500px){ .form-row{ grid-template-columns:1fr; } }
+.fg { display:flex; flex-direction:column; gap:4px; }
+.fg.full { grid-column:1/-1; }
+.fg label { font-size:10px; color:var(--muted); font-weight:700; text-transform:uppercase; letter-spacing:.05em; }
+.fg input, .fg select, .fg textarea {
+  background:var(--bg); border:1px solid var(--border); border-radius:5px;
+  color:var(--text); padding:7px 10px; font-size:13px; outline:none;
+  transition:border-color .15s; font-family:inherit; }
+.fg input:focus,.fg select:focus { border-color:var(--accent); }
+.fg select option { background:var(--bg); }
+.form-actions { grid-column:1/-1; display:flex; gap:8px; align-items:center; padding-top:4px; }
+.form-msg { font-size:11px; }
+
+/* ── Inline edit */
+.edit-panel { display:none; background:var(--surf2); border:1px solid var(--border); border-radius:6px;
+  padding:14px; margin:6px 0 6px 0; }
+.edit-panel.open { display:block; }
+.edit-panel .form-row { margin-top:0; }
+
+/* ── Volume */
+.vol-row { display:flex; align-items:center; gap:10px; margin-bottom:12px; }
+.vol-row:last-of-type { margin-bottom:0; }
+.vol-lbl { width:140px; color:var(--muted); font-size:13px; flex-shrink:0; }
+.vol-row input[type=range] { flex:1; accent-color:var(--accent); cursor:pointer; }
+.vol-val { width:38px; text-align:right; font-weight:700; color:var(--accent); font-size:13px; }
+
+/* ── Progression */
+.prog-row   { display:flex; align-items:center; gap:10px; margin-bottom:10px; }
+.prog-label { width:130px; font-size:12px; color:var(--muted); flex-shrink:0;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.prog-track { flex:1; background:var(--border); border-radius:4px; height:8px; overflow:hidden; }
+.prog-fill  { height:100%; border-radius:4px; transition:width .4s ease; }
+.prog-fill-pod { background:var(--accent); }
+.prog-fill-ep  { background:var(--blue); }
+.prog-nums  { width:44px; text-align:right; font-size:11px; color:var(--muted); flex-shrink:0; }
+.sync-status { font-size:13px; font-weight:600; margin-bottom:14px; }
+
+/* ── Log technique (expert) */
+#log-box { background:#010409; border:1px solid var(--border); border-radius:6px;
+  padding:12px; font-family:'Courier New',monospace; font-size:11px;
+  color:#c9d1d9; height:200px; overflow-y:auto; white-space:pre-wrap; word-break:break-all; }
+.log-ok   { color:var(--green); }
+.log-err  { color:var(--red); }
+.log-warn { color:var(--accent); }
+
+/* ── Expert visibility */
+.expert-only  { display:none !important; }
+body.expert .expert-only  { display:block !important; }
+body.expert .expert-flex  { display:inline-flex !important; }
+.expert-flex  { display:none !important; }
+body.expert .expert-chk   { cursor:pointer !important; }
+body.expert input[disabled] { cursor:not-allowed !important; }
+
+/* ── Max episodes select (expert) */
+.max-sel { background:var(--bg); border:1px solid var(--border); border-radius:4px;
+  color:var(--text); font-size:11px; padding:2px 4px; cursor:pointer; }
 </style>
 </head>
 <body>
-<h2>Hechicero — État batterie</h2>
-<div id="content">
-  <div class="bar"><div id="fill" class="fill"></div></div>
-  <div class="status" id="etat">Chargement…</div>
-  <div class="small" id="detail">—</div>
-  <div id="alert" class="alert" style="display:none;margin-top:8px"></div>
-  <div class="meta" id="meta">Dernière mise à jour : —</div>
-  <div class="refresh"><button id="btnRefresh">Rafraîchir</button></div>
+
+<!-- ── Header ──────────────────────────────────────────────── -->
+<div class="top-bar">
+  <h1>⚙ Hechicero</h1>
+  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+    <div class="mode-switch">
+      <button class="mode-btn active" id="btn-normal" onclick="setMode('normal')">Normal</button>
+      <button class="mode-btn"        id="btn-expert" onclick="setMode('expert')">Expert</button>
+    </div>
+    <a class="btn btn-sm" href="/lecteur/" target="_blank">Lecteur →</a>
+  </div>
 </div>
 
+<!-- ── État système ────────────────────────────────────────── -->
+<section>
+  <div class="sec-hdr"><h2>État du système</h2></div>
+  <div class="sys-grid">
+    <div class="card">
+      <div class="card-title">Batterie</div>
+      <div class="stat"><span class="stat-l">Niveau</span><span class="stat-v" id="bat-pct">…</span></div>
+      <div class="stat"><span class="stat-l">État</span><span class="stat-v" id="bat-state">…</span></div>
+      <div class="stat"><span class="stat-l">Tension</span><span class="stat-v" id="bat-volt">…</span></div>
+      <div class="stat"><span class="stat-l">Courant</span><span class="stat-v" id="bat-amp">…</span></div>
+      <div class="bar-wrap"><div class="bar-fill" id="bat-bar" style="width:0%"></div></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Système</div>
+      <div class="stat"><span class="stat-l">MPD</span><span class="stat-v" id="mpd-state">…</span></div>
+      <div class="stat"><span class="stat-l">Volume MPD</span><span class="stat-v" id="mpd-vol">…</span></div>
+      <div class="stat"><span class="stat-l">Disque libre</span><span class="stat-v" id="disk-free">…</span></div>
+      <div class="stat"><span class="stat-l">Disque utilisé</span><span class="stat-v" id="disk-pct">…</span></div>
+      <div class="stat"><span class="stat-l">Dernière ingestion</span><span class="stat-v" id="last-ingest">…</span></div>
+      <div class="bar-wrap"><div class="bar-fill" id="disk-bar" style="width:0%;background:var(--accent)"></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Volume (expert) ─────────────────────────────────────── -->
+<section class="expert-only">
+  <div class="sec-hdr">
+    <h2>Volume maximum</h2>
+    <button class="btn btn-primary btn-sm" id="btn-save-vol" onclick="saveConfig()">Enregistrer</button>
+  </div>
+  <div class="card">
+    <div class="vol-row">
+      <span class="vol-lbl">🔊 Haut-parleurs</span>
+      <input type="range" id="vol-speakers" min="0" max="100" value="40"
+             oninput="document.getElementById('val-speakers').textContent=this.value+'%'">
+      <span class="vol-val" id="val-speakers">40%</span>
+    </div>
+    <div class="vol-row">
+      <span class="vol-lbl">🎧 Casque</span>
+      <input type="range" id="vol-headphones" min="0" max="100" value="60"
+             oninput="document.getElementById('val-headphones').textContent=this.value+'%'">
+      <span class="vol-val" id="val-headphones">60%</span>
+    </div>
+    <p style="font-size:11px;color:var(--muted);margin-top:10px">100 % dans l'IHM enfant = cette valeur dans MPD.</p>
+  </div>
+</section>
+
+<!-- ── Ajouter (expert) ────────────────────────────────────── -->
+<section class="expert-only">
+  <div class="sec-hdr"><h2>Ajouter</h2></div>
+  <div class="add-grid">
+
+    <!-- Ajouter podcast -->
+    <div class="form-card">
+      <h3>➕ Podcast RSS</h3>
+      <div class="form-row">
+        <div class="fg"><label>Titre *</label><input type="text" id="pod-label" placeholder="Les Odyssées"></div>
+        <div class="fg">
+          <label>Langue</label>
+          <select id="pod-lang"><option value="fr">🇫🇷 Français</option><option value="es">🇪🇸 Español</option></select>
+        </div>
+        <div class="fg full"><label>URL RSS *</label><input type="url" id="pod-rss" placeholder="https://…"></div>
+        <div class="fg">
+          <label>Épisodes max</label>
+          <select id="pod-max">
+            <option value="5">5</option>
+            <option value="10" selected>10</option>
+            <option value="20">20</option>
+            <option value="50">50</option>
+            <option value="0">∞ Tous</option>
+          </select>
+        </div>
+        <div class="form-actions">
+          <button class="btn btn-primary btn-sm" onclick="addPodcast()">Ajouter</button>
+          <span class="form-msg" id="pod-msg"></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Ajouter webradio -->
+    <div class="form-card">
+      <h3>➕ Webradio</h3>
+      <div class="form-row">
+        <div class="fg"><label>Nom *</label><input type="text" id="rad-name" placeholder="Mon Petit France Inter"></div>
+        <div class="fg">
+          <label>Langue</label>
+          <select id="rad-lang"><option value="fr">🇫🇷 Français</option><option value="es">🇪🇸 Español</option></select>
+        </div>
+        <div class="fg full"><label>URL du flux (stream) *</label><input type="url" id="rad-url" placeholder="https://icecast.…/flux.mp3"></div>
+        <div class="fg"><label>Description</label><input type="text" id="rad-desc" placeholder="Généraliste · Radio France"></div>
+        <div class="fg"><label>URL image (optionnel)</label><input type="url" id="rad-image" placeholder="https://…/cover.jpg"></div>
+        <div class="form-actions">
+          <button class="btn btn-primary btn-sm" onclick="addRadio()">Ajouter</button>
+          <span class="form-msg" id="rad-msg"></span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ── Podcasts ────────────────────────────────────────────── -->
+<section>
+  <div class="sec-hdr">
+    <h2>Podcasts <span class="sec-count" id="pod-count"></span></h2>
+  </div>
+  <div class="lang-cols">
+    <div>
+      <div class="lang-col-hdr"><span class="lang-dot lang-dot-fr"></span> Français</div>
+      <div class="card" id="pod-fr"><p style="color:var(--muted);font-size:13px">Chargement…</p></div>
+    </div>
+    <div>
+      <div class="lang-col-hdr"><span class="lang-dot lang-dot-es"></span> Español</div>
+      <div class="card" id="pod-es"><p style="color:var(--muted);font-size:13px">Chargement…</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Webradios ───────────────────────────────────────────── -->
+<section>
+  <div class="sec-hdr">
+    <h2>Webradios <span class="sec-count" id="radio-count"></span></h2>
+  </div>
+  <div class="lang-cols">
+    <div>
+      <div class="lang-col-hdr"><span class="lang-dot lang-dot-fr"></span> Français</div>
+      <div class="card" id="radio-fr"><p style="color:var(--muted);font-size:13px">Chargement…</p></div>
+    </div>
+    <div>
+      <div class="lang-col-hdr"><span class="lang-dot lang-dot-es"></span> Español</div>
+      <div class="card" id="radio-es"><p style="color:var(--muted);font-size:13px">Chargement…</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Synchronisation ──────────────────────────────────────── -->
+<section>
+  <div class="sec-hdr">
+    <h2>Synchronisation des podcasts</h2>
+    <button class="btn btn-primary btn-sm" id="btn-ingest" onclick="runIngest()">▶ Mettre à jour</button>
+  </div>
+
+  <!-- État repos : message simple -->
+  <div id="sync-idle" style="font-size:12px;color:var(--muted);margin-bottom:8px">
+    Cliquez sur « Mettre à jour » pour télécharger les derniers épisodes.
+  </div>
+
+  <!-- Progression (visible pendant et après la synchro) -->
+  <div id="sync-progress" style="display:none" class="card">
+    <div class="sync-status" id="sync-status-text">Démarrage…</div>
+
+    <div class="prog-row">
+      <div class="prog-label">Podcasts</div>
+      <div class="prog-track"><div class="prog-fill prog-fill-pod" id="prog-pod-fill" style="width:0%"></div></div>
+      <div class="prog-nums" id="prog-pod-nums">0 / 0</div>
+    </div>
+
+    <div class="prog-row">
+      <div class="prog-label" id="prog-ep-label">Épisodes</div>
+      <div class="prog-track"><div class="prog-fill prog-fill-ep" id="prog-ep-fill" style="width:0%"></div></div>
+      <div class="prog-nums" id="prog-ep-nums">0 / 0</div>
+    </div>
+
+    <!-- Logs techniques, expert seulement -->
+    <details class="expert-only" style="margin-top:14px">
+      <summary style="cursor:pointer;font-size:11px;color:var(--muted);user-select:none;list-style:none">
+        ▸ Logs techniques
+      </summary>
+      <div id="log-box" style="margin-top:8px">…</div>
+    </details>
+  </div>
+</section>
+
 <script>
-const STATUS_URL = '/status.json';
-async function refresh(){
-  try{
-    const r = await fetch(STATUS_URL + '?_=' + Date.now());
-    if(!r.ok) throw new Error('no status');
-    const s = await r.json();
-    const pct = Number.isFinite(s.percent) ? s.percent : 0;
-    document.getElementById('fill').style.width = pct + '%';
-    document.getElementById('etat').textContent = (s.state||'—') + ' (' + (Number.isFinite(s.percent)? s.percent + '%' : '?') + ')';
-    document.getElementById('detail').textContent = 'Courant: ' + (s.current_ma!==undefined? s.current_ma + ' mA' : '?') + ' • Tension: ' + (s.voltage_v!==undefined? s.voltage_v + ' V' : '?');
-    document.getElementById('meta').textContent = 'Dernière mise à jour : ' + (s.ts? new Date(s.ts*1000).toLocaleString() : '—');
-    if(s.alert){
-      const a = document.getElementById('alert');
-      a.style.display='block';
-      a.textContent = s.alert;
-    } else {
-      document.getElementById('alert').style.display='none';
-    }
-  }catch(e){
-    document.getElementById('etat').textContent = 'Données indisponibles';
-    document.getElementById('detail').textContent = '';
-    document.getElementById('meta').textContent = '';
-    document.getElementById('alert').style.display='none';
+// ── API ────────────────────────────────────────────────────
+const api = (params, body) => {
+  const url = 'index.php?' + new URLSearchParams(params);
+  if (body) return fetch(url, {method:'POST', body:new URLSearchParams(body)}).then(r=>r.json());
+  return fetch(url).then(r=>r.json());
+};
+
+const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+const fmtTs = ts => ts ? new Date(ts*1000).toLocaleDateString('fr-FR') + ' ' + new Date(ts*1000).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}) : '—';
+const maxLabel = m => m >= 999 ? '∞' : m;
+
+// ── Mode ───────────────────────────────────────────────────
+let currentMode = 'normal';
+function setMode(mode) {
+  currentMode = mode;
+  document.body.className = mode === 'expert' ? 'expert' : '';
+  document.getElementById('btn-normal').classList.toggle('active', mode === 'normal');
+  document.getElementById('btn-expert').classList.toggle('active', mode === 'expert');
+  localStorage.setItem('hechicero_mode', mode);
+  // Refresh les listes pour activer/désactiver les contrôles
+  loadPodcasts();
+  loadRadios();
+}
+
+// ── Statut ────────────────────────────────────────────────
+async function loadStatus() {
+  const s = await api({action:'status'}).catch(()=>null);
+  if (!s) return;
+  const b = s.battery, pct = b.percent ?? 0;
+  document.getElementById('bat-pct').textContent   = b.percent  !== null ? b.percent  + ' %'  : '—';
+  document.getElementById('bat-state').textContent = b.state    ?? '—';
+  document.getElementById('bat-volt').textContent  = b.voltage_v  !== null ? b.voltage_v  + ' V'  : '—';
+  document.getElementById('bat-amp').textContent   = b.current_ma !== null ? b.current_ma + ' mA' : '—';
+  const bb = document.getElementById('bat-bar');
+  bb.style.width = pct + '%';
+  bb.style.background = pct > 50 ? 'var(--green)' : pct > 20 ? 'var(--accent)' : 'var(--red)';
+
+  const ms = document.getElementById('mpd-state');
+  ms.textContent = s.mpd.state;
+  ms.className   = 'stat-v ' + (s.mpd.state==='play'?'ok':s.mpd.state==='pause'?'warn':'');
+  document.getElementById('mpd-vol').textContent   = s.mpd.volume !== '?' ? s.mpd.volume + ' %' : '—';
+  document.getElementById('disk-free').textContent = s.disk.free_gb + ' Go / ' + s.disk.total_gb + ' Go';
+  document.getElementById('disk-pct').textContent  = s.disk.used_pct + ' %';
+  const db = document.getElementById('disk-bar');
+  db.style.width      = s.disk.used_pct + '%';
+  db.style.background = s.disk.used_pct>85?'var(--red)':s.disk.used_pct>65?'var(--accent)':'var(--green)';
+  document.getElementById('last-ingest').textContent = fmtTs(s.last_ingest_ts);
+
+  // Bouton synchro : verrouillé si déjà en cours
+  if (s.ingest_running) {
+    document.getElementById('btn-ingest').disabled    = true;
+    document.getElementById('btn-ingest').textContent = '⏳ En cours…';
+    document.getElementById('sync-idle').style.display     = 'none';
+    document.getElementById('sync-progress').style.display = 'block';
   }
 }
-document.getElementById('btnRefresh').addEventListener('click', refresh);
-refresh();
-setInterval(refresh, 10000);
+
+// ── Config volume ─────────────────────────────────────────
+async function loadConfig() {
+  const c = await api({action:'get_config'}).catch(()=>({}));
+  const sv = c.volume?.speakers_max   ?? 40;
+  const hv = c.volume?.headphones_max ?? 60;
+  document.getElementById('vol-speakers').value              = sv;
+  document.getElementById('val-speakers').textContent        = sv + '%';
+  document.getElementById('vol-headphones').value            = hv;
+  document.getElementById('val-headphones').textContent      = hv + '%';
+}
+async function saveConfig() {
+  const r   = await api({action:'save_config', speakers_max:document.getElementById('vol-speakers').value, headphones_max:document.getElementById('vol-headphones').value});
+  const btn = document.getElementById('btn-save-vol');
+  btn.textContent = r.ok ? '✓ Enregistré' : '✗ Erreur';
+  setTimeout(()=>btn.textContent='Enregistrer', 2000);
+}
+
+// ── Copier dans le presse-papiers ─────────────────────────
+async function copyUrl(url) {
+  try { await navigator.clipboard.writeText(url); } catch { prompt('Copiez l\'URL :', url); }
+}
+
+// ── Podcasts ──────────────────────────────────────────────
+let _podcasts = [];
+
+async function loadPodcasts() {
+  _podcasts = await api({action:'get_podcasts'}).catch(()=>[]);
+  const fr  = _podcasts.filter(p=>(p.language||'fr')==='fr');
+  const es  = _podcasts.filter(p=>(p.language||'fr')==='es');
+  document.getElementById('pod-count').textContent = '· ' + _podcasts.length + '  (' + fr.length + ' FR · ' + es.length + ' ES)';
+  renderPodcastCol('pod-fr', fr);
+  renderPodcastCol('pod-es', es);
+}
+
+function renderPodcastCol(containerId, list) {
+  const expert = currentMode === 'expert';
+  document.getElementById(containerId).innerHTML = list.length ? list.map(p => {
+    const eps = p.episode_count || 0;
+    const en  = p.enabled !== false;
+    const maxOpts = [5,10,20,50].map(v=>`<option value="${v}" ${p.max_episodes==v?'selected':''}>${v}</option>`).join('');
+    return `
+    <div class="item-row" id="row-${p.id}">
+      <label class="toggle">
+        <input type="checkbox" ${en?'checked':''} ${expert?'':'disabled'}
+               onchange="togglePodcast('${p.id}',this.checked)">
+        <span class="tgl-sl"></span>
+      </label>
+      <div class="item-info">
+        <div class="item-name">${esc(p.label)}</div>
+        <div class="item-meta">
+          ${eps} épisode${eps!==1?'s':''} ·
+          ${expert
+            ? `<select class="max-sel" title="Épisodes max" onchange="setMaxEp('${p.id}',this.value)">${maxOpts}<option value="0" ${p.max_episodes>=999?'selected':''}>∞</option></select>`
+            : `max ${maxLabel(p.max_episodes)}`
+          }
+        </div>
+        ${expert ? `<div class="item-url" title="${esc(p.rss)}">${esc(p.rss)}</div>` : ''}
+      </div>
+      ${expert ? `
+        <button class="btn btn-ghost btn-xs" title="Copier le flux RSS" onclick="copyUrl('${esc(p.rss)}')">📋</button>
+        <button class="btn btn-ghost btn-xs" onclick="toggleEditPodcast('${p.id}')">✏️</button>
+        <button class="btn btn-danger btn-xs" onclick="deletePodcast('${p.id}','${esc(p.label)}')">🗑</button>
+      ` : ''}
+    </div>
+    ${expert ? `
+    <div class="edit-panel" id="edit-pod-${p.id}">
+      <div class="form-row">
+        <div class="fg"><label>Titre</label><input type="text" id="ep-label-${p.id}" value="${esc(p.label)}"></div>
+        <div class="fg"><label>Langue</label>
+          <select id="ep-lang-${p.id}">
+            <option value="fr" ${(p.language||'fr')==='fr'?'selected':''}>🇫🇷 Français</option>
+            <option value="es" ${(p.language||'fr')==='es'?'selected':''}>🇪🇸 Español</option>
+          </select>
+        </div>
+        <div class="fg full"><label>URL RSS</label><input type="url" id="ep-rss-${p.id}" value="${esc(p.rss)}"></div>
+        <div class="form-actions">
+          <button class="btn btn-primary btn-sm" onclick="savePodcast('${p.id}')">Enregistrer</button>
+          <button class="btn btn-sm" onclick="toggleEditPodcast('${p.id}')">Annuler</button>
+          <span class="form-msg" id="ep-msg-${p.id}"></span>
+        </div>
+      </div>
+    </div>` : ''}`;
+  }).join('') : `<p style="color:var(--muted);font-size:13px">Aucun podcast</p>`;
+}
+
+function toggleEditPodcast(id) { document.getElementById('edit-pod-' + id)?.classList.toggle('open'); }
+
+async function togglePodcast(id, enabled) { await api({action:'toggle_podcast', id, enabled:enabled?'1':'0'}); }
+
+async function setMaxEp(id, val) {
+  await api({action:'edit_podcast', id}, {max_episodes: val});
+}
+
+async function savePodcast(id) {
+  const label = document.getElementById('ep-label-' + id)?.value;
+  const rss   = document.getElementById('ep-rss-'   + id)?.value;
+  const lang  = document.getElementById('ep-lang-'  + id)?.value;
+  const msg   = document.getElementById('ep-msg-'   + id);
+  const r = await api({action:'edit_podcast', id}, {label, rss, lang});
+  if (r.ok) { msg.textContent='✓ Enregistré'; msg.style.color='var(--green)'; setTimeout(()=>loadPodcasts(), 800); }
+  else { msg.textContent='✗ Erreur'; msg.style.color='var(--red)'; }
+}
+
+async function addPodcast() {
+  const label = document.getElementById('pod-label').value.trim();
+  const rss   = document.getElementById('pod-rss').value.trim();
+  const lang  = document.getElementById('pod-lang').value;
+  const max   = document.getElementById('pod-max').value;
+  const msg   = document.getElementById('pod-msg');
+  if (!label || !rss) { msg.textContent='Titre et RSS requis'; msg.style.color='var(--red)'; return; }
+
+  // ── Validation du flux RSS avant ajout
+  msg.textContent='⏳ Vérification du flux…'; msg.style.color='var(--muted)';
+  const chk = await api({action:'check_url', url:rss, type:'rss'}).catch(()=>({ok:false,status:'error',msg:'Erreur réseau'}));
+  if (chk.status === 'error') {
+    msg.textContent = '✗ ' + (chk.msg || 'Flux inaccessible'); msg.style.color='var(--red)';
+    return;
+  }
+  if (chk.status === 'warn') {
+    msg.textContent = chk.msg + ' — Continuer quand même ?'; msg.style.color='var(--accent)';
+    if (!confirm(chk.msg + '\n\nAjouter quand même ?')) return;
+  }
+
+  msg.textContent='…'; msg.style.color='var(--muted)';
+  const r = await api({action:'add_podcast'}, {label, rss, lang, max_episodes:max});
+  if (r.ok) {
+    msg.textContent='✓ Ajouté (id: '+r.id+')'; msg.style.color='var(--green)';
+    document.getElementById('pod-label').value = '';
+    document.getElementById('pod-rss').value   = '';
+    loadPodcasts();
+  } else { msg.textContent=r.msg||'Erreur'; msg.style.color='var(--red)'; }
+}
+
+async function deletePodcast(id, label) {
+  if (!confirm('Supprimer "'+label+'" ? (les fichiers audio ne sont pas supprimés)')) return;
+  if ((await api({action:'delete_podcast', id})).ok) loadPodcasts();
+}
+
+// ── Webradios ─────────────────────────────────────────────
+async function loadRadios() {
+  const radios = await api({action:'get_radios'}).catch(()=>[]);
+  const fr = radios.filter(r=>r.lang==='fr');
+  const es = radios.filter(r=>r.lang==='es');
+  document.getElementById('radio-count').textContent = '· ' + radios.length + ' (' + fr.length + ' FR · ' + es.length + ' ES)';
+  renderRadioCol('radio-fr', fr);
+  renderRadioCol('radio-es', es);
+}
+
+function renderRadioCol(containerId, list) {
+  const expert = currentMode === 'expert';
+  document.getElementById(containerId).innerHTML = list.length ? list.map(r => `
+    <div class="item-row" id="row-rad-${r.id}">
+      <div class="item-info">
+        <div class="item-name">${esc(r.name)}</div>
+        <div class="item-meta">${esc(r.desc||'')}</div>
+        ${expert ? `<div class="item-url" title="${esc(r.url)}">${esc(r.url)}</div>` : ''}
+      </div>
+      ${expert ? `
+        <button class="btn btn-ghost btn-xs" title="Copier le flux" onclick="copyUrl('${esc(r.url)}')">📋</button>
+        <button class="btn btn-ghost btn-xs" onclick="toggleEditRadio('${r.id}')">✏️</button>
+        <button class="btn btn-danger btn-xs" onclick="deleteRadio('${r.id}','${esc(r.name)}')">🗑</button>
+      ` : ''}
+    </div>
+    ${expert ? `
+    <div class="edit-panel" id="edit-rad-${r.id}">
+      <div class="form-row">
+        <div class="fg"><label>Nom</label><input type="text" id="er-name-${r.id}" value="${esc(r.name)}"></div>
+        <div class="fg"><label>Langue</label>
+          <select id="er-lang-${r.id}">
+            <option value="fr" ${r.lang==='fr'?'selected':''}>🇫🇷 Français</option>
+            <option value="es" ${r.lang==='es'?'selected':''}>🇪🇸 Español</option>
+          </select>
+        </div>
+        <div class="fg full"><label>URL du flux</label><input type="url" id="er-url-${r.id}" value="${esc(r.url)}"></div>
+        <div class="fg"><label>Description</label><input type="text" id="er-desc-${r.id}" value="${esc(r.desc||'')}"></div>
+        <div class="fg"><label>URL image (sera téléchargée sur le Pi)</label><input type="url" id="er-img-${r.id}" value="${esc(r.image||'')}" placeholder="https://…/cover.jpg"></div>
+        <div class="form-actions">
+          <button class="btn btn-primary btn-sm" onclick="saveRadio('${r.id}')">Enregistrer</button>
+          <button class="btn btn-sm" onclick="toggleEditRadio('${r.id}')">Annuler</button>
+          <span class="form-msg" id="er-msg-${r.id}"></span>
+        </div>
+      </div>
+    </div>` : ''}
+  `).join('') : `<p style="color:var(--muted);font-size:13px">Aucune webradio</p>`;
+}
+
+function toggleEditRadio(id) { document.getElementById('edit-rad-' + id)?.classList.toggle('open'); }
+
+async function saveRadio(id) {
+  const name  = document.getElementById('er-name-' + id)?.value;
+  const url   = document.getElementById('er-url-'  + id)?.value;
+  const desc  = document.getElementById('er-desc-' + id)?.value;
+  const lang  = document.getElementById('er-lang-' + id)?.value;
+  const image = document.getElementById('er-img-'  + id)?.value;
+  const msg   = document.getElementById('er-msg-'  + id);
+  // Prévenir si l'image est une URL distante
+  if (image && image.startsWith('http')) {
+    msg.textContent = '⏳ Téléchargement de l\'image…'; msg.style.color = 'var(--muted)';
+  }
+  const r = await api({action:'edit_radio', id}, {name, url, desc, lang, image});
+  if (r.ok) {
+    msg.textContent = '✓ ' + (r.msg || 'Enregistré');
+    msg.style.color = 'var(--green)';
+    setTimeout(()=>loadRadios(), 1200);
+  } else {
+    msg.textContent = '✗ ' + (r.msg || 'Erreur inconnue');
+    msg.style.color = 'var(--red)';
+  }
+}
+
+async function addRadio() {
+  const name  = document.getElementById('rad-name').value.trim();
+  const url   = document.getElementById('rad-url').value.trim();
+  const desc  = document.getElementById('rad-desc').value.trim();
+  const lang  = document.getElementById('rad-lang').value;
+  const image = document.getElementById('rad-image').value.trim();
+  const msg   = document.getElementById('rad-msg');
+  if (!name || !url) { msg.textContent='Nom et URL requis'; msg.style.color='var(--red)'; return; }
+
+  // ── Validation du flux stream avant ajout
+  msg.textContent='⏳ Vérification du flux…'; msg.style.color='var(--muted)';
+  const chk = await api({action:'check_url', url, type:'stream'}).catch(()=>({ok:false,status:'error',msg:'Erreur réseau'}));
+  if (chk.status === 'error') {
+    msg.textContent = '✗ ' + (chk.msg || 'Flux inaccessible'); msg.style.color='var(--red)';
+    return;
+  }
+  if (chk.status === 'warn') {
+    msg.textContent = chk.msg; msg.style.color='var(--accent)';
+    if (!confirm(chk.msg + '\n\nAjouter quand même ?')) return;
+  }
+
+  msg.textContent='…'; msg.style.color='var(--muted)';
+  const r = await api({action:'add_radio'}, {name, url, desc, lang, image});
+  if (r.ok) {
+    msg.textContent='✓ Ajouté'; msg.style.color='var(--green)';
+    ['rad-name','rad-url','rad-desc','rad-image'].forEach(id=>document.getElementById(id).value='');
+    loadRadios();
+  } else { msg.textContent=r.msg||'Erreur'; msg.style.color='var(--red)'; }
+}
+
+async function deleteRadio(id, name) {
+  if (!confirm('Supprimer "'+name+'" ?')) return;
+  if ((await api({action:'delete_radio', id})).ok) loadRadios();
+}
+
+// ── Synchronisation ────────────────────────────────────────
+async function runIngest() {
+  const r = await api({action:'run_ingest'});
+  if (!r.ok) { alert(r.msg || 'Impossible de démarrer la synchronisation'); return; }
+  document.getElementById('btn-ingest').disabled    = true;
+  document.getElementById('btn-ingest').textContent = '⏳ En cours…';
+  document.getElementById('sync-idle').style.display    = 'none';
+  document.getElementById('sync-progress').style.display = 'block';
+  document.getElementById('sync-status-text').textContent = 'Démarrage…';
+  document.getElementById('sync-status-text').style.color = 'var(--text)';
+  pollProgress();
+}
+
+async function pollProgress() {
+  const p = await api({action:'get_progress'}).catch(()=>null);
+  if (p && p.status !== 'idle') {
+    updateProgressUI(p);
+    if (p.running || p.status === 'running') {
+      if (currentMode === 'expert') pollLog();
+      setTimeout(pollProgress, 2000);
+      return;
+    }
+    // Terminé
+    document.getElementById('btn-ingest').disabled    = false;
+    document.getElementById('btn-ingest').textContent = '▶ Mettre à jour';
+    loadStatus(); loadPodcasts();
+    if (currentMode === 'expert') pollLog();
+  }
+}
+
+function updateProgressUI(p) {
+  const statusEl = document.getElementById('sync-status-text');
+  const errCount = (p.errors || []).length;
+
+  if (p.status === 'running') {
+    statusEl.textContent = `📡 ${p.current_label || '…'}`;
+    statusEl.style.color = 'var(--text)';
+  } else if (p.status === 'done') {
+    if (errCount > 0) {
+      statusEl.textContent = `✓ Terminé — ${p.done_podcasts} podcasts mis à jour · ${errCount} épisode${errCount>1?'s':''} non téléchargé${errCount>1?'s':''}`;
+      statusEl.style.color = 'var(--accent)';
+    } else {
+      statusEl.textContent = `✓ ${p.done_podcasts} podcast${p.done_podcasts>1?'s':''} synchronisé${p.done_podcasts>1?'s':''}`;
+      statusEl.style.color = 'var(--green)';
+    }
+  } else if (p.status === 'error') {
+    statusEl.textContent = '✗ La synchronisation a rencontré un problème inattendu';
+    statusEl.style.color = 'var(--red)';
+  }
+
+  // Barre podcasts
+  const podPct = p.total_podcasts > 0 ? Math.round(p.done_podcasts / p.total_podcasts * 100) : 0;
+  document.getElementById('prog-pod-fill').style.width = podPct + '%';
+  document.getElementById('prog-pod-nums').textContent = `${p.done_podcasts} / ${p.total_podcasts}`;
+
+  // Barre épisodes
+  const epPct = p.total_episodes > 0 ? Math.round(p.done_episodes / p.total_episodes * 100) : 0;
+  document.getElementById('prog-ep-fill').style.width  = epPct + '%';
+  document.getElementById('prog-ep-nums').textContent  = `${p.done_episodes} / ${p.total_episodes}`;
+  document.getElementById('prog-ep-label').textContent = p.current_label && p.status==='running' ? p.current_label : 'Épisodes';
+}
+
+function colorLine(line) {
+  const e = document.createElement('span');
+  e.textContent = line;
+  if (/[Ee]rror|fail|ERR|PermissionError/.test(line)) e.className='log-err';
+  else if (/[Ww]arn/.test(line))                      e.className='log-warn';
+  else if (/Downloaded|Terminé|OK|Already/.test(line)) e.className='log-ok';
+  return e.outerHTML;
+}
+
+async function pollLog() {
+  const r   = await api({action:'ingest_log'}).catch(()=>({lines:[],running:false}));
+  const box = document.getElementById('log-box');
+  if (r.lines?.length) { box.innerHTML = r.lines.map(colorLine).join('\n'); box.scrollTop = box.scrollHeight; }
+}
+
+// ── Init ──────────────────────────────────────────────────
+setMode(localStorage.getItem('hechicero_mode') || 'normal');
+api({action:'ensure_radio_images'}).catch(()=>{});  // télécharge les images radio manquantes
+loadStatus();
+loadConfig();
+loadPodcasts();
+loadRadios();
+// Si une synchro était en cours (ex: rechargement de page), afficher la progression
+api({action:'get_progress'}).then(p => {
+  if (p && p.status !== 'idle') {
+    document.getElementById('sync-idle').style.display     = 'none';
+    document.getElementById('sync-progress').style.display = 'block';
+    updateProgressUI(p);
+    if (p.running || p.status === 'running') pollProgress();
+  }
+}).catch(()=>{});
+setInterval(loadStatus, 15000);
 </script>
 </body>
 </html>
