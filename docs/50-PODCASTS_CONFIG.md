@@ -31,14 +31,30 @@ Exemple minimal :
   "podcasts": [
     {
       "id": "les_odyssees",
-      "name": "Les Odyssées",
+      "label": "Les Odyssées",
       "rss": "https://...",
+      "language": "fr",
+      "enabled": true,
+      "image": "images/les_odyssees.jpg",
+      "max_episodes": 20
+    }
+  ],
+  "radios": [
+    {
+      "id": "franceinter",
+      "name": "Mon Petit France Inter",
+      "desc": "Généraliste · Radio France",
       "lang": "fr",
-      "enabled": true
+      "url": "https://icecast.radiofrance.fr/monpetitfranceinter-midfi.mp3",
+      "image": "images/radio/franceinter.jpg",
+      "image_url": "https://..."
     }
   ]
 }
 ```
+
+> ⚠️ Les noms de champs exacts sont `label` (pas `name`) et `language` (pas `lang`) pour les podcasts.  
+> Pour les radios, les champs sont `name`, `lang`, `url`, `image`, `image_url`.
 
 ---
 
@@ -51,21 +67,24 @@ Règles :
 - pas d’accents  
 - pas d’espaces  
 - pas de majuscules  
-- stable dans le temps  
+- stable dans le temps (détermine le nom du dossier sur disque)
 
 Exemples valides :
-- `les_odyssees`
+- `lesodyssees`
 - `bestioles`
-- `professeur_caillou`
+- `professeurcaillou`
 
-### 🔹 `name`
-Nom lisible du podcast (affiché dans l’IHM enfant).
+> ⚠️ L’ID est normalisé par `slugify()` dans l’interface admin (suppression des caractères non alphanumériques).  
+> Ne jamais changer l’ID d’un podcast après création : les fichiers audio seraient orphelins.
+
+### 🔹 `label`
+Nom lisible du podcast (affiché dans l’IHM et dans l’admin).
 
 ### 🔹 `rss`
 URL du flux RSS.  
 Doit être une URL valide, accessible, et stable.
 
-### 🔹 `lang`
+### 🔹 `language`
 Langue du podcast.  
 Valeurs recommandées :
 - `fr`
@@ -157,23 +176,40 @@ Aucun comportement automatique n’est encore implémenté côté lecteur.
 {
   "podcasts": [
     {
-      "id": "les_odyssees",
-      "name": "Les Odyssées",
-      "rss": "https://...",
-      "lang": "fr",
+      "id": "lesodyssees",
+      "label": "Les Odyssées",
+      "rss": "https://radio-france-rss.aerion.workers.dev/rss/<uuid>",
+      "language": "fr",
       "enabled": true,
+      "image": "images/lesodyssees.jpg",
       "max_episodes": 20
     },
     {
       "id": "bestioles",
-      "name": "Bestioles",
-      "rss": "https://...",
+      "label": "Bestioles",
+      "rss": "https://radio-france-rss.aerion.workers.dev/rss/<uuid>",
+      "language": "fr",
+      "enabled": false,
+      "image": "images/bestioles.jpg",
+      "max_episodes": 10
+    }
+  ],
+  "radios": [
+    {
+      "id": "franceinter",
+      "name": "Mon Petit France Inter",
+      "desc": "Généraliste · Radio France",
       "lang": "fr",
-      "enabled": false
+      "url": "https://icecast.radiofrance.fr/monpetitfranceinter-midfi.mp3",
+      "image": "images/radio/franceinter.jpg",
+      "image_url": "https://upload.wikimedia.org/..."
     }
   ]
 }
 ```
+
+> La clé `radios` est gérée exclusivement par l'interface admin PHP.  
+> Ne pas la modifier manuellement sauf en cas de maintenance.
 
 ---
 

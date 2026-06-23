@@ -59,10 +59,16 @@
       - ✅ Erreurs résumées proprement (pas de log brut dans l'IHM)
       - ✅ Logs techniques en accordéon mode expert uniquement
 
+- [x] TICKET-049 — web — Images podcasts non affichées (2026-06-23)
+      - ✅ `cover.jpg` téléchargée automatiquement depuis le flux RSS à chaque ingest
+      - ✅ `writer.py` utilise `/podcasts/{id}/cover.jpg` dans `data.json`
+      - Fallback : `images/{id}.jpg` si cover absente
+
 - [x] TICKET-064 — backend — Cover podcast téléchargée automatiquement à l'ingest (2026-06-23)
       - ✅ `models.py` : champ `cover_image` dans `PodcastMeta`
       - ✅ `ingest.py` : téléchargement `cover.jpg` depuis l'image RSS épisode 1
       - ✅ `writer.py` : `cover_web` injecté dans `data.json` à la place de `images/{id}.jpg`
+      - ✅ `writer.py` : radios lues depuis `podcasts.json` (source de vérité unique)
 
 - [x] TICKET-065 — infra — Permissions Pi + cron nocturne (2026-06-23)
       - ✅ `sudo chown -R thomas:www-data` + `chmod 775` sur podcasts/, web/lecteur/, data/, logs/
@@ -117,6 +123,12 @@
       - Hauteur min 80px par carte, surface entière cliquable
 - [x] TICKET-060 — UX — Webradio en premier dans la grille de contenu (2026-06-22)
       - ✅ `grid.insertBefore(w, grid.firstChild)` dans `renderPodcasts()`
+- [ ] TICKET-068 — content — Typo ID podcast `bestiolesossiles` (manque le 'f')
+      - ID actuel dans `podcasts.json` : `bestiolesossiles`
+      - Label : "Les Bestioles fossiles"
+      - Dossier sur disque créé avec cet ID → ne pas renommer sans migration manuelle des fichiers audio
+      - À corriger lors d'une prochaine maintenance (renommer dossier + mettre à jour podcasts.json)
+
 - [ ] TICKET-061 — content — Saison 2 Professeur Caillou introuvable
       - RSS actuel (`podcast_9cfc0cf4`) : 10 épisodes, saison 2 absente
       - Épisodes saison 2 (mai 2025) : L'or, lithium, silicium, néodyme, cuivre, indium

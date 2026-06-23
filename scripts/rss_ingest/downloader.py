@@ -2,7 +2,7 @@ import requests
 import subprocess
 import urllib3
 from pathlib import Path
-from utils import log, md5sum
+from utils import log
 import time
 
 CHUNK_SIZE = 256 * 1024  # 256 KB — évite de charger l'entier MP3 en RAM

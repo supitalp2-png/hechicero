@@ -29,16 +29,17 @@ def update_data_json(all_podcasts):
     path = Path("/home/thomas/hechicero/web/lecteur/data.json")
     podcasts_cfg_path = Path("/home/thomas/hechicero/data/podcasts.json")
 
-    # Préserver les radios depuis data.json existant (géré par l'interface admin)
+    # Les radios sont gérées par l'interface admin dans podcasts.json.
+    # On les relit à chaque ingest pour répercuter les ajouts/suppressions de l'admin.
     try:
-        if path.exists():
-            with open(path) as f:
-                existing = json.load(f)
-            radios = existing.get("radios", [])
+        if podcasts_cfg_path.exists():
+            with open(podcasts_cfg_path) as f:
+                cfg = json.load(f)
+            radios = cfg.get("radios", [])
         else:
             radios = []
     except (json.JSONDecodeError, OSError):
-        log("WARNING: data.json illisible, radios préservées à vide.")
+        log("WARNING: podcasts.json illisible, radios non incluses dans data.json.")
         radios = []
 
     data = {"radios": radios, "podcasts": []}

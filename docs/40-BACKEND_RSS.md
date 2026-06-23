@@ -25,12 +25,13 @@ Structure recommandée :
 scripts/
 ├── get_status.py          # monitoring batterie
 └── rss_ingest/
-      ├── ingest.py
-      ├── parser.py
-      ├── downloader.py
-      ├── writer.py
-      ├── utils.py
-      └── models.py
+      ├── ingest.py        # orchestrateur principal
+      ├── parser.py        # parsing RSS (feedparser)
+      ├── downloader.py    # téléchargement audio + images
+      ├── writer.py        # génération data.json
+      ├── progress.py      # suivi temps réel (→ /tmp/hechicero_progress.json)
+      ├── utils.py         # log, atomic_write_json
+      └── models.py        # dataclasses Episode, PodcastConfig, PodcastMeta
 ```
 
 Chaque fichier a un rôle clair et isolé.
@@ -74,7 +75,8 @@ Structure :
 ├── audio/
 │     └── *.mp3
 ├── images/
-│     └── cover.jpg
+│     └── <ep_id>.jpg     # jaquette par épisode
+├── cover.jpg              # couverture du podcast (téléchargée depuis le RSS)
 └── meta.json
 ```
 
@@ -208,8 +210,12 @@ cat ~/hechicero/web/lecteur/data.json
 ---
 
 ## 12. Évolutions prévues
-- gestion multi-podcasts (FR/ES)
-- quotas stockage (`max_episodes`)
-- interface admin pour configurer les flux
-- logs détaillés
-- gestion avancée des erreurs
+- gestion des doublons de titres dans `normalize_id()` (risque de collision)
+- durées des épisodes via `ffprobe` pour les flux sans `itunes:duration` (TICKET-059)
+
+## 13. Notes d'architecture
+- `progress.py` écrit `/tmp/hechicero_progress.json` en temps réel
+- L'admin PHP lit ce fichier via `?action=get_progress` toutes les 2 secondes
+- Les radios sont gérées dans `data/podcasts.json` (clé `radios`) par l'admin PHP
+- `writer.py` lit les radios depuis `podcasts.json` et les injecte dans `data.json` à chaque ingest
+- La cover podcast (`cover.jpg`) est téléchargée depuis l'image du premier épisode du flux RSS
