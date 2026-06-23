@@ -41,8 +41,8 @@ Objectifs :
 
 ### 🔹 Liste des contenus
 - grandes jaquettes (≥ 300×300 px)
-- navigation par flèches
-- appui sur jaquette = agrandissement + ouverture
+- navigation par **menu** : tap sur la jaquette = ouverture directe ✅ validé persona enfant
+- flèches directionnelles (haut/bas/gauche/droite) : **non retenu** — le menu tactile suffit
 
 ### 🔹 Écran de lecture
 - grande image centrale
