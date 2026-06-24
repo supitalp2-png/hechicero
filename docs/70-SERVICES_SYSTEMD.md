@@ -15,7 +15,7 @@ Objectif : garantir un système **robuste**, **prévisible**, **auto‑récupér
 ## 1. Liste des services
 
 ### 🔹 1.1 Service batterie
-Nom : `hechicero-battery.service`  
+Nom : `hechicero-monitor.service`  
 Rôle : lecture INA219 + écriture `status.json`
 
 ### 🔹 1.2 Service ingestion RSS
@@ -30,33 +30,37 @@ Rôle : relancer Chromium en cas de crash
 ---
 
 ## 2. Service batterie
-Fichier : `/etc/systemd/system/hechicero-battery.service`
+Fichier : `/etc/systemd/system/hechicero-monitor.service`
 
 ```
 [Unit]
-Description=Hechicero Battery Monitor
+Description=Hechicero Battery Monitor (INA219)
 After=network.target
 
 [Service]
-ExecStart=/usr/bin/python3 /home/thomas/hechicero/scripts/get_status.py
-Restart=always
+Type=simple
 User=thomas
 WorkingDirectory=/home/thomas/hechicero/scripts
-ProtectSystem=full
+ExecStart=/usr/bin/python3 /home/thomas/hechicero/scripts/get_status.py
+Restart=always
+RestartSec=15
 
 [Install]
 WantedBy=multi-user.target
 ```
 
+> ⚠️ `get_status.py` utilise `tempfile.mkstemp()` + `os.chmod(tmp, 0o644)` + `os.replace()` pour l'écriture atomique.
+> Le `chmod 644` est obligatoire — `mkstemp()` crée les fichiers en 0o600, illisibles par `www-data`.
+
 ### Installation
 ```
 sudo systemctl daemon-reload
-sudo systemctl enable --now hechicero-battery.service
+sudo systemctl enable --now hechicero-monitor.service
 ```
 
 ### Debug
 ```
-journalctl -u hechicero-battery.service -f
+journalctl -u hechicero-monitor.service -f
 ```
 
 ---

@@ -83,11 +83,53 @@ Le collègue, la directrice et la maman apparaissent dans l'épisode 4 dédié E
 
 ---
 
+## Matière narrative — EP1 : la maturation d'un projet
+
+> Ce bloc est la matière brute pour l'épisode 1. Papa parle à "le petit" (prénom réel dans `private/` uniquement — voir invariant §6.0).
+> Aucun prénom réel dans ce fichier (repo public).
+
+### Le message central
+
+Un projet, ce n'est pas une idée qui apparaît seule comme une épiphanie. Il faut la mûrir, la digérer, la faire grandir. L'échec n'est pas la fin — c'est souvent le signe qu'on est encore plus proche de la solution.
+
+### La vraie histoire d'Hechicero — les étapes
+
+**Avant même de rencontrer le petit — l'école d'ingénieur**
+
+Pendant ses études d'ingénieur en électronique, papa commence à bricoler avec un ami. Cet ami est très fort en électronique — papa, lui, il aimait juste ça. Ensemble ils fabriquent une horloge pour afficher l'heure. L'ami monte de son côté un ampli hi-fi classe AB qui sort un son magnifique. Papa veut faire pareil, mais n'a pas l'argent ni la connaissance. Mais il apprend une chose fondamentale : on peut bricoler des choses.
+
+Même duo, même esprit : ils montent une webradio pour leur école d'ingénieur. Ça part d'une discussion autour d'une bière — "et si on le faisait ?" — et ils le font.
+
+**Le premier vrai projet — la radio TSF**
+
+Un jour, papa tombe sur une vieille radio TSF dans une brocante. L'objet est tellement beau qu'il veut le transformer. Il l'achète, le démonte pour voir comment c'est fait. L'idée : y mettre un Raspberry Pi pour en faire un lecteur de webradio.
+
+Ça ne marche pas. Linux le bat. Il n'a pas le temps d'apprendre toutes les subtilités du système pour réussir à lire des flux, paramétrer des choses. Il se lasse. Il abandonne.
+
+**D'autres projets — certains abandonnés, quelques-uns réussis**
+
+Il y a d'autres tentatives entre-temps. Certaines s'arrêtent. D'autres aboutissent. Chaque fois, l'idée originale — une radio bricolée, un son fait maison, quelque chose pour un enfant — reste quelque part.
+
+**Le bon moment arrive**
+
+Et puis un jour, tout s'aligne. L'idée a eu le temps de grandir. Papa rencontre des gens, des passionnés qui n'ont peur de rien. Et surtout : l'IA arrive. Pouvoir poser toutes les questions et obtenir les réponses exactes dont on a besoin — formidable accélérateur. Hechicero commence.
+
+### Ce que ça dit au petit
+
+> Version avec prénom réel → `private/ep1-script-notes.md`
+
+- Un projet, ça se mûrit. L'idée d'Hechicero a commencé à germer dans la tête de papa bien avant ta naissance.
+- Un échec, c'est rarement une fin. La radio TSF n'a pas marché — mais elle a appris quelque chose. Et cette chose-là a servi plus tard.
+- Les bons moments, on ne les choisit pas toujours — mais on peut s'y préparer en continuant à avancer.
+- L'important, c'est d'essayer vraiment. Essayer vraiment, c'est déjà réussir quelque chose.
+
+---
+
 ## État des scripts
 
 | Épisode | État |
 |---|---|
-| EP1 — Pourquoi papa a fait ça | Brouillon écrit — à retravailler |
+| EP1 — Pourquoi papa a fait ça | Matière narrative ajoutée (voir bloc ci-dessus) — brouillon à retravailler |
 | EP2 — C'est quoi l'électronique ? | Brouillon écrit — à retravailler |
 | EP3 — Comment fonctionne le cerveau de papa | Brouillon écrit — à retravailler |
 | EP4 — Les gens derrière le projet | Plan en cours — pas de script |

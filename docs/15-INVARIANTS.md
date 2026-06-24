@@ -134,6 +134,26 @@ Pour éviter l’interprétation par l’IHM.
 ### 🔹 6.3 Numérotation par dizaines
 Permet d’insérer des fichiers sans casser l’ordre.
 
+### 🔹 6.4 Aucun prénom personnel dans les fichiers versionnés (repo public)
+
+Le repo est public. Aucun prénom réel (enfant, adulte, personnage) ne doit apparaître dans les fichiers versionnés.
+
+**Règle** : utiliser `le petit`, `papa`, `le collègue`, `la maman`, `la directrice` dans tous les fichiers `docs/`.
+
+**Exception autorisée** : le dossier `docs/private/` est exclu du repo (`.gitignore`). Les scripts audio, les notes de production avec prénoms réels, et tout contenu personnalisé s’y trouvent.
+
+**Structure attendue** :
+```
+docs/
+  private/            ← dans .gitignore — prénoms réels autorisés ici
+    ep1-script-notes.md
+    ep2-script-notes.md
+    ...
+  55-PODCAST_SERIE_DECISIONS.md   ← version publique, sans prénoms
+```
+
+Cette règle s’applique à tous les fichiers : docs, scripts, JSON de config, commentaires de code.
+
 ---
 
 ## 7. Invariants du projet

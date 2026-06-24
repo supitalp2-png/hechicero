@@ -165,7 +165,7 @@ Le lecteur doit fonctionner **sans lag** sur un Raspberry Pi 5.
 
 ---
 
-## 12. État réel au 2026-06-23
+## 12. État réel au 2026-06-24
 
 ### Implémenté et validé
 - Navigation 5 écrans fonctionnelle bout en bout (TICKET-050 ✅)
@@ -186,6 +186,8 @@ Le lecteur doit fonctionner **sans lag** sur un Raspberry Pi 5.
 - Barres de progression synchronisation en temps réel dans l'IHM parent (TICKET-063 ✅)
 - Volume logiciel MPD depuis l'IHM enfant (TICKET-034 ✅)
 - Webradio en premier dans la grille (TICKET-060 ✅)
+- Enchainement automatique épisodes : détection transition `play → stop` via `lastMpdState` (TICKET-069 ✅)
+- Tracking SQLite : `tracking.php` + `startTracking()` / `endTracking()` / progress toutes les 60 s (TICKET-055 ✅)
 
 ### Architecture technique
 - `index.html` : fichier unique (HTML + CSS + JS)
@@ -193,9 +195,11 @@ Le lecteur doit fonctionner **sans lag** sur un Raspberry Pi 5.
 - Dark mode, accent cyan `#00c8ff`, accent radio ambre `#c8a050`
 - Cover podcasts : `web/lecteur/images/{id}.jpg` (chemin relatif dans `data.json`)
 - Audio épisodes : chemin filesystem MPD (`/home/thomas/hechicero/podcasts/{id}/audio/*.mp3`)
+- Variables tracking : `trackingId`, `trackingPollCount`, `lastElapsed`, `lastMpdState`
 
 ### Non implémenté (tickets ouverts)
-- Enchainement automatique des épisodes (TICKET-069)
+- Bug mini-lecteur : affiche la radio au lieu du podcast en cours (TICKET-072)
+- Contrôle parental : grille horaire + verrou langue (TICKET-071)
 - Durées des épisodes via ffprobe (TICKET-059)
 - Son de confirmation / retour visuel au choix (TICKET-023)
 - Contenu ES complet dans `data.json` (TICKET-004)

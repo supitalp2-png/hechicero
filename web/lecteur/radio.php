@@ -3,6 +3,14 @@
 $stream = "https://icecast.radiofrance.fr/monpetitfranceinter-midfi.mp3";
 $projectRoot = "/home/thomas/hechicero";
 
+function read_json_radio(string $path): array {
+    if (!file_exists($path)) {
+        return [];
+    }
+    $d = json_decode(file_get_contents($path), true);
+    return is_array($d) ? $d : [];
+}
+
 function mpd_command(string $command): string {
     $socket = @fsockopen('unix:///run/mpd/socket', 0, $errno, $errstr, 1.5);
     if (!$socket) {
@@ -174,6 +182,26 @@ if (isset($_GET['action'])) {
 
     if ($action === "status") {
         echo mpd_status()['_raw'];
+        exit;
+    }
+
+    if ($action === 'parental_status') {
+        header('Content-Type: application/json; charset=utf-8');
+        $p = read_json_radio($projectRoot . '/data/parental.json');
+        $c = read_json_radio($projectRoot . '/web/lecteur/config.json');
+        echo json_encode([
+            'schedule_enabled' => (bool)($p['schedule_enabled'] ?? $p['enabled'] ?? false),
+            'lang_enabled'     => (bool)($p['lang_enabled']     ?? false),
+            'schedule'         => $p['schedule']  ?? [],
+            'languages'        => $p['languages'] ?? ['fr', 'es'],
+            // veille : config.json prioritaire (admin avancée), fallback parental.json
+            'sleep_enabled'    => (bool)($c['sleep_enabled'] ?? $p['sleep_enabled'] ?? true),
+            'sleep_delay'      => (int)($c['sleep_delay']    ?? $p['sleep_delay']   ?? 15),
+            'sleep_mode'       => $c['sleep_mode']           ?? $p['sleep_mode']    ?? 'both',
+            // son de démarrage
+            'chime_enabled'    => (bool)($c['chime_enabled'] ?? true),
+            'chime_volume'     => (int)($c['chime_volume']   ?? 15),
+        ]);
         exit;
     }
 

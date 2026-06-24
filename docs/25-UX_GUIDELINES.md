@@ -69,6 +69,23 @@ Objectifs :
 - messages clairs, non techniques
 - aucune action dangereuse
 
+### 🔹 Dashboard analytics (`/dashboard.php`)
+- Graphique FR/ES par jour (style Kibana)
+- Camembert répartition par moment de la journée (Matin / Après-midi / Soir / Nuit)
+- Funnel de complétion (abandon → épisode terminé)
+- Heatmap écoute semaine × heure
+- Top épisodes rejoués
+- Card streak (jours consécutifs d’écoute)
+- Données issues de `tracking.php` (SQLite `play_events`)
+
+### 🔹 Contrôle parental (`/index.php` section dédiée)
+- Interrupteur global on/off
+- Grille horaire 7 jours × 7 créneaux (0–7h et 22–24h toujours bloqués)
+- Verrou par langue : désactiver FR ou ES → drapeau grisé dans le lecteur
+- Configuration **uniquement depuis l’admin web** — jamais depuis l’écran tactile
+- Comportement fin de plage : l’épisode en cours se termine, puis stop + retour accueil
+- Config stockée dans `data/parental.json` (écriture atomique)
+
 ---
 
 ## 4. Contraintes UX techniques

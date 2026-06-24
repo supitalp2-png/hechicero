@@ -28,6 +28,7 @@
       overflow: hidden;
     }
     button { cursor: pointer; font-family: inherit; border: none; background: none; color: inherit; }
+    img { -webkit-user-drag: none; user-drag: none; user-select: none; }
     .hidden { display: none !important; }
 
     /* ── STATUS BAR ── */
@@ -40,8 +41,8 @@
       font-size: 0.78rem; color: var(--muted);
       z-index: 100;
     }
-    #sb-time    { font-size: 15px; font-weight: 600; }
-    #bat-display { font-size: 14px; }
+    #sb-time    { font-size: 20px; font-weight: 600; }
+    #bat-display { font-size: 18px; }
     #sb-battery { display: flex; align-items: center; gap: 5px; }
 
     /* ── APP CONTAINER ── */
@@ -58,8 +59,8 @@
     /* ── BACK BUTTON ── */
     .btn-back {
       display: inline-flex; align-items: center; gap: 4px;
-      height: 48px; padding: 0 18px 0 6px;
-      border-radius: 24px;
+      height: 52px; padding: 0 18px 0 6px;
+      border-radius: 26px;
       background: var(--surface); border: 1.5px solid var(--border);
       color: var(--text); font-size: 1rem;
       flex-shrink: 0;
@@ -76,18 +77,19 @@
       padding: 10px 14px; flex-shrink: 0;
     }
     .s-header .s-title {
-      font-size: 0.95rem; font-weight: 600;
+      font-size: 1.1rem; font-weight: 600;
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
       flex: 1;
     }
 
     /* ── SCROLL AREA ── */
     .s-body {
-      flex: 1; overflow-y: auto; overflow-x: hidden; padding: 6px 14px 14px;
-      -webkit-overflow-scrolling: touch;
+      flex: 1; overflow-y: scroll; overflow-x: hidden; padding: 6px 14px 14px;
+      touch-action: none; /* scroll 100% géré par JS Pointer Events */
       scrollbar-width: none;
     }
     .s-body::-webkit-scrollbar { display: none; }
+    body.has-mini .s-body { padding-bottom: 84px; }
 
     /* ══════════════════════════════ */
     /* SCREEN 1 — HOME               */
@@ -110,6 +112,41 @@
     }
     .flag-btn:active { transform: scale(0.96); }
     .flag-btn:hover  { border-color: var(--accent); }
+    .lang-locked { opacity: 0.35; pointer-events: none; filter: grayscale(1); }
+    /* ── Écran de veille ── */
+    #sleep-overlay {
+      display: none;
+      position: fixed; inset: 0; z-index: 9999;
+      background: #000;
+      flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 20px;
+      cursor: pointer;
+    }
+    #sleep-overlay.active { display: flex; }
+    #sleep-clock {
+      font-size: clamp(72px, 18vw, 140px);
+      font-weight: 200;
+      letter-spacing: 8px;
+      color: rgba(255,255,255,0.12);
+      font-variant-numeric: tabular-nums;
+      line-height: 1;
+    }
+    #sleep-brand {
+      font-size: clamp(11px, 2.5vw, 18px);
+      letter-spacing: 0.55em;
+      color: rgba(255,255,255,0.04);
+      text-transform: uppercase;
+      font-weight: 400;
+    }
+
+    .ep-num-badge {
+      position: absolute; bottom: 8px; right: 10px;
+      background: rgba(0,0,0,0.52); color: rgba(255,255,255,0.78);
+      font-size: 28px; font-weight: 700; padding: 2px 10px;
+      border-radius: 6px; letter-spacing: -1px;
+      pointer-events: none; backdrop-filter: blur(3px);
+    }
     .flag-svg { width: 120px; height: 80px; border-radius: 8px; overflow: hidden; }
     .flag-svg svg { width: 100%; height: 100%; display: block; }
 
@@ -129,7 +166,7 @@
     .pod-card:active { transform: scale(0.97); }
     .pod-card:hover  { border-color: var(--accent); }
     .pod-card img    { width: 100%; aspect-ratio: 1/1; object-fit: cover; display: block; }
-    .pod-label       { padding: 8px 10px; font-size: 0.88rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .pod-label       { padding: 10px 10px; font-size: 1.1rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
     /* Webradio tile */
     .pod-card.webradio           { background: #1a1208; border-color: #3d2a08; }
@@ -163,8 +200,8 @@
       50%       { opacity: 0.35; transform: scale(0.7); }
     }
     .radio-info      { flex: 1; min-width: 0; }
-    .radio-name      { font-weight: 600; font-size: 0.93rem; }
-    .radio-desc      { font-size: 0.78rem; color: var(--muted); margin-top: 2px; }
+    .radio-name      { font-weight: 600; font-size: 1.1rem; }
+    .radio-desc      { font-size: 1rem; color: var(--muted); margin-top: 2px; }
     .btn-play-radio  {
       width: 40px; height: 40px; border-radius: 50%;
       background: var(--accent); color: #000; font-size: 0.95rem;
@@ -177,17 +214,18 @@
     /* ══════════════════════════════ */
     .ep-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; width: 100%; box-sizing: border-box; }
     .ep-row {
-      display: flex; align-items: center; gap: 12px;
+      display: flex; align-items: stretch; gap: 0;
       background: var(--surface); border: 1.5px solid var(--border);
-      border-radius: 14px; padding: 10px 12px; cursor: pointer;
-      transition: border-color 120ms;
-      min-height: 80px;
+      border-radius: 16px; overflow: hidden; cursor: pointer;
+      transition: border-color 130ms, transform 130ms;
+      min-height: 143px;
     }
-    .ep-row:hover     { border-color: var(--accent); }
-    .ep-thumb         { width: 60px; height: 60px; border-radius: 10px; object-fit: cover; flex-shrink: 0; }
-    .ep-meta          { flex: 1; min-width: 0; }
-    .ep-titre         { font-weight: 600; font-size: 0.9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .ep-duree         { font-size: 0.78rem; color: var(--muted); margin-top: 3px; }
+    .ep-row:active { transform: scale(0.97); }
+    .ep-row:hover  { border-color: var(--accent); }
+    .ep-thumb      { width: 143px; min-width: 143px; height: 143px; object-fit: cover; display: block; flex-shrink: 0; }
+    .ep-meta       { flex: 1; min-width: 0; padding: 12px 14px; display: flex; flex-direction: column; justify-content: center; }
+    .ep-titre      { font-weight: 600; font-size: 1rem; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
+    .ep-duree      { font-size: 0.9rem; color: var(--muted); margin-top: 6px; flex-shrink: 0; }
     .radio-thumb {
       width: 52px; height: 52px; border-radius: 8px;
       object-fit: cover; flex-shrink: 0;
@@ -228,17 +266,26 @@
       flex: 1; display: flex; flex-direction: column; justify-content: center;
       padding: 24px 20px 24px 8px; gap: 18px; min-width: 0;
     }
-    .ctrl-pod-name { font-size: 0.78rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .ctrl-ep-name  { font-size: 1.05rem; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .ctrl-pod-name { font-size: 1rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .ctrl-ep-name  { font-size: 1.2rem; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     /* Progress */
     .prog-wrap { display: flex; flex-direction: column; gap: 5px; }
-    .prog-bg   { height: 20px; min-height: 12px; background: var(--border); border-radius: 10px; overflow: hidden; cursor: pointer; }
+    .prog-bg   { height: 44px; position: relative; cursor: pointer; touch-action: none; }
+    .prog-bg::before {
+      content: ''; position: absolute; inset: 12px 0;
+      background: var(--border); border-radius: 10px; pointer-events: none;
+    }
+    .prog-fill {
+      position: absolute; left: 0; top: 12px; bottom: 12px; width: 0%;
+      background: var(--accent); border-radius: 10px;
+      transition: width 1s linear; pointer-events: none;
+    }
     .prog-fill { height: 20px; width: 0%; background: var(--accent); border-radius: 10px; transition: width 1s linear; }
-    .prog-times { display: flex; justify-content: space-between; font-size: 0.76rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+    .prog-times { display: flex; justify-content: space-between; font-size: 1rem; color: var(--muted); font-variant-numeric: tabular-nums; }
     /* Buttons row */
     .ctrl-btns { display: flex; align-items: center; justify-content: center; gap: 16px; }
     .btn-prev, .btn-next {
-      width: 72px; height: 72px; border-radius: 50%;
+      width: 80px; height: 80px; border-radius: 50%;
       background: var(--surface); border: 1.5px solid var(--border);
       display: flex; align-items: center; justify-content: center; font-size: 28px;
     }
@@ -254,14 +301,22 @@
     .vol-row { display: flex; gap: 10px; align-items: center; justify-content: center; }
     .btn-vol {
       background: var(--surface); border: 1.5px solid var(--border);
-      border-radius: 10px; height: 56px; min-width: 80px; padding: 0 14px; font-size: 22px;
+      border-radius: 14px; height: 80px; min-width: 80px; padding: 0 14px; font-size: 24px;
       display: flex; align-items: center; justify-content: center;
     }
     .btn-vol:active { background: var(--border); }
     .vol-bar-wrap { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; }
-    .vol-bar-bg   { flex: 1; height: 20px; min-height: 12px; background: var(--border); border-radius: 10px; overflow: hidden; cursor: pointer; }
-    .vol-bar-fill { height: 20px; width: 0%; background: var(--accent); border-radius: 10px; transition: width 300ms ease; }
-    .vol-pct      { font-size: 0.78rem; color: var(--muted); min-width: 32px; text-align: right; font-variant-numeric: tabular-nums; }
+    .vol-bar-bg   { flex: 1; height: 44px; position: relative; cursor: pointer; touch-action: none; }
+    .vol-bar-bg::before {
+      content: ''; position: absolute; inset: 12px 0;
+      background: var(--border); border-radius: 10px; pointer-events: none;
+    }
+    .vol-bar-fill {
+      position: absolute; left: 0; top: 12px; bottom: 12px; width: 0%;
+      background: var(--accent); border-radius: 10px;
+      transition: width 300ms ease; pointer-events: none;
+    }
+    .vol-pct      { font-size: 1rem; color: var(--muted); min-width: 40px; text-align: right; font-variant-numeric: tabular-nums; }
 
     /* ══════════════════════════════ */
     /* SCREEN 5 — RADIO PLAYER       */
@@ -289,6 +344,29 @@
     }
     .rp-name { font-size: 24px; font-weight: 500; }
     .rp-desc { font-size: 14px; color: var(--muted); margin-top: 4px; }
+
+    /* ── MINI-PLAYER ── */
+    #miniplayer {
+      position: fixed; bottom: 0; left: 0; right: 0;
+      height: 80px;
+      background: #080d13;
+      border-top: 1.5px solid var(--border);
+      display: flex; align-items: center; gap: 14px;
+      padding: 0 18px;
+      z-index: 200;
+      cursor: pointer;
+      user-select: none;
+    }
+    #mini-art { width: 54px; height: 54px; border-radius: 8px; object-fit: cover; flex-shrink: 0; background: var(--surface); }
+    #mini-info { flex: 1; min-width: 0; }
+    #mini-pod  { font-size: 1rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    #mini-ep   { font-size: 1.1rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
+    #mini-btn-pp {
+      width: 54px; height: 54px; border-radius: 50%;
+      background: var(--accent); color: #000; font-size: 22px;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
   </style>
 </head>
 <body>
@@ -384,6 +462,7 @@
           <div class="art-overlay" id="art-overlay">
             <div class="ov-icon" id="ov-icon">▶</div>
           </div>
+          <span class="ep-num-badge" id="ep-num-badge"></span>
         </div>
       </div>
       <!-- Controls -->
@@ -466,6 +545,16 @@
 
 </div><!-- #app -->
 
+<!-- MINI-PLAYER persistant (affiché sur tous écrans sauf player/radio-player) -->
+<div id="miniplayer" class="hidden">
+  <img id="mini-art" src="" alt="">
+  <div id="mini-info">
+    <div id="mini-pod"></div>
+    <div id="mini-ep"></div>
+  </div>
+  <button id="mini-btn-pp">▶</button>
+</div>
+
 <script>
 // ═══════════════════════════════════════
 // HELPERS
@@ -474,10 +563,36 @@ const el = id => document.getElementById(id);
 
 const ALL_SCREENS = ['home','podcasts','radio-catalog','chapters','player','radio-player'];
 function show(id) {
+  currentScreen = id;
   ALL_SCREENS.forEach(s => el(s).classList.add('hidden'));
   el(id).classList.remove('hidden');
   el('statusbar').classList.remove('hidden');
   updateClock();
+  updateMiniPlayer();
+}
+
+function updateMiniPlayer() {
+  const mp = el('miniplayer');
+  const onPlayer = currentScreen === 'player' || currentScreen === 'radio-player';
+  const hasMedia = (currentPodcast && currentIdx >= 0) || currentStation;
+  if (hasMedia && !onPlayer) {
+    mp.classList.remove('hidden');
+    document.body.classList.add('has-mini');
+    if (currentStation) {
+      el('mini-art').src = currentStation.image || '';
+      el('mini-pod').textContent = 'EN DIRECT';
+      el('mini-ep').textContent  = currentStation.name;
+    } else {
+      el('mini-art').src = currentPodcast.image || '';
+      el('mini-pod').textContent = currentPodcast.titre;
+      const items = getDisplayItems(currentPodcast);
+      const ch = items[currentIdx];
+      el('mini-ep').textContent = ch ? ch.titre : '';
+    }
+  } else {
+    mp.classList.add('hidden');
+    document.body.classList.remove('has-mini');
+  }
 }
 
 function fmtDur(s) {
@@ -503,15 +618,15 @@ setInterval(updateClock, 60000);
 function renderBattery(pct, charging) {
   const color = pct > 30 ? '#3dba6a' : pct > 10 ? '#f5a623' : '#e24b4a';
   return `
-        <svg width="22" height="11" viewBox="0 0 22 11">
+        <svg width="36" height="18" viewBox="0 0 22 11">
           <rect x="0" y="1" width="19" height="9" rx="2"
             fill="none" stroke="#4a7a9b" stroke-width="1.2"/>
           <rect x="1.5" y="2.5" width="${Math.round(16*pct/100)}"
             height="6" rx="1" fill="${color}"/>
           <rect x="19.5" y="3.5" width="2" height="4" rx="1" fill="#4a7a9b"/>
         </svg>
-        <span style="font-size:10px;color:#c8dff0">${pct}%</span>
-        ${charging ? '<span style="color:#f5c842;font-size:11px">⚡</span>' : ''}
+        <span style="font-size:16px;color:#c8dff0">${pct}%</span>
+        ${charging ? '<span style="color:#f5c842;font-size:16px">⚡</span>' : ''}
       `;
 }
 
@@ -575,6 +690,49 @@ let currentPodcast = null;
 let currentIdx     = -1;
 let selectedLang   = 'fr';
 let pollTimer      = null;
+let currentScreen  = 'home';
+let lastMpdState   = null;
+let trackingId        = null;
+let trackingPollCount = 0;
+let lastElapsed       = 0;
+let parentalCfg       = null;
+let parentalTimer     = null;
+
+// Retourne les épisodes dans l'ordre de la série (ep1 en premier)
+function getDisplayItems(podcast) {
+  if (!podcast) return [];
+  const raw = podcast.chapitres || podcast.episodes || [];
+  return [...raw].reverse();
+}
+
+// ch = objet épisode (pas l'index) pour éviter les problèmes de mapping
+async function startTracking(podcast, ch, duration_s) {
+  await endTracking();
+  trackingPollCount = 0;
+  try {
+    if (!ch) return;
+    const params = new URLSearchParams({
+      action: 'start',
+      podcast_id: podcast.id,
+      episode_id: ch.id || ch.titre || 'unknown',
+      langue: (podcast.langue || podcast.lang || podcast.language || 'fr').toLowerCase(),
+      is_radio: '0',
+      duration_s: String(duration_s || ch.duree || 0),
+    });
+    const r = await fetch('/tracking.php?' + params);
+    const d = await r.json();
+    if (d.id) trackingId = d.id;
+  } catch (_) {}
+}
+
+async function endTracking() {
+  if (!trackingId) return;
+  const id = trackingId;
+  trackingId = null;
+  try {
+    await fetch(`/tracking.php?action=end&id=${id}&listened_s=${Math.round(lastElapsed)}`);
+  } catch (_) {}
+}
 
 async function loadData() {
   try {
@@ -595,6 +753,56 @@ async function loadData() {
       STATIONS.es = DATA.radios.filter(r => (r.lang || r.langue || 'fr') === 'es');
     }
   } catch(e) { console.error('Impossible de charger data.json', e); }
+}
+
+async function loadParentalConfig() {
+  try {
+    const r = await fetch('/lecteur/radio.php?action=parental_status');
+    parentalCfg = await r.json();
+  } catch (_) {
+    parentalCfg = { schedule_enabled: false, lang_enabled: false, schedule: {}, languages: ['fr', 'es'] };
+  }
+  applyParentalRestrictions();
+  applySleepConfig(parentalCfg);
+  // Son de démarrage
+  if (parentalCfg.chime_enabled !== false) {
+    playStartupChime((parentalCfg.chime_volume ?? 15) / 100);
+  }
+}
+
+function isNowAllowed() {
+  if (!parentalCfg || !parentalCfg.schedule_enabled) return true;
+  const now  = new Date();
+  const dow  = String(now.getDay());
+  const hour = now.getHours();
+  const slots = parentalCfg.schedule?.[dow] || [];
+  return slots.some(s => {
+    const [h0, h1] = String(s).split('-').map(Number);
+    return hour >= h0 && hour < h1;
+  });
+}
+
+function isLangAllowed(lang) {
+  if (!parentalCfg || !parentalCfg.lang_enabled) return true;
+  return (parentalCfg.languages || ['fr', 'es']).includes(String(lang || 'fr').toLowerCase());
+}
+
+function applyParentalRestrictions() {
+  const frAllowed = isLangAllowed('fr');
+  const esAllowed = isLangAllowed('es');
+
+  // Visuel : grise le drapeau bloqué
+  el('btn-fr').classList.toggle('lang-locked', !frAllowed);
+  el('btn-es').classList.toggle('lang-locked', !esAllowed);
+
+  // Si la langue active est maintenant bloquée → retour accueil immédiat
+  if (selectedLang === 'fr' && !frAllowed) {
+    endTracking();
+    show('home');
+  } else if (selectedLang === 'es' && !esAllowed) {
+    endTracking();
+    show('home');
+  }
 }
 
 async function sendRadio(action, params = {}) {
@@ -620,11 +828,28 @@ async function refreshStatus() {
     const status = parseMpd(raw);
     const state  = status.state || 'stop';
     const elapsed  = parseFloat(status.elapsed  || 0);
+    lastElapsed = elapsed;
     const duration = parseFloat(status.duration || 0);
 
+    // Auto-next : épisode terminé (play → stop, pas pause)
+    if (lastMpdState === 'play' && state === 'stop' && currentPodcast && currentIdx >= 0) {
+      const items = getDisplayItems(currentPodcast);
+      if (currentIdx < items.length - 1) {
+        if (!isNowAllowed()) { show('home'); return; }
+        lastMpdState = state;
+        playTrack(currentIdx + 1);
+        return;
+      }
+    }
+    lastMpdState = state;
+
     const playing = state === 'play';
-    el('btn-pp').textContent    = playing ? '⏸' : '▶';
-    el('ov-icon').textContent   = playing ? '⏸' : '▶';
+    if (playing && trackingId && (++trackingPollCount % 20 === 0)) {
+      fetch(`/tracking.php?action=progress&id=${trackingId}&listened_s=${Math.round(elapsed)}`).catch(() => {});
+    }
+    el('btn-pp').textContent       = playing ? '⏸' : '▶';
+    el('ov-icon').textContent      = playing ? '⏸' : '▶';
+    el('mini-btn-pp').textContent  = playing ? '⏸' : '▶';
     el('art-overlay').classList.toggle('show', !playing);
 
     if (duration > 0) {
@@ -651,7 +876,7 @@ async function refreshStatus() {
 
     // Persist progress
     if (currentPodcast && currentIdx >= 0) {
-      const items = currentPodcast.chapitres || currentPodcast.episodes || [];
+      const items = getDisplayItems(currentPodcast);
       const ch = items[currentIdx];
       if (ch) {
         localStorage.setItem('hech_prog', JSON.stringify({
@@ -671,6 +896,10 @@ function renderPodcasts() {
   if (!DATA) return;
 
   const lang = selectedLang.toLowerCase();
+
+  // Sécurité : si la langue active est bloquée, retour accueil (ne pas afficher la grille)
+  if (!isLangAllowed(lang)) { show('home'); return; }
+
   const list = DATA.podcasts.filter(p =>
     (p.langue || p.lang || p.language || '').toLowerCase() === lang
   );
@@ -678,7 +907,7 @@ function renderPodcasts() {
   list.forEach(p => {
     const c = document.createElement('div');
     c.className = 'pod-card';
-    c.innerHTML = `<img src="${p.image}" alt="${p.titre}" loading="lazy"><div class="pod-label">${p.titre}</div>`;
+    c.innerHTML = `<img src="${p.image}" alt="${p.titre}" loading="lazy" draggable="false"><div class="pod-label">${p.titre}</div>`;
     c.addEventListener('click', () => openPodcast(p.id));
     grid.appendChild(c);
   });
@@ -720,7 +949,7 @@ function openRadioCatalog() {
     const row = document.createElement('div');
     row.className = 'radio-row';
     row.innerHTML = `
-      <img class="radio-thumb" src="${st.image || ''}" onerror="this.style.display='none'" alt="${st.name}" loading="lazy">
+      <img class="radio-thumb" src="${st.image || ''}" onerror="this.style.display='none'" alt="${st.name}" loading="lazy" draggable="false">
       <div class="radio-info">
         <div class="radio-name">${st.name}</div>
         <div class="radio-desc">${st.desc}</div>
@@ -790,17 +1019,17 @@ function openPodcast(id) {
 function renderChapters() {
   const list  = el('ep-list');
   list.innerHTML = '';
-  const items = currentPodcast.chapitres || currentPodcast.episodes || [];
-  if (!items.length) {
+  const displayItems = getDisplayItems(currentPodcast);
+  if (!displayItems.length) {
     list.innerHTML = '<div style="padding:12px;color:var(--muted)">Aucun épisode disponible.</div>';
     return;
   }
-  items.forEach((ch, idx) => {
+  displayItems.forEach((ch, idx) => {
     const row = document.createElement('div');
     row.className = 'ep-row';
     const fallback = currentPodcast.image || '';
     row.innerHTML = `
-      <img class="ep-thumb" src="${ch.image || fallback}" onerror="this.onerror=null;this.src='${fallback}'" alt="" loading="lazy">
+      <img class="ep-thumb" src="${ch.image || fallback}" onerror="this.onerror=null;this.src='${fallback}'" alt="" loading="lazy" draggable="false">
       <div class="ep-meta">
         <div class="ep-titre">${ch.titre}</div>
         <div class="ep-duree">${fmtDur(ch.duree)}</div>
@@ -814,24 +1043,39 @@ function renderChapters() {
 // SCREEN 4 — PLAYER
 // ═══════════════════════════════════════
 async function playTrack(idx) {
+  if (!isNowAllowed()) {
+    show('home');
+    return;
+  }
+  const lang = (currentPodcast?.langue || currentPodcast?.lang || currentPodcast?.language || 'fr').toLowerCase();
+  if (!isLangAllowed(lang)) {
+    show('home');
+    return;
+  }
   if (!currentPodcast) return;
-  const items = currentPodcast.chapitres || currentPodcast.episodes || [];
-  const ch = items[idx];
+  const displayItems = getDisplayItems(currentPodcast);
+  const ch = displayItems[idx];
   if (!ch) return;
   currentIdx = idx;
 
-  el('ctrl-pod').textContent      = currentPodcast.titre;
-  el('ctrl-ep').textContent       = ch.titre;
+  el('ctrl-pod').textContent        = currentPodcast.titre;
+  el('ctrl-ep').textContent         = ch.titre;
   el('player-back-lbl').textContent = currentPodcast.titre;
-  el('player-art').src            = currentPodcast.image;
-  el('player-art').alt            = currentPodcast.titre;
-  el('prog-fill').style.width     = '0%';
-  el('t-elapsed').textContent     = '0:00';
-  el('t-total').textContent       = fmtDur(ch.duree);
-  el('btn-pp').textContent        = '⏸';
+  el('player-art').src              = currentPodcast.image;
+  el('player-art').alt              = currentPodcast.titre;
+  el('prog-fill').style.width       = '0%';
+  el('t-elapsed').textContent       = '0:00';
+  el('t-total').textContent         = fmtDur(ch.duree);
+  el('btn-pp').textContent          = '⏸';
   el('art-overlay').classList.remove('show');
 
+  // Badge numéro d'épisode (extrait du titre ou position dans la série)
+  const epMatch = ch.titre && ch.titre.match(/\b(\d+)\b/);
+  const epNum = epMatch ? epMatch[1] : String(idx + 1);
+  el('ep-num-badge').textContent = epNum;
+
   await sendRadio('playfile', { path: ch.audio });
+  startTracking(currentPodcast, ch, ch.duree || 0);
 
   // Restore saved position if same episode
   try {
@@ -852,9 +1096,25 @@ async function playTrack(idx) {
 function startPoll() {
   stopPoll();
   pollTimer = setInterval(refreshStatus, 3000);
+  if (parentalTimer) clearInterval(parentalTimer);
+  parentalTimer = setInterval(checkParentalTime, 30000);
 }
 function stopPoll() {
   if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  if (parentalTimer) { clearInterval(parentalTimer); parentalTimer = null; }
+}
+
+async function checkParentalTime() {
+  await loadParentalConfig();
+  if (!isNowAllowed()) {
+    if (currentPodcast && currentIdx >= 0) {
+      const raw = await sendRadio('status').catch(() => '');
+      const st = parseMpd(raw);
+      if (st.state === 'stop' || st.state === 'pause') {
+        show('home');
+      }
+    }
+  }
 }
 
 // ═══════════════════════════════════════
@@ -867,11 +1127,13 @@ async function goToPodcasts() {
 }
 
 el('btn-fr').addEventListener('click', async () => {
+  if (!isLangAllowed('fr')) return;
   selectedLang = 'fr';
   el('pod-header').textContent = 'Podcasts en français';
   await goToPodcasts();
 });
 el('btn-es').addEventListener('click', async () => {
+  if (!isLangAllowed('es')) return;
   selectedLang = 'es';
   el('pod-header').textContent = 'Podcasts en español';
   await goToPodcasts();
@@ -879,8 +1141,8 @@ el('btn-es').addEventListener('click', async () => {
 
 el('back-home').addEventListener('click', () => show('home'));
 el('back-pods-radio').addEventListener('click', () => show('podcasts'));
-el('back-pods-ch').addEventListener('click', () => show('podcasts'));
-el('back-ch').addEventListener('click', () => { stopPoll(); show('chapters'); });
+el('back-pods-ch').addEventListener('click', () => { endTracking(); show('podcasts'); });
+el('back-ch').addEventListener('click', () => { endTracking(); show('chapters'); });
 el('back-radio-catalog').addEventListener('click', () => show('radio-catalog'));
 el('rp-btn-pp').addEventListener('click', async () => { await sendRadio('pause'); refreshStatus(); });
 el('rp-vd').addEventListener('click', async () => { await sendRadio('voldown'); refreshStatus(); });
@@ -903,6 +1165,65 @@ el('radio-vol-bar').addEventListener('click', e => {
   setVolume(Math.round(pct * 100));
 });
 
+// ─── Scroll JS universel (touch + souris + VNC, Chromium Pi) ────────────────
+(function () {
+  let scroller = null, sy = 0, st = 0, moved = false;
+  document.addEventListener('pointerdown', e => {
+    const s = e.target.closest('.s-body');
+    if (!s) return;
+    // Laisser les barres de scrubbing gérer elles-mêmes
+    if (e.target.closest('.prog-bg, .vol-bar-wrap')) return;
+    scroller = s; sy = e.clientY; st = s.scrollTop; moved = false;
+  }, true);
+  document.addEventListener('pointermove', e => {
+    if (!scroller) return;
+    const dy = sy - e.clientY;
+    if (Math.abs(dy) > 4) { moved = true; e.preventDefault(); scroller.scrollTop = st + dy; }
+  });
+  document.addEventListener('pointerup',     () => { scroller = null; });
+  document.addEventListener('pointercancel', () => { scroller = null; });
+  // Annuler le click sur une carte si c'était un scroll
+  document.addEventListener('click', e => {
+    if (moved) { e.stopPropagation(); e.preventDefault(); moved = false; }
+  }, true);
+})();
+
+// ─── Pointer Events scrubbing (touch + souris, sans conflit scroll) ──────────
+function makeScrubBar(barEl, onPct, refEl) {
+  const ref = refEl || barEl;
+  function pct(e) {
+    const r = ref.getBoundingClientRect();
+    return Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
+  }
+  barEl.addEventListener('pointerdown', e => {
+    barEl.setPointerCapture(e.pointerId);
+    onPct(pct(e));
+  });
+  barEl.addEventListener('pointermove', e => {
+    if (e.buttons === 0) return;
+    onPct(pct(e));
+  });
+}
+makeScrubBar(el('player-prog-bar'), pct => {
+  if (!currentDuration) return;
+  seekCurrent(Math.round(pct * currentDuration));
+});
+const pvb = el('player-vol-bar');
+makeScrubBar(pvb, pct => setVolume(Math.round(pct * 100)), pvb.querySelector('.vol-bar-bg'));
+const rvb = el('radio-vol-bar');
+makeScrubBar(rvb, pct => setVolume(Math.round(pct * 100)), rvb.querySelector('.vol-bar-bg'));
+
+// ─── Mini-player ─────────────────────────────────────────────────────────────
+el('miniplayer').addEventListener('click', () => {
+  if (currentStation) show('radio-player');
+  else if (currentPodcast && currentIdx >= 0) show('player');
+});
+el('mini-btn-pp').addEventListener('click', async e => {
+  e.stopPropagation();
+  await sendRadio('pause');
+  refreshStatus();
+});
+
 el('art-box').addEventListener('click', async () => {
   await sendRadio('pause');
   refreshStatus();
@@ -916,17 +1237,139 @@ el('btn-prev').addEventListener('click', () => {
 });
 el('btn-next').addEventListener('click', () => {
   if (!currentPodcast) return;
-  const items = currentPodcast.chapitres || currentPodcast.episodes || [];
+  const items = getDisplayItems(currentPodcast);
   if (currentIdx < items.length - 1) playTrack(currentIdx + 1);
 });
 el('btn-vd').addEventListener('click', async () => { await sendRadio('voldown'); refreshStatus(); });
 el('btn-vu').addEventListener('click', async () => { if (currentVolume < 100) { await sendRadio('volup'); refreshStatus(); } });
 
 // ═══════════════════════════════════════
+// SON DE DÉMARRAGE (Web Audio API)
+// ═══════════════════════════════════════
+function playStartupChime(volume = 0.12) {
+  if (volume <= 0) return;
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+
+    // Reverb artificiel : delay + feedback léger
+    const delay = ctx.createDelay(0.4);
+    delay.delayTime.value = 0.18;
+    const feedback = ctx.createGain();
+    feedback.gain.value = 0.28;
+    delay.connect(feedback);
+    feedback.connect(delay);
+
+    // Master envelope : attaque douce, longue queue
+    const master = ctx.createGain();
+    master.gain.setValueAtTime(0, ctx.currentTime);
+    master.gain.linearRampToValueAtTime(volume, ctx.currentTime + 0.12);
+    master.gain.setValueAtTime(volume, ctx.currentTime + 0.6);
+    master.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 3.2);
+    master.connect(delay);
+    delay.connect(ctx.destination);
+    master.connect(ctx.destination);
+
+    // Accord chaud : C4 – G4 – E5 – C5 (quinte + tierce, ouvert et spatial)
+    const NOTES = [
+      { freq: 261.63, delay: 0.00, gain: 0.55 },  // C4 — fondamentale
+      { freq: 392.00, delay: 0.06, gain: 0.40 },  // G4 — quinte
+      { freq: 523.25, delay: 0.12, gain: 0.30 },  // C5 — octave
+      { freq: 659.25, delay: 0.18, gain: 0.20 },  // E5 — tierce haute
+    ];
+    NOTES.forEach(({ freq, delay: d, gain }) => {
+      const osc = ctx.createOscillator();
+      const g   = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = freq;
+      osc.detune.value = (Math.random() - 0.5) * 4; // légère chaleur
+      g.gain.value = gain;
+      osc.connect(g);
+      g.connect(master);
+      osc.start(ctx.currentTime + d);
+      osc.stop(ctx.currentTime + 3.5);
+    });
+  } catch (_) {}
+}
+
+// ═══════════════════════════════════════
+// ═══════════════════════════════════════
+// ÉCRAN DE VEILLE
+// ═══════════════════════════════════════
+let SLEEP_DELAY  = 15000;  // mis à jour depuis la config
+let SLEEP_MODE   = 'both'; // 'clock' | 'brand' | 'both'
+let sleepTimer = null;
+const sleepOverlay = document.getElementById('sleep-overlay');
+const sleepClock   = document.getElementById('sleep-clock');
+const sleepBrand   = document.getElementById('sleep-brand');
+
+function applySleepConfig(cfg) {
+  if (!cfg) return;
+  const enabled = !!(cfg.sleep_enabled ?? true);
+  SLEEP_DELAY = Number(cfg.sleep_delay ?? 15) * 1000;
+  SLEEP_MODE  = cfg.sleep_mode ?? 'both';
+  // Visibilité des éléments selon le mode
+  sleepClock.style.display = (SLEEP_MODE === 'brand') ? 'none' : '';
+  sleepBrand.style.display = (SLEEP_MODE === 'clock') ? 'none' : '';
+  if (!enabled) {
+    clearTimeout(sleepTimer);
+    sleepOverlay.classList.remove('active');
+  } else {
+    resetSleepTimer();
+  }
+}
+
+function updateSleepClock() {
+  if (sleepOverlay.classList.contains('active')) {
+    const now = new Date();
+    const h   = String(now.getHours()).padStart(2, '0');
+    const m   = String(now.getMinutes()).padStart(2, '0');
+    sleepClock.textContent = h + ':' + m;
+  }
+}
+
+function activateSleep() {
+  sleepOverlay.classList.add('active');
+  updateSleepClock();
+}
+
+function wakeUp(e) {
+  if (sleepOverlay.classList.contains('active')) {
+    e.stopPropagation();
+    e.preventDefault();
+    sleepOverlay.classList.remove('active');
+  }
+  resetSleepTimer();
+}
+
+function resetSleepTimer() {
+  clearTimeout(sleepTimer);
+  sleepTimer = setTimeout(activateSleep, SLEEP_DELAY);
+}
+
+// Toute interaction RÉELLE réinitialise le timer
+// ⚠ pointermove exclut : sur Pi kiosk, le curseur fantôme génère des events en permanence
+['pointerdown', 'touchstart', 'click', 'keydown'].forEach(evt =>
+  document.addEventListener(evt, wakeUp, { capture: true, passive: false })
+);
+
+// Horloge de veille mise à jour chaque minute
+setInterval(updateSleepClock, 10000);
+
+// Démarrage du timer
+resetSleepTimer();
+
 // INIT
 // ═══════════════════════════════════════
 show('home');
+loadParentalConfig();
 loadData();
 </script>
+
+<!-- ── Écran de veille ──────────────────────────────────────────── -->
+<div id="sleep-overlay">
+  <div id="sleep-clock">00:00</div>
+  <div id="sleep-brand">HECHICERO</div>
+</div>
+
 </body>
 </html>

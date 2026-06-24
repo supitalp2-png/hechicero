@@ -136,10 +136,11 @@ Créer une enceinte :
 
 ### 1.3. Choisir un podcast
 - L’enfant voit de grandes jaquettes.
-- Il navigue avec les flèches (haut/bas/gauche/droite).
+- Il navigue en appuyant directement sur les jaquettes (navigation tactile — validé persona enfant).
+- ~~Flèches directionnelles haut/bas/gauche/droite~~ : **non retenu** (TICKET-NAV annulé 2026-06-23).
 - Quand il appuie sur une jaquette :
   - elle s’agrandit légèrement,
-  - un son rigolo confirme le choix.
+  - un son rigolo confirme le choix (TICKET-023 — non implémenté).
 
 ### 1.4. Lancer la lecture
 - L’enfant appuie sur la grande image.
@@ -185,9 +186,15 @@ Créer une enceinte :
 - Il vérifie les animations, transitions, interactions.
 
 ### 2.5. Monitoring
-- Accès aux logs,
-- État du système,
-- Historique d’écoute.
+- Accès aux logs.
+- État du système.
+- Historique d’écoute → dashboard analytics `/dashboard.php` (Sprint 5/6 ✅).
+
+### 2.6. Contrôle parental
+- Interrupteur global on/off.
+- Grille horaire : 7 jours × créneaux autorisés.
+- Verrou par langue (FR et/ou ES désactivables).
+- Accessible uniquement depuis l’admin web (jamais depuis l’écran tactile enfant).
 
 ---
 

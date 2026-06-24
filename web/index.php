@@ -10,6 +10,7 @@ define('PODCASTS_JSON', PROJECT_ROOT . '/data/podcasts.json');
 define('DATA_JSON',     PROJECT_ROOT . '/web/lecteur/data.json');
 define('CONFIG_JSON',   PROJECT_ROOT . '/web/lecteur/config.json');
 define('STATUS_JSON',   PROJECT_ROOT . '/web/status.json');   // servi à /status.json
+define('TRACKING_DB',   PROJECT_ROOT . '/data/tracking.db');
 define('INGEST_LOG',    '/tmp/hechicero_ingest.log');
 define('INGEST_PID',    '/tmp/hechicero_ingest.pid');
 define('INGEST_SCRIPT', PROJECT_ROOT . '/scripts/rss_ingest/ingest.py');
@@ -317,9 +318,61 @@ if (isset($_GET['action'])) {
         if (!isset($cfg['volume'])) $cfg['volume'] = [];
         if (isset($_GET['speakers_max']))   $cfg['volume']['speakers_max']   = max(0, min(100, (int)$_GET['speakers_max']));
         if (isset($_GET['headphones_max'])) $cfg['volume']['headphones_max'] = max(0, min(100, (int)$_GET['headphones_max']));
+        // Son de démarrage
+        if (isset($_GET['chime_enabled'])) $cfg['chime_enabled'] = (bool)(int)$_GET['chime_enabled'];
+        if (isset($_GET['chime_volume']))  $cfg['chime_volume']  = max(0, min(100, (int)$_GET['chime_volume']));
+        // Écran de veille
+        if (isset($_GET['sleep_enabled'])) $cfg['sleep_enabled'] = (bool)(int)$_GET['sleep_enabled'];
+        if (isset($_GET['sleep_delay']))   $cfg['sleep_delay']   = max(10, min(300, (int)$_GET['sleep_delay']));
+        if (isset($_GET['sleep_mode']))    $cfg['sleep_mode']    = in_array($_GET['sleep_mode'], ['clock','brand','both']) ? $_GET['sleep_mode'] : 'both';
         echo json_encode(['ok' => write_json_atomic(CONFIG_JSON, $cfg)]);
         exit;
     }
+
+      if ($a === 'get_parental') {
+        $p = read_json(PROJECT_ROOT . '/data/parental.json');
+        if (empty($p)) {
+          $p = ['enabled'=>false,'schedule'=>array_fill_keys(range(0,6),[]),'languages'=>['fr','es']];
+        }
+        echo json_encode(['ok'=>true,'parental'=>$p]);
+        exit;
+      }
+
+      if ($a === 'save_parental') {
+        $body = json_decode(file_get_contents('php://input'), true);
+        if (!is_array($body)) {
+          echo json_encode(['ok'=>false,'error'=>'JSON invalide']);
+          exit;
+        }
+        $p = [
+          'schedule_enabled' => (bool)($body['schedule_enabled'] ?? false),
+          'lang_enabled'     => (bool)($body['lang_enabled']     ?? false),
+          'schedule'         => $body['schedule']  ?? array_fill_keys(array_map('strval', range(0,6)), []),
+          'languages'        => $body['languages'] ?? ['fr','es'],
+        ];
+        $ok = write_json_atomic(PROJECT_ROOT . '/data/parental.json', $p);
+        echo json_encode(['ok'=>$ok]);
+        exit;
+      }
+
+      if ($a === 'parental_status') {
+        $p = read_json(PROJECT_ROOT . '/data/parental.json');
+        $c = read_json(CONFIG_JSON);
+        echo json_encode([
+          'schedule_enabled' => (bool)($p['schedule_enabled'] ?? $p['enabled'] ?? false),
+          'lang_enabled'     => (bool)($p['lang_enabled']     ?? false),
+          'schedule'         => $p['schedule']  ?? [],
+          'languages'        => $p['languages'] ?? ['fr','es'],
+          // veille — en priorité config.json, fallback parental.json (migration)
+          'sleep_enabled'    => (bool)($c['sleep_enabled'] ?? $p['sleep_enabled'] ?? true),
+          'sleep_delay'      => (int)($c['sleep_delay']    ?? $p['sleep_delay']   ?? 15),
+          'sleep_mode'       => $c['sleep_mode']            ?? $p['sleep_mode']   ?? 'both',
+          // son de démarrage
+          'chime_enabled'    => (bool)($c['chime_enabled'] ?? true),
+          'chime_volume'     => (int)($c['chime_volume']   ?? 15),
+        ]);
+        exit;
+      }
 
     // ── Ingestion
     if ($a === 'run_ingest') {
@@ -580,6 +633,26 @@ body.expert input[disabled] { cursor:not-allowed !important; }
 /* ── Max episodes select (expert) */
 .max-sel { background:var(--bg); border:1px solid var(--border); border-radius:4px;
   color:var(--text); font-size:11px; padding:2px 4px; cursor:pointer; }
+
+.toggle-switch { position:relative; display:inline-block; width:44px; height:24px; }
+.toggle-switch input { opacity:0; width:0; height:0; }
+.slider { position:absolute; cursor:pointer; inset:0; background:#2d3f55;
+  border-radius:12px; transition:.3s; }
+.slider:before { content:''; position:absolute; height:18px; width:18px; left:3px; bottom:3px;
+  background:#fff; border-radius:50%; transition:.3s; }
+input:checked + .slider { background:var(--accent); }
+input:checked + .slider:before { transform:translateX(20px); }
+
+#schedule-grid { display:grid; grid-template-columns:40px repeat(7,1fr); gap:2px; }
+.sg-corner,.sg-day-head { font-size:10px; color:var(--muted); text-align:center; padding:4px 2px; }
+.sg-slot-label { font-size:9px; color:var(--muted); text-align:right; padding-right:4px;
+  display:flex; align-items:center; justify-content:flex-end; }
+.sg-cell { height:28px; border-radius:3px; cursor:pointer; transition:background .12s; }
+.sg-cell.sg-on  { background:#16a34a50; border:1px solid #16a34a90; }
+.sg-cell.sg-off { background:#dc262640; border:1px solid #dc262680; }
+.sg-cell.sg-locked { background:#0a0f1a; border:1px dashed #1e293b; cursor:not-allowed; opacity:0.4; }
+.sg-cell.sg-on:hover  { background:#16a34a70; }
+.sg-cell.sg-off:hover { background:#dc262660; }
 </style>
 </head>
 <body>
@@ -592,12 +665,15 @@ body.expert input[disabled] { cursor:not-allowed !important; }
       <button class="mode-btn active" id="btn-normal" onclick="setMode('normal')">Normal</button>
       <button class="mode-btn"        id="btn-expert" onclick="setMode('expert')">Expert</button>
     </div>
-    <a class="btn btn-sm" href="/lecteur/" target="_blank">Lecteur →</a>
+    <div style="display:flex;gap:8px;align-items:center;">
+      <a class="btn btn-sm" href="/lecteur/" target="_blank" title="Ouvrir le lecteur enfant">📻 Lecteur</a>
+      <a class="btn btn-sm" href="/dashboard.php" title="Dashboard d'écoute">📊 Dashboard</a>
+    </div>
   </div>
 </div>
 
-<!-- ── État système ────────────────────────────────────────── -->
-<section>
+<!-- ── État système (expert) ───────────────────────────────── -->
+<section class="expert-only">
   <div class="sec-hdr"><h2>État du système</h2></div>
   <div class="sys-grid">
     <div class="card">
@@ -620,28 +696,138 @@ body.expert input[disabled] { cursor:not-allowed !important; }
   </div>
 </section>
 
-<!-- ── Volume (expert) ─────────────────────────────────────── -->
-<section class="expert-only">
-  <div class="sec-hdr">
-    <h2>Volume maximum</h2>
-    <button class="btn btn-primary btn-sm" id="btn-save-vol" onclick="saveConfig()">Enregistrer</button>
-  </div>
-  <div class="card">
-    <div class="vol-row">
-      <span class="vol-lbl">🔊 Haut-parleurs</span>
-      <input type="range" id="vol-speakers" min="0" max="100" value="40"
-             oninput="document.getElementById('val-speakers').textContent=this.value+'%'">
-      <span class="vol-val" id="val-speakers">40%</span>
+<section>
+  <div class="sec-hdr"><h2>Contrôle parental</h2></div>
+  <div class="card" id="parental-card">
+
+    <!-- Interrupteur horaires -->
+    <div class="stat" style="margin-bottom:8px">
+      <span class="stat-l" style="font-size:14px;font-weight:600">🕐 Contrôle des horaires</span>
+      <label class="toggle-switch">
+        <input type="checkbox" id="schedule-enabled">
+        <span class="slider"></span>
+      </label>
     </div>
-    <div class="vol-row">
-      <span class="vol-lbl">🎧 Casque</span>
-      <input type="range" id="vol-headphones" min="0" max="100" value="60"
-             oninput="document.getElementById('val-headphones').textContent=this.value+'%'">
-      <span class="vol-val" id="val-headphones">60%</span>
+    <p id="schedule-status-text" style="font-size:12px;color:var(--muted);margin-bottom:16px">Chargement...</p>
+
+    <div id="parental-schedule-wrap">
+      <div id="schedule-grid"></div>
+      <p style="font-size:11px;color:var(--muted);margin-top:6px">
+        Gris = toujours bloqué · <span style="color:#4ade80">■</span> Vert = autorisé · <span style="color:#f87171">■</span> Rouge = bloqué
+      </p>
     </div>
-    <p style="font-size:11px;color:var(--muted);margin-top:10px">100 % dans l'IHM enfant = cette valeur dans MPD.</p>
+
+    <hr style="border:none;border-top:1px solid #1e293b;margin:20px 0">
+
+    <!-- Interrupteur langues -->
+    <div class="stat" style="margin-bottom:8px">
+      <span class="stat-l" style="font-size:14px;font-weight:600">🌐 Contrôle des langues</span>
+      <label class="toggle-switch">
+        <input type="checkbox" id="lang-enabled">
+        <span class="slider"></span>
+      </label>
+    </div>
+    <p id="lang-status-text" style="font-size:12px;color:var(--muted);margin-bottom:12px">Chargement...</p>
+
+    <div id="lang-toggles" style="display:flex;gap:16px;flex-wrap:wrap">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+        <input type="checkbox" id="lang-fr" value="fr" checked>
+        <span>🇫🇷 Français</span>
+      </label>
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+        <input type="checkbox" id="lang-es" value="es" checked>
+        <span>🇪🇸 Español</span>
+      </label>
+    </div>
+
+    <button class="btn btn-primary" id="btn-save-parental" style="margin-top:16px">Enregistrer</button>
+    <span id="parental-save-msg" style="font-size:12px;margin-left:10px;color:var(--muted)"></span>
   </div>
 </section>
+
+<!-- ── Administration avancée ──────────────────────────────── -->
+<section class="expert-only">
+  <div class="sec-hdr">
+    <h2>Administration avancée</h2>
+    <button class="btn btn-primary btn-sm" id="btn-save-adv" onclick="saveConfig()">Enregistrer</button>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+
+    <!-- Volume max -->
+    <div class="card">
+      <div class="card-title">🔊 Volume maximum</div>
+      <div class="vol-row">
+        <span class="vol-lbl">Haut-parleurs</span>
+        <input type="range" id="vol-speakers" min="0" max="100" value="40"
+               oninput="document.getElementById('val-speakers').textContent=this.value+'%'">
+        <span class="vol-val" id="val-speakers">40%</span>
+      </div>
+      <div class="vol-row">
+        <span class="vol-lbl">Casque</span>
+        <input type="range" id="vol-headphones" min="0" max="100" value="60"
+               oninput="document.getElementById('val-headphones').textContent=this.value+'%'">
+        <span class="vol-val" id="val-headphones">60%</span>
+      </div>
+      <p style="font-size:11px;color:var(--muted);margin-top:10px">100 % dans l'IHM enfant = cette valeur dans MPD.</p>
+    </div>
+
+    <!-- Son de démarrage -->
+    <div class="card">
+      <div class="card-title">🔔 Son de démarrage</div>
+      <div class="stat" style="margin-bottom:12px">
+        <span class="stat-l">Activé</span>
+        <label class="toggle-switch">
+          <input type="checkbox" id="chime-enabled" checked>
+          <span class="slider"></span>
+        </label>
+      </div>
+      <div class="vol-row">
+        <span class="vol-lbl">Volume</span>
+        <input type="range" id="chime-volume" min="0" max="40" value="15"
+               oninput="document.getElementById('val-chime').textContent=this.value+'%'">
+        <span class="vol-val" id="val-chime">15%</span>
+      </div>
+      <p style="font-size:11px;color:var(--muted);margin-top:10px">Accord doux joué au démarrage du lecteur.</p>
+    </div>
+
+    <!-- Écran de veille -->
+    <div class="card" style="grid-column:1/-1">
+      <div class="card-title">🌙 Écran de veille</div>
+      <div style="display:flex;gap:32px;flex-wrap:wrap;align-items:center">
+        <div class="stat" style="margin:0">
+          <span class="stat-l">Activé</span>
+          <label class="toggle-switch">
+            <input type="checkbox" id="sleep-enabled" checked>
+            <span class="slider"></span>
+          </label>
+        </div>
+        <label style="font-size:13px;color:var(--muted)">
+          Délai :
+          <select id="sleep-delay" style="margin-left:6px;background:#0b1220;color:var(--text);border:1px solid #1e293b;border-radius:4px;padding:3px 8px">
+            <option value="10">10 s</option>
+            <option value="15" selected>15 s</option>
+            <option value="30">30 s</option>
+            <option value="60">1 min</option>
+            <option value="120">2 min</option>
+            <option value="300">5 min</option>
+          </select>
+        </label>
+        <label style="font-size:13px;color:var(--muted)">
+          Affichage :
+          <select id="sleep-mode" style="margin-left:6px;background:#0b1220;color:var(--text);border:1px solid #1e293b;border-radius:4px;padding:3px 8px">
+            <option value="clock">🕐 Heure</option>
+            <option value="brand">✨ HECHICERO</option>
+            <option value="both" selected>🕐 + HECHICERO</option>
+          </select>
+        </label>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ── Volume (expert) — LEGACY, remplacé par Admin avancée ── -->
+<!-- section supprimée, contenu fusionné dans Admin avancée -->
 
 <!-- ── Ajouter (expert) ────────────────────────────────────── -->
 <section class="expert-only">
@@ -827,21 +1013,162 @@ async function loadStatus() {
   }
 }
 
-// ── Config volume ─────────────────────────────────────────
+// ── Config avancée ────────────────────────────────────────
 async function loadConfig() {
   const c = await api({action:'get_config'}).catch(()=>({}));
   const sv = c.volume?.speakers_max   ?? 40;
   const hv = c.volume?.headphones_max ?? 60;
-  document.getElementById('vol-speakers').value              = sv;
-  document.getElementById('val-speakers').textContent        = sv + '%';
-  document.getElementById('vol-headphones').value            = hv;
-  document.getElementById('val-headphones').textContent      = hv + '%';
+  document.getElementById('vol-speakers').value         = sv;
+  document.getElementById('val-speakers').textContent   = sv + '%';
+  document.getElementById('vol-headphones').value       = hv;
+  document.getElementById('val-headphones').textContent = hv + '%';
+  // Son de démarrage
+  const ce = !!(c.chime_enabled ?? true);
+  const cv = c.chime_volume ?? 15;
+  document.getElementById('chime-enabled').checked      = ce;
+  document.getElementById('chime-volume').value         = cv;
+  document.getElementById('val-chime').textContent      = cv + '%';
+  // Écran de veille (lire depuis config.json — admin avancée)
+  document.getElementById('sleep-enabled').checked      = !!(c.sleep_enabled ?? true);
+  document.getElementById('sleep-delay').value          = String(c.sleep_delay ?? 15);
+  document.getElementById('sleep-mode').value           = c.sleep_mode ?? 'both';
 }
 async function saveConfig() {
-  const r   = await api({action:'save_config', speakers_max:document.getElementById('vol-speakers').value, headphones_max:document.getElementById('vol-headphones').value});
-  const btn = document.getElementById('btn-save-vol');
+  const r = await api({
+    action:         'save_config',
+    speakers_max:   document.getElementById('vol-speakers').value,
+    headphones_max: document.getElementById('vol-headphones').value,
+    chime_enabled:  document.getElementById('chime-enabled').checked ? 1 : 0,
+    chime_volume:   document.getElementById('chime-volume').value,
+    sleep_enabled:  document.getElementById('sleep-enabled').checked ? 1 : 0,
+    sleep_delay:    document.getElementById('sleep-delay').value,
+    sleep_mode:     document.getElementById('sleep-mode').value,
+  });
+  const btn = document.getElementById('btn-save-adv');
   btn.textContent = r.ok ? '✓ Enregistré' : '✗ Erreur';
   setTimeout(()=>btn.textContent='Enregistrer', 2000);
+}
+
+const DAYS_LABELS = ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'];
+const SLOTS = [
+  { key:'0-7',   label:'0h-7h',   locked:false },
+  { key:'7-12',  label:'7h-12h',  locked:false },
+  { key:'12-14', label:'12h-14h', locked:false },
+  { key:'14-17', label:'14h-17h', locked:false },
+  { key:'17-20', label:'17h-20h', locked:false },
+  { key:'20-22', label:'20h-22h', locked:false },
+  { key:'22-24', label:'22h-24h', locked:false },
+];
+
+// Défaut : toutes les plages autorisées (vert)
+const DEFAULT_SLOTS_ON = SLOTS.filter(s => !s.locked).map(s => s.key);
+
+let parentalConfig = {
+  schedule_enabled: false,
+  lang_enabled: false,
+  schedule: {},
+  languages: ['fr','es']
+};
+
+function normalizeParentalSchedule(schedule) {
+  const out = {};
+  for (let day = 0; day <= 6; day++) {
+    const key = String(day);
+    // Si le jour existe dans le JSON sauvegardé, on le conserve
+    // Sinon : défaut = tout autorisé (toutes les plages non-locked en vert)
+    out[key] = Array.isArray(schedule?.[key]) ? schedule[key].slice() : DEFAULT_SLOTS_ON.slice();
+  }
+  return out;
+}
+
+async function loadParental() {
+  const r = await api({action:'get_parental'}).catch(()=>null);
+  if (!r || !r.ok) return;
+  const p = r.parental || {};
+  parentalConfig = {
+    schedule_enabled: !!(p.schedule_enabled ?? p.enabled ?? false),
+    lang_enabled:     !!(p.lang_enabled ?? false),
+    schedule:         normalizeParentalSchedule(p.schedule || {}),
+    languages:        Array.isArray(p.languages) ? p.languages : ['fr','es'],
+  };
+  renderParentalUI();
+}
+
+function renderParentalUI() {
+  const p = parentalConfig;
+  document.getElementById('schedule-enabled').checked = !!p.schedule_enabled;
+  document.getElementById('schedule-status-text').textContent =
+    p.schedule_enabled ? 'Actif — les plages rouges sont bloquées.' :
+                         'Inactif — aucune restriction horaire.';
+
+  document.getElementById('lang-enabled').checked = !!p.lang_enabled;
+  document.getElementById('lang-status-text').textContent =
+    p.lang_enabled ? 'Actif — seules les langues cochées sont accessibles.' :
+                     'Inactif — les deux langues sont toujours disponibles.';
+
+  document.getElementById('lang-fr').checked = (p.languages || []).includes('fr');
+  document.getElementById('lang-es').checked = (p.languages || []).includes('es');
+  // sleep & chime sont dans la section Admin avancée → chargés par loadConfig()
+
+  const grid = document.getElementById('schedule-grid');
+  grid.innerHTML = '';
+  grid.insertAdjacentHTML('beforeend', '<div class="sg-corner"></div>');
+  DAYS_LABELS.forEach(d => grid.insertAdjacentHTML('beforeend', `<div class="sg-day-head">${d}</div>`));
+
+  SLOTS.forEach(slot => {
+    grid.insertAdjacentHTML('beforeend', `<div class="sg-slot-label">${slot.label}</div>`);
+    for (let day = 0; day <= 6; day++) {
+      const dayKey = String(day);
+      const active = (p.schedule[dayKey] || []).includes(slot.key);
+      const cls = slot.locked ? 'sg-locked' : (active ? 'sg-on' : 'sg-off');
+      const cell = document.createElement('div');
+      cell.className = `sg-cell ${cls}`;
+      cell.dataset.day = dayKey;
+      cell.dataset.slot = slot.key;
+      if (!slot.locked) cell.addEventListener('click', toggleCell);
+      grid.appendChild(cell);
+    }
+  });
+}
+
+function toggleCell(e) {
+  const cell = e.currentTarget;
+  const day  = String(cell.dataset.day);
+  const slot = cell.dataset.slot;
+  const sch  = parentalConfig.schedule;
+  if (!sch[day]) sch[day] = [];
+  const idx = sch[day].indexOf(slot);
+  if (idx >= 0) { sch[day].splice(idx, 1); cell.className = 'sg-cell sg-off'; }
+  else          { sch[day].push(slot);      cell.className = 'sg-cell sg-on'; }
+}
+
+async function saveParental() {
+  // sleep_enabled / sleep_delay / sleep_mode → sauvegardés dans saveConfig() (admin avancée)
+  parentalConfig.schedule_enabled = document.getElementById('schedule-enabled').checked;
+  parentalConfig.lang_enabled     = document.getElementById('lang-enabled').checked;
+  parentalConfig.languages = [];
+  if (document.getElementById('lang-fr').checked) parentalConfig.languages.push('fr');
+  if (document.getElementById('lang-es').checked) parentalConfig.languages.push('es');
+
+  if (parentalConfig.lang_enabled && parentalConfig.languages.length === 0) {
+    document.getElementById('parental-save-msg').textContent = '⚠ Sélectionnez au moins une langue';
+    return;
+  }
+
+  document.getElementById('parental-save-msg').textContent = 'Enregistrement…';
+  try {
+    const r = await fetch('/?action=save_parental', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(parentalConfig),
+    });
+    const d = await r.json();
+    document.getElementById('parental-save-msg').textContent = d.ok ? '✓ Enregistré' : '✗ Erreur';
+    renderParentalUI();
+  } catch(e) {
+    document.getElementById('parental-save-msg').textContent = '✗ Erreur réseau';
+  }
+  setTimeout(() => document.getElementById('parental-save-msg').textContent = '', 3000);
 }
 
 // ── Copier dans le presse-papiers ─────────────────────────
@@ -1154,8 +1481,10 @@ setMode(localStorage.getItem('hechicero_mode') || 'normal');
 api({action:'ensure_radio_images'}).catch(()=>{});  // télécharge les images radio manquantes
 loadStatus();
 loadConfig();
+loadParental();
 loadPodcasts();
 loadRadios();
+document.getElementById('btn-save-parental').addEventListener('click', saveParental);
 // Si une synchro était en cours (ex: rechargement de page), afficher la progression
 api({action:'get_progress'}).then(p => {
   if (p && p.status !== 'idle') {

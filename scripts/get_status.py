@@ -55,6 +55,7 @@ def atomic_write(path: Path, data: str):
     try:
         with os.fdopen(fd, "w") as fh:
             fh.write(data)
+        os.chmod(tmp, 0o644)   # lisible par www-data
         os.replace(tmp, str(path))
     except Exception:
         try:
