@@ -697,6 +697,13 @@ let trackingPollCount = 0;
 let lastElapsed       = 0;
 let parentalCfg       = null;
 let parentalTimer     = null;
+let pendingChimeTouch = false;   // TICKET-073 : touch arrive avant la fin du fetch
+let chimeAlreadyPlayed = false;  // TICKET-073 : evite une double lecture
+
+// TICKET-073 : enregistrer le touch AVANT le fetch parental
+document.addEventListener('touchstart', () => {
+  pendingChimeTouch = true;
+}, { once: true });
 
 // Retourne les épisodes dans l'ordre de la série (ep1 en premier)
 function getDisplayItems(podcast) {
@@ -764,12 +771,23 @@ async function loadParentalConfig() {
   }
   applyParentalRestrictions();
   applySleepConfig(parentalCfg);
-  if (parentalCfg.chime_enabled !== false) {
-    const chimeOnFirstTouch = () => {
-      playStartupChime((parentalCfg.chime_volume ?? 15) / 100);
-      document.removeEventListener('touchstart', chimeOnFirstTouch, { once: true });
-    };
-    document.addEventListener('touchstart', chimeOnFirstTouch, { once: true });
+  // TICKET-073 : jouer le chime meme si le touch est arrive avant la fin du fetch
+  if (parentalCfg.chime_enabled !== false && !chimeAlreadyPlayed) {
+    const vol = (parentalCfg.chime_volume ?? 15) / 100;
+    if (pendingChimeTouch) {
+      // Touch deja arrive -> jouer immediatement
+      chimeAlreadyPlayed = true;
+      playStartupChime(vol);
+    } else {
+      // Touch pas encore arrive -> attendre le prochain
+      const chimeOnFirstTouch = () => {
+        if (!chimeAlreadyPlayed) {
+          chimeAlreadyPlayed = true;
+          playStartupChime(vol);
+        }
+      };
+      document.addEventListener('touchstart', chimeOnFirstTouch, { once: true });
+    }
   }
 }
 
@@ -1059,6 +1077,7 @@ async function playTrack(idx) {
   const displayItems = getDisplayItems(currentPodcast);
   const ch = displayItems[idx];
   if (!ch) return;
+  currentStation = null;  // TICKET-072 : efface la station radio pour le mini-lecteur
   currentIdx = idx;
 
   el('ctrl-pod').textContent        = currentPodcast.titre;
@@ -1301,9 +1320,9 @@ function playStartupChime(volume = 0.12) {
 let SLEEP_DELAY  = 15000;  // mis à jour depuis la config
 let SLEEP_MODE   = 'both'; // 'clock' | 'brand' | 'both'
 let sleepTimer = null;
-const sleepOverlay = document.getElementById('sleep-overlay');
-const sleepClock   = document.getElementById('sleep-clock');
-const sleepBrand   = document.getElementById('sleep-brand');
+const getSleepOverlay = () => document.getElementById('sleep-overlay');
+const getSleepClock   = () => document.getElementById('sleep-clock');
+const getSleepBrand   = () => document.getElementById('sleep-brand');
 
 function applySleepConfig(cfg) {
   if (!cfg) return;
@@ -1311,35 +1330,35 @@ function applySleepConfig(cfg) {
   SLEEP_DELAY = Number(cfg.sleep_delay ?? 15) * 1000;
   SLEEP_MODE  = cfg.sleep_mode ?? 'both';
   // Visibilité des éléments selon le mode
-  sleepClock.style.display = (SLEEP_MODE === 'brand') ? 'none' : '';
-  sleepBrand.style.display = (SLEEP_MODE === 'clock') ? 'none' : '';
+  getSleepClock().style.display = (SLEEP_MODE === 'brand') ? 'none' : '';
+  getSleepBrand().style.display = (SLEEP_MODE === 'clock') ? 'none' : '';
   if (!enabled) {
     clearTimeout(sleepTimer);
-    sleepOverlay.classList.remove('active');
+    getSleepOverlay().classList.remove('active');
   } else {
     resetSleepTimer();
   }
 }
 
 function updateSleepClock() {
-  if (sleepOverlay.classList.contains('active')) {
+  if (getSleepOverlay().classList.contains('active')) {
     const now = new Date();
     const h   = String(now.getHours()).padStart(2, '0');
     const m   = String(now.getMinutes()).padStart(2, '0');
-    sleepClock.textContent = h + ':' + m;
+    getSleepClock().textContent = h + ':' + m;
   }
 }
 
 function activateSleep() {
-  sleepOverlay.classList.add('active');
+  getSleepOverlay().classList.add('active');
   updateSleepClock();
 }
 
 function wakeUp(e) {
-  if (sleepOverlay.classList.contains('active')) {
+  if (getSleepOverlay().classList.contains('active')) {
     e.stopPropagation();
     e.preventDefault();
-    sleepOverlay.classList.remove('active');
+    getSleepOverlay().classList.remove('active');
   }
   resetSleepTimer();
 }
