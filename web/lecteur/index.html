@@ -764,9 +764,12 @@ async function loadParentalConfig() {
   }
   applyParentalRestrictions();
   applySleepConfig(parentalCfg);
-  // Son de démarrage
   if (parentalCfg.chime_enabled !== false) {
-    playStartupChime((parentalCfg.chime_volume ?? 15) / 100);
+    const chimeOnFirstTouch = () => {
+      playStartupChime((parentalCfg.chime_volume ?? 15) / 100);
+      document.removeEventListener('touchstart', chimeOnFirstTouch, { once: true });
+    };
+    document.addEventListener('touchstart', chimeOnFirstTouch, { once: true });
   }
 }
 

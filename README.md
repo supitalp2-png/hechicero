@@ -72,10 +72,20 @@ Le détail des tickets et des décisions techniques est dans `docs/`.
 | Fichier | Contenu |
 |---|---|
 | `docs/00-manifeste.md` | Vision et principes du projet |
+| `docs/05-POWER_MANAGEMENT.md` | Monitoring batterie, service systemd, shutdown propre |
 | `docs/10-choix_techniques.md` | Choix d'architecture et matériel |
-| `docs/30-LECTEUR.md` | Interface enfant |
+| `docs/15-INVARIANTS.md` | Règles absolues du projet (jamais à violer) |
+| `docs/20-SETUP_SYSTEME.md` | Installation complète sur Raspberry Pi 5 |
+| `docs/25-UX_GUIDELINES.md` | Règles UX IHM enfant et parent |
+| `docs/30-LECTEUR.md` | Interface enfant (5 écrans, MPD, config.json) |
 | `docs/40-BACKEND_RSS.md` | Pipeline d'ingestion RSS |
+| `docs/50-PODCASTS_CONFIG.md` | Format et règles du fichier podcasts.json |
+| `docs/55-PODCAST_SERIE_DECISIONS.md` | Série "Décisions Prises" + easter egg |
+| `docs/60-KIOSK_MODE.md` | Configuration mode kiosque Chromium |
+| `docs/70-SERVICES_SYSTEMD.md` | Services systemd (batterie, RSS, kiosque) |
+| `docs/80-hardware.md` | Matériel, câblage, comportements Pi 5 |
 | `docs/90-BACKLOG.md` | Tickets ouverts et fermés |
+| `docs/99-prompt.md` | Prompt de reprise de session pour Claude |
 
 ---
 

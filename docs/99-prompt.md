@@ -22,25 +22,31 @@ Le projet doit être **robuste**, **simple**, **maintenable**, **documenté**, e
 Arborescence réelle :
 
 ~/hechicero/
-├── data/              # config.json, fichiers internes
+├── data/              # config.json (seuils batterie), parental.json, tracking.db
 ├── docs/              # documentation
 ├── podcasts/          # contenus téléchargés (RSS)
 │     └── <podcast_id>/
 │          ├── audio/
 │          ├── images/
 │          └── meta.json
-├── scripts/           # Python : monitoring + ingestion
-├── UX Design/         # maquettes, notes
+├── private/           # exclu du repo — scripts avec prénoms réels
+├── scripts/           # Python : monitoring + ingestion RSS
+│     ├── get_status.py
+│     ├── hechicero-monitor.service
+│     └── rss_ingest/
+├── UX Design/         # maquettes, notes UX
 └── web/               # interface web (admin + lecteur)
       ├── index.php
+      ├── dashboard.php
+      ├── tracking.php
       ├── status.json
       └── lecteur/
-            ├── index.html
-            ├── app.js
-            ├── style.css
+            ├── index.html      # fichier unique (HTML + CSS + JS)
+            ├── config.json     # config avancée (chime, sleep, volumes)
             ├── data.json
-            ├── images/
-            └── audio/
+            └── images/
+
+> `app.js` et `style.css` sont du code mort (TICKET-040) — les styles et la logique sont intégrés dans `index.html`.
 
 Règles fondamentales :
 - Le **lecteur** lit `data.json` et contrôle MPD.  
@@ -94,7 +100,7 @@ Claude rédige les briefs Copilot, prêts à copier-coller. Claude ne code pas d
 
 Le projet est aussi une démarche d'apprentissage pour Thomas : comprendre l'architecture, les décisions techniques, et l'IA comme accélérateur — pas comme substitut au jugement.
 
-Voir `docs/01-METHODE_TRAVAIL.md` pour le détail complet.
+La méthode est décrite dans ce fichier (section 4b) et dans `docs/00-manifeste.md`.
 
 ---
 
@@ -193,28 +199,33 @@ Objectif : **zéro surprise, zéro magie, zéro casse**.
 
 ---
 
-# 10. État du projet au 2026-06-23 (session 3)
+# 10. État du projet au 2026-06-24 (session 4)
 
 ## Ce qui est fait et validé
 - 18 podcasts FR + 2 podcasts ES ingérés et fonctionnels (pipeline RSS complet)
 - 2 webradios (France Inter FR, Radio Nacional ES)
 - IHM enfant 5 écrans complète et validée sur le Pi
-- Interface admin parent complète (mode normal + expert, barres de progression temps réel)
+- Interface admin parent complète (mode normal / expert, section “Administration avancée” expert-only)
+- Son de démarrage (chime) : accord Web Audio API, config dans `web/lecteur/config.json`
+- Fix screensaver : suppression de `pointermove` (générait des events fantômes sur Pi)
+- Dashboard analytics (`web/dashboard.php`) : bar chart FR/ES + camembert journée + DOW chart
+- Tracking SQLite (`web/tracking.php`, `data/tracking.db`)
+- Enchaînement automatique des épisodes (TICKET-069 ✅)
 - Jaquettes podcasts servies depuis `web/lecteur/images/{id}.jpg` (Apache-accessible)
-- Images épisodes avec fallback jaquette podcast dans la liste épisodes
 - Permissions Pi correctes (`thomas:www-data`, cron 3h, umask 002)
-- Documentation synchronisée avec l'état réel du code
 
 ## Source de vérité — rappel critique
 - `data/podcasts.json` → config podcasts ET radios (écrit par l'admin PHP)
+- `web/lecteur/config.json` → config avancée : `chime_enabled`, `chime_volume`, `sleep_enabled`, `sleep_delay`, `sleep_mode`, `speakers_max`, `headphones_max`
+- `data/config.json` → seuils batterie uniquement (lu par `get_status.py`)
 - `writer.py` → lit les radios depuis `podcasts.json`, génère `web/lecteur/data.json`
 - `web/` → seul répertoire servi par Apache (les chemins `/podcasts/` ne sont PAS accessibles HTTP)
 
 ## Tickets ouverts prioritaires
-- TICKET-069 : enchainement automatique des épisodes (détecter `play → stop` dans `refreshStatus()`)
+- TICKET-072 : bug mini-lecteur (affiche la radio au lieu du podcast en cours)
 - TICKET-059 : durées via ffprobe
 - TICKET-038 : bouton RUN physique Pi
-- TICKET-058 : série easter egg “Décisions Prises” (FR uniquement)
+- TICKET-058 : série easter egg “Décisions Prises”
 
 ---
 

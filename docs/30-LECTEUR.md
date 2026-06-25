@@ -41,6 +41,22 @@ Contenu :
 ### 3.2 Rôle des fichiers
 - **index.html** : contient toute la logique — chargement de `data.json`, rendu des 5 écrans, événements tactiles, commandes MPD
 - **data.json** : généré automatiquement par le backend (`writer.py`), jamais modifié par le lecteur
+- **config.json** : configuration avancée lue au démarrage du lecteur (via `radio.php?action=parental_status`)
+
+Format de `config.json` :
+```json
+{
+  "speakers_max": 80,
+  "headphones_max": 60,
+  "chime_enabled": true,
+  "chime_volume": 15,
+  "sleep_enabled": true,
+  "sleep_delay": 300,
+  "sleep_mode": "dim"
+}
+```
+
+Ce fichier est écrit par `web/index.php` (action `save_config`) via écriture atomique. Il ne doit jamais être modifié manuellement.
 
 ---
 
@@ -168,6 +184,10 @@ Le lecteur doit fonctionner **sans lag** sur un Raspberry Pi 5.
 ## 12. État réel au 2026-06-24
 
 ### Implémenté et validé
+- Son de démarrage (chime) : accord C4–G4–C5–E5 via Web Audio API, sans fichier audio — `playStartupChime(volume)` (TICKET-023 ✅)
+  - Config : `chime_enabled` / `chime_volume` dans `web/lecteur/config.json`
+  - ⚠️ À tester sur Pi : Chromium peut bloquer l'AudioContext sans interaction préalable (fallback `touchstart` documenté dans `brief-session-next.md`)
+- Fix screensaver : remplacement de `pointermove` par `pointerdown/touchstart/click` — évite les events fantômes sur Pi
 - Navigation 5 écrans fonctionnelle bout en bout (TICKET-050 ✅)
 - Filtre par langue via drapeaux FR/🇨🇴 (champ `langue` dans `data.json`)
 - Commandes MPD via `radio.php` (play, pause, playfile, volup, voldown, status, seekcur, seekid)
@@ -208,7 +228,6 @@ Le lecteur doit fonctionner **sans lag** sur un Raspberry Pi 5.
 ---
 
 ## 13. Évolutions prévues
-- Enchainement automatique des épisodes (TICKET-069)
 - Durées épisodes via `ffprobe` (TICKET-059)
 - Script d'intégrité audio/images/data.json (TICKET-048)
 - Carrousel pour les jaquettes (TICKET-047)

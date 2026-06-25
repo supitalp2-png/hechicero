@@ -1,7 +1,7 @@
 # Backlog Hechicero
 
 > Convention : `TICKET-### — [type] — Titre — (prio) — owner`
-> Dernière mise à jour : 2026-06-24 (session 4)
+> Dernière mise à jour : 2026-06-25 (session 5)
 
 ---
 
@@ -125,6 +125,27 @@
 - [ ] TICKET-050 — UX — Refonte visuelle de l'IHM enfant
       - Architecture 5 écrans validée et implémentée
       - Reste : images, finitions, polish
+- [ ] TICKET-073 — bug/audio — Chime : race condition touchstart avant fin du fetch parental_status
+      - Symptôme : le chime ne se joue pas au démarrage malgré `chime_enabled: true`
+      - Cause : le listener `touchstart` est posé DANS le callback de `loadParentalConfig()` (fetch async)
+        Si l'enfant (ou un event fantôme) touche l'écran avant que le fetch revienne, le touch est manqué
+        Le listener se pose après — et attend un prochain touch qui ne vient pas
+      - Fix : mémoriser si un touch s'est produit avant la fin du fetch, jouer le chime immédiatement dans ce cas
+        ```js
+        let pendingChimeTouch = false;
+        document.addEventListener('touchstart', () => { pendingChimeTouch = true; }, { once: true });
+        // puis dans loadParentalConfig() callback :
+        if (parentalCfg.chime_enabled !== false) {
+          if (pendingChimeTouch) {
+            playStartupChime((parentalCfg.chime_volume ?? 15) / 100);
+          } else {
+            const chimeOnFirstTouch = () => playStartupChime((parentalCfg.chime_volume ?? 15) / 100);
+            document.addEventListener('touchstart', chimeOnFirstTouch, { once: true });
+          }
+        }
+        ```
+      - Fichier : `web/lecteur/index.html` (section `loadParentalConfig` + init)
+
 - [ ] TICKET-072 — bug/UX — Mini-lecteur : affiche la radio au lieu du podcast en cours
       - Symptôme : la barre du bas affiche "EN DIRECT / Mon Petit France Inter" même quand un épisode podcast tourne
       - Cause probable : l'état du mini-lecteur n'est pas mis à jour lors du passage radio → podcast

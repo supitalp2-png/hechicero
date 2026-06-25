@@ -31,42 +31,57 @@ Assurer :
 
 ## 3. Installation rapide
 
-### 3.1 Créer l’utilisateur système (optionnel)
-sudo useradd --system --create-home --shell /usr/sbin/nologin hechicero
+### 3.1 Permissions
+```
+sudo chown -R thomas:www-data /home/thomas/hechicero
+sudo chmod -R 775 /home/thomas/hechicero/scripts
+sudo chmod -R 775 /home/thomas/hechicero/web
+sudo chmod -R 775 /home/thomas/hechicero/data
+```
 
-### 3.2 Ajouter les groupes nécessaires
-sudo usermod -aG i2c,audio,gpio,www-data hechicero
-
-### 3.3 Permissions
-sudo chown -R hechicero:hechicero /home/thomas/hechicero
-sudo chmod -R 750 /home/thomas/hechicero/scripts
-sudo chown -R hechicero:www-data /home/thomas/hechicero/web
+> Le service tourne sous `User=thomas`. L’utilisateur `thomas` doit être membre du groupe `www-data` :
+> `sudo usermod -aG www-data thomas`
 
 ---
 
 ## 4. Service systemd
-Fichier : `/etc/systemd/system/hechicero-battery.service`
+Fichier : `/etc/systemd/system/hechicero-monitor.service`
+(source dans le repo : `scripts/hechicero-monitor.service`)
 
+```
 [Unit]
-Description=Hechicero Battery Monitor
+Description=Hechicero Battery Monitor (INA219)
 After=network.target
 
 [Service]
-ExecStart=/usr/bin/python3 /home/thomas/hechicero/scripts/get_status.py
-Restart=always
+Type=simple
 User=thomas
 WorkingDirectory=/home/thomas/hechicero/scripts
-ProtectSystem=full
+ExecStart=/usr/bin/python3 /home/thomas/hechicero/scripts/get_status.py
+Restart=always
+RestartSec=15
+StandardOutput=journal
+StandardError=journal
 
 [Install]
 WantedBy=multi-user.target
+```
+
+> ⚠️ `get_status.py` utilise `tempfile.mkstemp()` + `os.chmod(tmp, 0o644)` + `os.replace()` pour l'écriture atomique.
+> Le `chmod 644` est obligatoire — `mkstemp()` crée les fichiers en 0o600, illisibles par `www-data`.
 
 ### Activer le service
+```
+sudo cp scripts/hechicero-monitor.service /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable --now hechicero-battery.service
+sudo systemctl enable --now hechicero-monitor.service
+```
 
 ### Vérifier le statut
-systemctl status hechicero-battery.service
+```
+systemctl status hechicero-monitor.service
+journalctl -u hechicero-monitor.service -f
+```
 
 ---
 

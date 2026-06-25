@@ -144,11 +144,12 @@ Le repo est public. Aucun prénom réel (enfant, adulte, personnage) ne doit app
 
 **Structure attendue** :
 ```
-docs/
-  private/            ← dans .gitignore — prénoms réels autorisés ici
+private/                          ← dans .gitignore — prénoms réels autorisés ici
+  podcast-easteregg/
     ep1-script-notes.md
     ep2-script-notes.md
     ...
+docs/
   55-PODCAST_SERIE_DECISIONS.md   ← version publique, sans prénoms
 ```
 

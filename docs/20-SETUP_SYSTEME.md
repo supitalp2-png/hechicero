@@ -154,37 +154,28 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now hechicero-battery.service
 ```
 
-### 7.3 Ingestion RSS (service + timer)
-Créer `/etc/systemd/system/hechicero-rss.service` :
-```
-[Unit]
-Description=Hechicero RSS Ingestion
+### 7.3 Ingestion RSS (cron nocturne)
 
-[Service]
-ExecStart=/usr/bin/python3 /home/thomas/hechicero/scripts/rss_ingest/ingest.py
-WorkingDirectory=/home/thomas/hechicero/scripts/rss_ingest
-User=thomas
-Restart=on-failure
+L'ingestion est gérée par **cron** (crontab de l'utilisateur `thomas`), pas par un timer systemd.
+
+Ajouter la ligne suivante dans `crontab -e` (en tant que `thomas`) :
+```
+0 3 * * * umask 002 && python3 /home/thomas/hechicero/scripts/rss_ingest/ingest.py >> /tmp/hechicero_ingest.log 2>&1
 ```
 
-Créer `/etc/systemd/system/hechicero-rss.timer` :
+`umask 002` garantit que les fichiers créés sont lisibles/modifiables par le groupe `www-data`.
+
+Vérifier :
 ```
-[Unit]
-Description=Run RSS ingestion every 6 hours
-
-[Timer]
-OnBootSec=5min
-OnUnitActiveSec=6h
-
-[Install]
-WantedBy=timers.target
+crontab -l
 ```
 
-Activer :
+Logs :
 ```
-sudo systemctl daemon-reload
-sudo systemctl enable --now hechicero-rss.timer
+tail -f /tmp/hechicero_ingest.log
 ```
+
+> Un service/timer systemd (`hechicero-rss.service` / `hechicero-rss.timer`) est documenté dans `docs/70-SERVICES_SYSTEMD.md` pour référence, mais n'est **pas activé** — ne pas l'activer sans désactiver le cron d'abord.
 
 ---
 
