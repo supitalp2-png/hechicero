@@ -95,6 +95,21 @@ def download_file(url: str, dest: Path) -> Path | None:
     return None
 
 
+def probe_duration(path: Path) -> int | None:
+    """Lit la durée réelle d'un fichier audio via ffprobe (en secondes)."""
+    try:
+        result = subprocess.run(
+            ["ffprobe", "-v", "error",
+             "-show_entries", "format=duration",
+             "-of", "default=noprint_wrappers=1:nokey=1",
+             str(path)],
+            capture_output=True, text=True, timeout=30,
+        )
+        return int(round(float(result.stdout.strip())))
+    except Exception:
+        return None
+
+
 def download_episode(podcast_id: str, ep):
     base = Path(f"/home/thomas/hechicero/podcasts/{podcast_id}")
 
@@ -112,10 +127,14 @@ def download_episode(podcast_id: str, ep):
                 raw = downloaded.with_suffix(".m4a.raw")
                 downloaded.rename(raw)
                 if not convert_m4a_to_mp3(raw, downloaded):
-                    # Échec de conversion : on remet l'original pour ne pas perdre le fichier
                     raw.rename(downloaded)
                     log(f"Kept original (conversion failed): {downloaded}")
             ep.local_audio = str(downloaded)
+            # Si le flux RSS ne publie pas itunes:duration, on sonde le fichier
+            if ep.duration is None:
+                ep.duration = probe_duration(downloaded)
+                if ep.duration:
+                    log(f"Duration probed via ffprobe: {ep.duration}s ({downloaded.name})")
 
     if ep.image_url:
         downloaded = download_file(ep.image_url, image_path)

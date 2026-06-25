@@ -209,17 +209,61 @@ try {
         $stmt->execute([$since]);
         $by_dow = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
+        // Radio : par jour
+        $stmt = $db->prepare(
+            "SELECT date(ts_start, 'unixepoch', 'localtime') AS jour,
+                    langue,
+                    ROUND(SUM(listened_s) / 60.0, 1) AS minutes
+             FROM play_events
+             WHERE ts_start >= ? AND is_radio = 1
+             GROUP BY jour, langue
+             ORDER BY jour ASC"
+        );
+        $stmt->execute([$since]);
+        $radio_by_day = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        // Radio : résumé
+        $stmt = $db->prepare(
+            "SELECT ROUND(SUM(listened_s) / 3600.0, 1) AS total_heures,
+                    COUNT(*) AS total_sessions,
+                    ROUND(SUM(CASE WHEN langue = 'es' THEN listened_s ELSE 0 END)
+                        / NULLIF(SUM(listened_s), 0) * 100, 0) AS pct_es
+             FROM play_events
+             WHERE ts_start >= ? AND is_radio = 1"
+        );
+        $stmt->execute([$since]);
+        $radio_summary = $stmt->fetch(PDO::FETCH_ASSOC)
+            ?: ['total_heures' => 0, 'total_sessions' => 0, 'pct_es' => 0];
+
+        // Radio : top stations
+        $stmt = $db->prepare(
+            "SELECT COALESCE(station_name, podcast_id) AS station,
+                    langue,
+                    COUNT(*) AS nb_sessions,
+                    ROUND(SUM(listened_s) / 60.0, 1) AS minutes
+             FROM play_events
+             WHERE ts_start >= ? AND is_radio = 1
+             GROUP BY COALESCE(station_name, podcast_id)
+             ORDER BY minutes DESC
+             LIMIT 10"
+        );
+        $stmt->execute([$since]);
+        $radio_top_stations = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
         echo json_encode([
-            'ok'           => true,
-            'by_day'       => $by_day,
-            'by_dow'       => $by_dow,
-            'top_pods'     => $top_pods,
-            'recent'       => $recent,
-            'summary'      => $summary,
-            'funnel'       => $funnel,
-            'top_episodes' => $top_episodes,
-            'heatmap'      => $heatmap,
-            'streak'       => $streak,
+            'ok'                 => true,
+            'by_day'             => $by_day,
+            'by_dow'             => $by_dow,
+            'top_pods'           => $top_pods,
+            'recent'             => $recent,
+            'summary'            => $summary,
+            'funnel'             => $funnel,
+            'top_episodes'       => $top_episodes,
+            'heatmap'            => $heatmap,
+            'streak'             => $streak,
+            'radio_by_day'       => $radio_by_day,
+            'radio_summary'      => $radio_summary,
+            'radio_top_stations' => $radio_top_stations,
         ]);
     } else {
         echo json_encode(['ok' => false, 'error' => 'action inconnue: ' . htmlspecialchars($action)]);

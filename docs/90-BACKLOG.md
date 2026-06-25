@@ -1,7 +1,7 @@
 # Backlog Hechicero
 
 > Convention : `TICKET-### — [type] — Titre — (prio) — owner`
-> Dernière mise à jour : 2026-06-25 (session 5)
+> Dernière mise à jour : 2026-06-25 (session 6)
 
 ---
 
@@ -92,11 +92,16 @@
 - [x] TICKET-069 — UX — Enchainement automatique des épisodes (2026-06-24)
       - ✅ Détection transition `play → stop` dans `refreshStatus()` via `lastMpdState`
       - ✅ `playTrack(currentIdx + 1)` si épisodes restants, sinon stop propre
-- [x] TICKET-023 — audio — Son de démarrage (chime) au lancement du lecteur (2026-06-24)
-      - ✅ `playStartupChime(volume)` — accord chaud C4–G4–C5–E5 via Web Audio API (pas de fichier audio)
-      - ✅ Reverb léger, attaque douce, queue ~3 s
-      - ✅ Config dans `web/lecteur/config.json` : `chime_enabled`, `chime_volume` (0–100)
-      - ⚠️ À tester sur Pi : Chromium peut bloquer l'AudioContext sans interaction utilisateur préalable
+- [x] TICKET-023 — audio — Son de démarrage (chime) au lancement du lecteur (2026-06-25)
+      - ✅ Accord grave C2–G2–C3–G3–E4, sine basses + triangle aigus, reverb profond
+      - ✅ Généré en WAV via `scripts/generate_chime.py` → `sounds/chime.wav`
+      - ✅ Joué via MPD (`scripts/play_chime.py`) → pas de click DAC, volume MPD restauré après
+      - ✅ Volume fixé à 50% MPD pendant le chime, puis restauré
+      - ✅ Config : `chime_enabled` / `chime_volume` dans `web/lecteur/config.json` (interface admin)
+      - ✅ `kiosk.sh` : Chromium lancé en arrière-plan (`&`), chime joué après `sleep N` — délai réglable par Thomas
+      - ✅ `restart-kiosk.sh` : même logique (sleep 6 avant le chime)
+      - ✅ Service systemd `hechicero-chime.service` désactivé (redondant avec kiosk.sh)
+      - ⚠️ Délai dans `kiosk.sh` à ajuster selon la vitesse de démarrage du Pi (valeur initiale 12s)
 
 ---
 
@@ -125,31 +130,40 @@
 - [ ] TICKET-050 — UX — Refonte visuelle de l'IHM enfant
       - Architecture 5 écrans validée et implémentée
       - Reste : images, finitions, polish
-- [ ] TICKET-073 — bug/audio — Chime : race condition touchstart avant fin du fetch parental_status
-      - Symptôme : le chime ne se joue pas au démarrage malgré `chime_enabled: true`
-      - Cause : le listener `touchstart` est posé DANS le callback de `loadParentalConfig()` (fetch async)
-        Si l'enfant (ou un event fantôme) touche l'écran avant que le fetch revienne, le touch est manqué
-        Le listener se pose après — et attend un prochain touch qui ne vient pas
-      - Fix : mémoriser si un touch s'est produit avant la fin du fetch, jouer le chime immédiatement dans ce cas
-        ```js
-        let pendingChimeTouch = false;
-        document.addEventListener('touchstart', () => { pendingChimeTouch = true; }, { once: true });
-        // puis dans loadParentalConfig() callback :
-        if (parentalCfg.chime_enabled !== false) {
-          if (pendingChimeTouch) {
-            playStartupChime((parentalCfg.chime_volume ?? 15) / 100);
-          } else {
-            const chimeOnFirstTouch = () => playStartupChime((parentalCfg.chime_volume ?? 15) / 100);
-            document.addEventListener('touchstart', chimeOnFirstTouch, { once: true });
-          }
-        }
-        ```
-      - Fichier : `web/lecteur/index.html` (section `loadParentalConfig` + init)
+- [x] TICKET-076 — UX/infra — Écran de démarrage Plymouth personnalisé (2026-06-25)
+      - ✅ `web/splash/hechicero-gold.html` : page de référence visuelle (fond sombre, Great Vibes or, halo, cadre)
+      - ✅ `scripts/generate_plymouth.sh` : screenshot via Chromium headless → `/tmp/hechicero-boot.png`
+      - ✅ `scripts/install_plymouth.sh` : copie PNG + thème Plymouth + `update-initramfs`
+      - ✅ Police : `web/fonts/GreatVibes-Regular.ttf` (445KB, Google Fonts officiel)
+      - ✅ Pas de swap R/B — Plymouth affiche les couleurs telles quelles
+      - ✅ Validé au boot : calligraphie or sur fond sombre
 
-- [ ] TICKET-072 — bug/UX — Mini-lecteur : affiche la radio au lieu du podcast en cours
-      - Symptôme : la barre du bas affiche "EN DIRECT / Mon Petit France Inter" même quand un épisode podcast tourne
-      - Cause probable : l'état du mini-lecteur n'est pas mis à jour lors du passage radio → podcast
-      - Fix : dans `refreshStatus()`, détecter le contexte (radio vs podcast) et mettre à jour le mini-lecteur en conséquence
+- [x] TICKET-077 — UX — Écran de veille thémé Great Vibes (2026-06-25)
+      - ✅ 6 modes : `classic`, `classic_clock`, `retro`, `retro_clock`, `modern`, `modern_clock`
+      - ✅ Thème retro : fond #070503, halo or radial, cadre, logo Great Vibes gradient or, ligne déco, horloge Great Vibes or
+      - ✅ Thème modern : idem en chrome argenté
+      - ✅ Thème classic : fond sombre, texte uppercase espacé, blanc
+      - ✅ Sélecteur 6 boutons radio dans `web/index.php` (Administration avancée)
+      - ✅ Sauvegarde via `radio.php?action=save_config`
+      - ✅ Rétrocompat anciens modes `both/brand/clock` → normalisés vers `retro_clock/retro/retro_clock`
+      - ✅ Police chargée dès le boot de la page via `FontFace.load()` + visible sur `.home-brand`
+
+- [x] TICKET-078 — bug — Police Great Vibes cassée (woff2 4.5KB) (2026-06-25)
+      - ✅ Cause : `GreatVibes-Regular.woff2` tronqué (4.5KB au lieu de ~35KB)
+      - ✅ Fix : `GreatVibes-Regular.ttf` 445KB téléchargé depuis Google Fonts et déposé dans `web/fonts/`
+      - ✅ `@font-face` mis à jour dans `index.html` et `hechicero-gold.html` → TTF uniquement
+      - ✅ `hechicero-gold.html` : CDN Google Fonts supprimé, police locale uniquement (invariant offline respecté)
+
+- [x] TICKET-074 — bug/UX — Screensaver : null reference sur sleepOverlay/sleepClock/sleepBrand (2026-06-25)
+      - ✅ Lazy getters appliqués
+      - ✅ Refonte complète : 6 modes thémés, Great Vibes, gradient or/chrome
+
+- [x] TICKET-073 — bug/audio — Chime race condition (2026-06-25)
+      - ✅ `kiosk.sh` : Chromium en arrière-plan, chime après sleep — timing découplé du démarrage OS
+      - ✅ Service systemd `hechicero-chime.service` désactivé
+
+- [x] TICKET-072 — bug/UX — Mini-lecteur : affiche la radio au lieu du podcast en cours (2026-06-25)
+      - ✅ `currentStation = null` ajouté dans `playTrack()`
 - [ ] TICKET-068 — content — Typo ID podcast `bestiolesossiles` (manque le 'f')
       - ID actuel dans `podcasts.json` : `bestiolesossiles`
       - Label : "Les Bestioles fossiles"

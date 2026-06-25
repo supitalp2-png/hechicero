@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Hechicero</title>
+  <link rel="preload" href="../fonts/GreatVibes-Regular.woff2" as="font" type="font/woff2" crossorigin>
   <style>
     /* ── VARIABLES ── */
     :root {
@@ -98,8 +99,12 @@
       align-items: center; justify-content: center; gap: 36px;
     }
     .home-brand {
-      font-size: 0.8rem; letter-spacing: 5px;
-      color: var(--accent); opacity: 0.55; text-transform: uppercase;
+      font-family: 'Great Vibes', 'Palatino Linotype', Palatino, serif;
+      font-size: clamp(48px, 10vw, 90px); font-weight: 400;
+      background: linear-gradient(180deg,
+        #7a4e08 0%,#c88820 12%,#f0cc58 26%,#fff098 40%,
+        #f0cc50 54%,#c08018 65%,#eec850 76%,#d09828 88%,#7a4e08 100%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
     }
     .flags-row { display: flex; gap: 28px; align-items: center; justify-content: center; }
     .flag-btn {
@@ -114,30 +119,103 @@
     .flag-btn:hover  { border-color: var(--accent); }
     .lang-locked { opacity: 0.35; pointer-events: none; filter: grayscale(1); }
     /* ── Écran de veille ── */
+    @font-face {
+      font-family: 'Great Vibes';
+      src: url('../fonts/GreatVibes-Regular.ttf') format('truetype');
+      font-weight: normal; font-style: normal; font-display: block;
+    }
+    /* Gradient or réutilisé */
+    .gv-gold {
+      background: linear-gradient(180deg,
+        #7a4e08 0%,#c88820 12%,#f0cc58 26%,#fff098 40%,
+        #f0cc50 54%,#c08018 65%,#eec850 76%,#d09828 88%,#7a4e08 100%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+    }
+    .gv-chrome {
+      background: linear-gradient(180deg,
+        #383838 0%,#7a7a7a 12%,#d4d4d4 25%,#ffffff 38%,
+        #d0d0d0 52%,#888888 65%,#e4e4e4 76%,#b8b8b8 88%,#484848 100%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+    }
     #sleep-overlay {
-      display: none;
-      position: fixed; inset: 0; z-index: 9999;
-      background: #000;
-      flex-direction: column;
-      align-items: center; justify-content: center;
-      gap: 20px;
-      cursor: pointer;
+      display: none; position: fixed; inset: 0; z-index: 9999;
+      align-items: center; justify-content: center; cursor: pointer;
+      background-image: repeating-linear-gradient(
+        0deg, transparent, transparent 2px, rgba(0,0,0,.07) 2px, rgba(0,0,0,.07) 3px);
     }
     #sleep-overlay.active { display: flex; }
-    #sleep-clock {
-      font-size: clamp(72px, 18vw, 140px);
-      font-weight: 200;
-      letter-spacing: 8px;
-      color: rgba(255,255,255,0.12);
-      font-variant-numeric: tabular-nums;
-      line-height: 1;
+    /* Thème Rétro Or */
+    #sleep-overlay.retro  { background-color: #070503; }
+    /* Thème Chrome */
+    #sleep-overlay.modern { background-color: #040608; }
+    /* Thème Classique */
+    #sleep-overlay.classic { background-color: #050810; }
+    /* Halo radial */
+    #sleep-glow {
+      position: absolute; inset: 0; pointer-events: none;
     }
+    #sleep-overlay.retro  #sleep-glow { background: radial-gradient(ellipse 55% 45% at 50% 50%, rgba(110,65,8,.28), transparent 65%); }
+    #sleep-overlay.modern #sleep-glow { background: radial-gradient(ellipse 55% 45% at 50% 50%, rgba(30,45,80,.26), transparent 65%); }
+    #sleep-overlay.classic #sleep-glow { background: radial-gradient(ellipse 55% 45% at 50% 50%, rgba(20,30,60,.22), transparent 65%); }
+    /* Cadre */
+    #sleep-frame {
+      position: absolute; inset: 5%; pointer-events: none;
+    }
+    #sleep-overlay.retro  #sleep-frame { border: 1px solid rgba(140,95,18,.40); }
+    #sleep-overlay.modern #sleep-frame { border: 1px solid rgba(90,100,130,.36); }
+    #sleep-overlay.classic #sleep-frame { border: 1px solid rgba(255,255,255,.08); }
+    /* Centre */
+    #sleep-center {
+      display: grid; place-items: center; position: relative; z-index: 2;
+    }
+    /* Logo glow (couche floue derrière) */
+    #sleep-brand-glow {
+      grid-area: 1/1;
+      font-family: 'Great Vibes', 'Palatino Linotype', Palatino, serif;
+      font-size: clamp(80px, 13vw, 145px); font-weight: 400; white-space: nowrap;
+      filter: blur(22px); user-select: none; pointer-events: none;
+    }
+    #sleep-overlay.retro  #sleep-brand-glow { color: rgba(210,140,12,.35); }
+    #sleep-overlay.modern #sleep-brand-glow { color: rgba(150,170,220,.25); }
+    #sleep-overlay.classic #sleep-brand-glow { color: rgba(200,210,255,.12); }
+    /* Logo net */
     #sleep-brand {
-      font-size: clamp(11px, 2.5vw, 18px);
-      letter-spacing: 0.55em;
-      color: rgba(255,255,255,0.04);
-      text-transform: uppercase;
-      font-weight: 400;
+      grid-area: 1/1;
+      font-family: 'Great Vibes', 'Palatino Linotype', Palatino, serif;
+      font-size: clamp(80px, 13vw, 145px); font-weight: 400; white-space: nowrap;
+    }
+    #sleep-overlay.classic #sleep-brand {
+      font-family: inherit; font-size: clamp(24px, 5vw, 48px);
+      letter-spacing: 0.55em; color: rgba(255,255,255,0.90);
+      text-transform: uppercase; font-weight: 200;
+      -webkit-text-fill-color: unset; background: none;
+    }
+    /* Ligne décorative sous le logo */
+    #sleep-rule {
+      position: absolute; z-index: 2;
+      top: calc(50% + clamp(50px, 8vw, 88px));
+      left: 50%; transform: translateX(-50%);
+      width: 280px; height: 1px; pointer-events: none;
+    }
+    #sleep-overlay.retro  #sleep-rule { background: linear-gradient(90deg, transparent, rgba(200,136,32,.6), transparent); }
+    #sleep-overlay.modern #sleep-rule { background: linear-gradient(90deg, transparent, rgba(140,160,210,.5), transparent); }
+    #sleep-overlay.classic #sleep-rule { background: linear-gradient(90deg, transparent, rgba(255,255,255,.2), transparent); }
+    /* Horloge */
+    #sleep-clock {
+      position: absolute; z-index: 2;
+      top: calc(50% + clamp(70px, 11vw, 120px));
+      left: 50%; transform: translateX(-50%);
+      white-space: nowrap;
+    }
+    #sleep-clock .clock-time {
+      font-family: 'Great Vibes', 'Palatino Linotype', Palatino, serif;
+      font-size: clamp(36px, 6vw, 72px); font-weight: 400;
+    }
+    #sleep-overlay.classic #sleep-clock .clock-time {
+      font-family: inherit; font-size: clamp(20px, 4vw, 42px);
+      letter-spacing: 0.3em; color: rgba(255,255,255,0.65);
+      text-transform: uppercase; font-weight: 200;
+      -webkit-text-fill-color: unset; background: none;
     }
 
     .ep-num-badge {
@@ -1318,35 +1396,49 @@ function playStartupChime(volume = 0.12) {
 // ÉCRAN DE VEILLE
 // ═══════════════════════════════════════
 let SLEEP_DELAY  = 15000;  // mis à jour depuis la config
-let SLEEP_MODE   = 'both'; // 'clock' | 'brand' | 'both'
+let SLEEP_MODE   = 'retro'; // 'classic'|'classic_clock'|'retro'|'retro_clock'|'modern'|'modern_clock'
 let sleepTimer = null;
 const getSleepOverlay = () => document.getElementById('sleep-overlay');
 const getSleepClock   = () => document.getElementById('sleep-clock');
 const getSleepBrand   = () => document.getElementById('sleep-brand');
 
+function normalizeSleepMode(m) {
+  if (m === 'both')  return 'retro_clock';
+  if (m === 'brand') return 'retro';
+  if (m === 'clock') return 'retro_clock';
+  return m || 'retro';
+}
+
 function applySleepConfig(cfg) {
   if (!cfg) return;
   const enabled = !!(cfg.sleep_enabled ?? true);
   SLEEP_DELAY = Number(cfg.sleep_delay ?? 15) * 1000;
-  SLEEP_MODE  = cfg.sleep_mode ?? 'both';
-  // Visibilité des éléments selon le mode
-  getSleepClock().style.display = (SLEEP_MODE === 'brand') ? 'none' : '';
-  getSleepBrand().style.display = (SLEEP_MODE === 'clock') ? 'none' : '';
+  SLEEP_MODE  = normalizeSleepMode(cfg.sleep_mode);
+  const hasClock = SLEEP_MODE.endsWith('_clock');
+  const theme = SLEEP_MODE.replace('_clock', ''); // 'classic'|'retro'|'modern'
+  const overlay = getSleepOverlay();
+  overlay.classList.remove('classic', 'retro', 'modern');
+  overlay.classList.add(theme);
+  // Gradient gold/chrome sur le logo via classe utilitaire
+  const brand = getSleepBrand();
+  brand.className = theme === 'retro' ? 'gv-gold' : theme === 'modern' ? 'gv-chrome' : '';
+  getSleepClock().style.display = hasClock ? '' : 'none';
   if (!enabled) {
     clearTimeout(sleepTimer);
-    getSleepOverlay().classList.remove('active');
+    overlay.classList.remove('active');
   } else {
     resetSleepTimer();
   }
 }
 
 function updateSleepClock() {
-  if (getSleepOverlay().classList.contains('active')) {
-    const now = new Date();
-    const h   = String(now.getHours()).padStart(2, '0');
-    const m   = String(now.getMinutes()).padStart(2, '0');
-    getSleepClock().textContent = h + ':' + m;
-  }
+  if (!getSleepOverlay().classList.contains('active')) return;
+  if (!SLEEP_MODE.endsWith('_clock')) return;
+  const now = new Date();
+  const h   = String(now.getHours()).padStart(2, '0');
+  const m   = String(now.getMinutes()).padStart(2, '0');
+  // Le span hérite du gradient background-clip du parent #sleep-clock
+  getSleepClock().innerHTML = '<span class="clock-time">' + h + ':' + m + '</span>';
 }
 
 function activateSleep() {
@@ -1382,15 +1474,27 @@ resetSleepTimer();
 
 // INIT
 // ═══════════════════════════════════════
+
+// Force le chargement de Great Vibes avant que le screensaver s'active
+(new FontFace('Great Vibes', "url('../fonts/GreatVibes-Regular.ttf')")).load()
+  .then(f => document.fonts.add(f))
+  .catch(() => {});
+
 show('home');
 loadParentalConfig();
 loadData();
 </script>
 
 <!-- ── Écran de veille ──────────────────────────────────────────── -->
-<div id="sleep-overlay">
-  <div id="sleep-clock">00:00</div>
-  <div id="sleep-brand">HECHICERO</div>
+<div id="sleep-overlay" class="retro">
+  <div id="sleep-glow"></div>
+  <div id="sleep-frame"></div>
+  <div id="sleep-center">
+    <div id="sleep-brand-glow">Hechicero</div>
+    <div id="sleep-brand" class="gv-gold">Hechicero</div>
+  </div>
+  <div id="sleep-rule"></div>
+  <div id="sleep-clock"></div>
 </div>
 
 </body>

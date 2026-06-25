@@ -20,30 +20,33 @@ Objectifs :
 
 ---
 
-## 2. Fichier autostart (LXDE)
-Créer le dossier si nécessaire :
-```
-mkdir -p ~/.config/autostart
+## 2. Script de démarrage (`~/kiosk.sh`)
+
+Le démarrage kiosque est géré par `~/kiosk.sh`, appelé depuis `~/.config/lxsession/LXDE-pi/autostart`.
+
+Contenu actuel :
+```bash
+#!/bin/bash
+chromium --noerrdialogs --disable-infobars --kiosk http://localhost/lecteur &
+sleep 12
+python3 /home/thomas/hechicero/scripts/play_chime.py
 ```
 
-Créer le fichier :
+Points clés :
+- Chromium lancé **en arrière-plan** (`&`) pour ne pas bloquer le script
+- Le chime joue après un délai (ajustable) pour attendre que la page soit chargée
+- **Ne pas remettre le chime avant Chromium** — il jouerait au boot de l’OS, pas à l’affichage du lecteur
+
+Appelé depuis :
 ```
-nano ~/.config/autostart/hechicero.desktop
+# ~/.config/lxsession/LXDE-pi/autostart
+@/home/thomas/kiosk.sh
 ```
 
-Contenu :
+Pour relancer Chromium depuis SSH sans reboot :
+```bash
+bash ~/hechicero/restart-kiosk.sh
 ```
-[Desktop Entry]
-Type=Application
-Name=Hechicero Lecteur
-Exec=chromium-browser --kiosk --incognito --noerrdialogs --disable-infobars --check-for-update-interval=0 http://localhost/lecteur/
-```
-
-Effets :
-- Chromium démarre automatiquement  
-- en plein écran  
-- sans barre d’adresse  
-- sans popups  
 
 ---
 

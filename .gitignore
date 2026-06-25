@@ -21,3 +21,6 @@ __pycache__/
 
 # --- Réflexion privée (noms réels autorisés, hors repo public) ---
 private/
+
+# --- Briefs Copilot/Claude (usage ponctuel, non versionné) ---
+prompts/

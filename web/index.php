@@ -324,7 +324,7 @@ if (isset($_GET['action'])) {
         // Écran de veille
         if (isset($_GET['sleep_enabled'])) $cfg['sleep_enabled'] = (bool)(int)$_GET['sleep_enabled'];
         if (isset($_GET['sleep_delay']))   $cfg['sleep_delay']   = max(10, min(300, (int)$_GET['sleep_delay']));
-        if (isset($_GET['sleep_mode']))    $cfg['sleep_mode']    = in_array($_GET['sleep_mode'], ['clock','brand','both']) ? $_GET['sleep_mode'] : 'both';
+        if (isset($_GET['sleep_mode']))    $cfg['sleep_mode']    = in_array($_GET['sleep_mode'], ['classic','classic_clock','retro','retro_clock','modern','modern_clock','clock','brand','both']) ? $_GET['sleep_mode'] : 'retro';
         echo json_encode(['ok' => write_json_atomic(CONFIG_JSON, $cfg)]);
         exit;
     }
@@ -363,10 +363,10 @@ if (isset($_GET['action'])) {
           'lang_enabled'     => (bool)($p['lang_enabled']     ?? false),
           'schedule'         => $p['schedule']  ?? [],
           'languages'        => $p['languages'] ?? ['fr','es'],
-          // veille — en priorité config.json, fallback parental.json (migration)
-          'sleep_enabled'    => (bool)($c['sleep_enabled'] ?? $p['sleep_enabled'] ?? true),
-          'sleep_delay'      => (int)($c['sleep_delay']    ?? $p['sleep_delay']   ?? 15),
-          'sleep_mode'       => $c['sleep_mode']            ?? $p['sleep_mode']   ?? 'both',
+          // veille — config.json uniquement (admin avancée)
+          'sleep_enabled'    => (bool)($c['sleep_enabled'] ?? true),
+          'sleep_delay'      => (int)($c['sleep_delay']    ?? 15),
+          'sleep_mode'       => $c['sleep_mode']            ?? 'retro',
           // son de démarrage
           'chime_enabled'    => (bool)($c['chime_enabled'] ?? true),
           'chime_volume'     => (int)($c['chime_volume']   ?? 15),
@@ -793,7 +793,7 @@ input:checked + .slider:before { transform:translateX(20px); }
     <!-- Écran de veille -->
     <div class="card" style="grid-column:1/-1">
       <div class="card-title">🌙 Écran de veille</div>
-      <div style="display:flex;gap:32px;flex-wrap:wrap;align-items:center">
+      <div style="display:flex;gap:32px;flex-wrap:wrap;align-items:center;margin-bottom:14px">
         <div class="stat" style="margin:0">
           <span class="stat-l">Activé</span>
           <label class="toggle-switch">
@@ -804,22 +804,22 @@ input:checked + .slider:before { transform:translateX(20px); }
         <label style="font-size:13px;color:var(--muted)">
           Délai :
           <select id="sleep-delay" style="margin-left:6px;background:#0b1220;color:var(--text);border:1px solid #1e293b;border-radius:4px;padding:3px 8px">
-            <option value="10">10 s</option>
-            <option value="15" selected>15 s</option>
+            <option value="15">15 s</option>
             <option value="30">30 s</option>
             <option value="60">1 min</option>
             <option value="120">2 min</option>
             <option value="300">5 min</option>
+            <option value="600">10 min</option>
           </select>
         </label>
-        <label style="font-size:13px;color:var(--muted)">
-          Affichage :
-          <select id="sleep-mode" style="margin-left:6px;background:#0b1220;color:var(--text);border:1px solid #1e293b;border-radius:4px;padding:3px 8px">
-            <option value="clock">🕐 Heure</option>
-            <option value="brand">✨ HECHICERO</option>
-            <option value="both" selected>🕐 + HECHICERO</option>
-          </select>
-        </label>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;font-size:13px">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="radio" name="sleep-mode" value="classic"> Classique</label>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="radio" name="sleep-mode" value="classic_clock"> Classique + horloge</label>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="radio" name="sleep-mode" value="retro" checked> Rétro Or</label>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="radio" name="sleep-mode" value="retro_clock"> Rétro Or + horloge</label>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="radio" name="sleep-mode" value="modern"> Chrome</label>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="radio" name="sleep-mode" value="modern_clock"> Chrome + horloge</label>
       </div>
     </div>
 
@@ -1031,7 +1031,9 @@ async function loadConfig() {
   // Écran de veille (lire depuis config.json — admin avancée)
   document.getElementById('sleep-enabled').checked      = !!(c.sleep_enabled ?? true);
   document.getElementById('sleep-delay').value          = String(c.sleep_delay ?? 15);
-  document.getElementById('sleep-mode').value           = c.sleep_mode ?? 'both';
+  const modeVal = c.sleep_mode ?? 'retro';
+  const modeInput = document.querySelector(`input[name="sleep-mode"][value="${modeVal}"]`);
+  if (modeInput) modeInput.checked = true;
 }
 async function saveConfig() {
   const r = await api({
@@ -1042,7 +1044,7 @@ async function saveConfig() {
     chime_volume:   document.getElementById('chime-volume').value,
     sleep_enabled:  document.getElementById('sleep-enabled').checked ? 1 : 0,
     sleep_delay:    document.getElementById('sleep-delay').value,
-    sleep_mode:     document.getElementById('sleep-mode').value,
+    sleep_mode:     (document.querySelector('input[name="sleep-mode"]:checked') || {value:'retro'}).value,
   });
   const btn = document.getElementById('btn-save-adv');
   btn.textContent = r.ok ? '✓ Enregistré' : '✗ Erreur';

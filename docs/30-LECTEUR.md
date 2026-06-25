@@ -184,9 +184,11 @@ Le lecteur doit fonctionner **sans lag** sur un Raspberry Pi 5.
 ## 12. État réel au 2026-06-24
 
 ### Implémenté et validé
-- Son de démarrage (chime) : accord C4–G4–C5–E5 via Web Audio API, sans fichier audio — `playStartupChime(volume)` (TICKET-023 ✅)
+- Son de démarrage (chime) : accord grave C2–G2–C3–G3–E4 via Web Audio API, sans fichier audio — `playStartupChime(volume)` (TICKET-023 ✅)
+  - Sine pour les basses (C2/G2/C3), triangle pour les aigus (G3/E4) — deux oscillateurs ±3 cents par note (chorus naturel)
+  - Reverb profond (delay 0.35 s, feedback 0.42), attaque 0.4 s, queue 6 s — ambiance orgue/carillon
   - Config : `chime_enabled` / `chime_volume` dans `web/lecteur/config.json`
-  - ⚠️ À tester sur Pi : Chromium peut bloquer l'AudioContext sans interaction préalable (fallback `touchstart` documenté dans `brief-session-next.md`)
+  - Déclenché au premier `touchstart` après le chargement (contourne la politique autoplay de Chromium)
 - Fix screensaver : remplacement de `pointermove` par `pointerdown/touchstart/click` — évite les events fantômes sur Pi
 - Navigation 5 écrans fonctionnelle bout en bout (TICKET-050 ✅)
 - Filtre par langue via drapeaux FR/🇨🇴 (champ `langue` dans `data.json`)

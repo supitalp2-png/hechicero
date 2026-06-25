@@ -2,6 +2,7 @@
 // --- CONFIG ---
 $stream = "https://icecast.radiofrance.fr/monpetitfranceinter-midfi.mp3";
 $projectRoot = "/home/thomas/hechicero";
+const CONFIG_PATH = '/home/thomas/hechicero/web/lecteur/config.json';
 
 function read_json_radio(string $path): array {
     if (!file_exists($path)) {
@@ -194,14 +195,37 @@ if (isset($_GET['action'])) {
             'lang_enabled'     => (bool)($p['lang_enabled']     ?? false),
             'schedule'         => $p['schedule']  ?? [],
             'languages'        => $p['languages'] ?? ['fr', 'es'],
-            // veille : config.json prioritaire (admin avancée), fallback parental.json
-            'sleep_enabled'    => (bool)($c['sleep_enabled'] ?? $p['sleep_enabled'] ?? true),
-            'sleep_delay'      => (int)($c['sleep_delay']    ?? $p['sleep_delay']   ?? 15),
-            'sleep_mode'       => $c['sleep_mode']           ?? $p['sleep_mode']    ?? 'both',
+            // veille : config.json uniquement (admin avancée) — pas de fallback parental.json
+            // pour éviter qu'un ancien save avec sleep_enabled:false bloque la veille
+            'sleep_enabled'    => (bool)($c['sleep_enabled'] ?? true),
+            'sleep_delay'      => (int)($c['sleep_delay']    ?? 15),
+            'sleep_mode'       => $c['sleep_mode']           ?? 'retro',
             // son de démarrage
             'chime_enabled'    => (bool)($c['chime_enabled'] ?? true),
             'chime_volume'     => (int)($c['chime_volume']   ?? 15),
         ]);
+        exit;
+    }
+
+    if ($action === 'save_config') {
+        header('Content-Type: application/json; charset=utf-8');
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            http_response_code(405);
+            echo json_encode(['ok' => false, 'error' => 'method_not_allowed']);
+            exit;
+        }
+
+        $cfg = read_json_radio(CONFIG_PATH);
+        $input = json_decode(file_get_contents('php://input'), true) ?? [];
+        $allowed = ['sleep_enabled', 'sleep_delay', 'sleep_mode', 'chime_enabled', 'chime_volume'];
+        foreach ($allowed as $k) {
+            if (array_key_exists($k, $input)) {
+                $cfg[$k] = $input[$k];
+            }
+        }
+
+        file_put_contents(CONFIG_PATH, json_encode($cfg, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+        echo json_encode(['ok' => true]);
         exit;
     }
 

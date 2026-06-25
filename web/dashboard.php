@@ -109,26 +109,21 @@
       gap: 18px;
       margin-bottom: 18px;
     }
-    .chart { display: grid; gap: 12px; }
-    .day-row {
-      display: grid;
-      grid-template-columns: 72px 1fr;
-      gap: 12px;
-      align-items: start;
-    }
-    .day-label {
+    .chart-legend {
+      display: flex;
+      gap: 16px;
+      margin-top: 8px;
+      font-size: 12px;
       color: var(--muted);
-      font-variant-numeric: tabular-nums;
-      padding-top: 3px;
     }
-    .lang-bars { display: grid; gap: 8px; }
-    .lang-row {
-      display: grid;
-      grid-template-columns: 28px 1fr auto;
-      gap: 10px;
-      align-items: center;
+    .legend-dot {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 2px;
+      vertical-align: middle;
+      margin-right: 4px;
     }
-    .lang-code { font-weight: 700; }
     .bar-track {
       height: 14px;
       border-radius: 999px;
@@ -327,6 +322,18 @@
       </section>
     </div>
 
+    <div class="grid" style="margin-bottom:18px">
+      <section class="section">
+        <h2>📻 Webradio — écoute par langue</h2>
+        <div id="radio-cards" class="cards" style="grid-template-columns:repeat(3,1fr);margin-bottom:14px"></div>
+        <div id="radio-chart"></div>
+      </section>
+      <section class="section">
+        <h2>📻 Top stations</h2>
+        <div id="radio-stations-wrap"></div>
+      </section>
+    </div>
+
     <div class="grid">
       <section class="section" style="grid-column:1/-1">
         <h2>Top podcasts</h2>
@@ -427,67 +434,132 @@
       qs('card-streak').textContent = `${Number(streak || 0)} jour(s)`;
     }
 
-    function renderChart(rows) {
-      const chart = qs('chart');
-      chart.innerHTML = '';
-      if (!rows.length) {
-        chart.innerHTML = '<div class="empty">Aucune écoute sur la période.</div>';
-        return;
-      }
+    // Constantes de couleur (hardcodées pour SVG, coherent avec les CSS vars)
+    const COLOR_FR = '#4a9eff';
+    const COLOR_ES = '#c9a227';
+
+    function makeBarChartSVG(rows) {
+      if (!rows || !rows.length) return '<div class="empty">Aucune écoute sur la période.</div>';
 
       const grouped = new Map();
       for (const row of rows) {
         const day = row.jour || '—';
         if (!grouped.has(day)) grouped.set(day, { fr: 0, es: 0 });
-        const target = grouped.get(day);
+        const t = grouped.get(day);
         const lang = String(row.langue || 'fr').toLowerCase();
-        if (lang === 'es') target.es = Number(row.minutes || 0);
-        else target.fr = Number(row.minutes || 0);
+        if (lang === 'es') t.es = Number(row.minutes || 0);
+        else t.fr = Number(row.minutes || 0);
       }
 
-      // Axe X : arrondir le max à 15 min supérieures pour une échelle lisible
-      const rawMax  = Math.max(...Array.from(grouped.values()).flatMap(v => [v.fr, v.es]), 1);
-      const axisMax = Math.ceil(rawMax / 15) * 15;
+      const days = [...grouped.keys()].sort();
+      const n = days.length;
 
-      // En-tête de l'axe avec repères
-      const header = document.createElement('div');
-      header.className = 'day-row';
-      header.style.marginBottom = '4px';
-      header.innerHTML = `
-        <div class="day-label" style="color:transparent">—</div>
-        <div class="lang-bars">
-          <div style="display:grid;grid-template-columns:28px 1fr auto;gap:10px;align-items:end;padding-bottom:2px">
-            <div></div>
-            <div style="position:relative;height:12px">
-              ${[0, 0.25, 0.5, 0.75, 1].map(f => `
-                <span style="position:absolute;left:${f*100}%;transform:translateX(-50%);
-                  font-size:9px;color:var(--muted)">${Math.round(axisMax * f)}</span>`).join('')}
-            </div>
-            <div style="min-width:66px"></div>
-          </div>
+      const maxVal = Math.max(...days.map(d => (grouped.get(d).fr || 0) + (grouped.get(d).es || 0)), 1);
+      const axisMax = (Math.ceil(maxVal / 10) * 10) || 10;
+
+      // Dimensions
+      const ML = 42, MR = 10, MT = 10, MB = 40;
+      const chartH = 180;
+      const totalH = chartH + MT + MB;
+      const barGap = 3;
+      const barW = Math.min(32, Math.max(7, Math.floor((860 - ML - MR) / n) - barGap));
+      const slotW = barW + barGap;
+      const totalW = ML + n * slotW + MR;
+
+      const parts = [];
+
+      // Grille Y
+      const yTicks = 4;
+      for (let i = 0; i <= yTicks; i++) {
+        const v = Math.round(axisMax * i / yTicks);
+        const y = +(MT + chartH - (v / axisMax) * chartH).toFixed(1);
+        parts.push(`<line x1="${ML}" y1="${y}" x2="${(totalW - MR)}" y2="${y}" stroke="rgba(100,116,139,0.15)" stroke-width="1"/>`);
+        parts.push(`<text x="${ML - 5}" y="${y + 3.5}" text-anchor="end" font-size="9" fill="rgba(100,116,139,0.7)">${v}</text>`);
+      }
+
+      // Barres + labels X
+      const labelEvery = n <= 10 ? 1 : n <= 21 ? 2 : n <= 35 ? 5 : 7;
+      const baseY = MT + chartH;
+
+      days.forEach((day, i) => {
+        const x = +(ML + i * slotW).toFixed(1);
+        const { fr, es } = grouped.get(day);
+        const frH = +((fr / axisMax) * chartH).toFixed(1);
+        const esH = +((es / axisMax) * chartH).toFixed(1);
+
+        if (fr > 0) {
+          parts.push(`<rect x="${x}" y="${+(baseY - frH).toFixed(1)}" width="${barW}" height="${frH}" fill="${COLOR_FR}" opacity="0.88" rx="2"><title>${formatDateLabel(day)} FR : ${formatMinutes(fr)}</title></rect>`);
+        }
+        if (es > 0) {
+          parts.push(`<rect x="${x}" y="${+(baseY - frH - esH).toFixed(1)}" width="${barW}" height="${esH}" fill="${COLOR_ES}" opacity="0.88" rx="2"><title>${formatDateLabel(day)} ES : ${formatMinutes(es)}</title></rect>`);
+        }
+
+        if (i % labelEvery === 0) {
+          const lx = +(x + barW / 2).toFixed(1);
+          const ly = baseY + 5;
+          parts.push(`<text transform="rotate(-40 ${lx} ${ly})" x="${lx}" y="${ly}" text-anchor="end" font-size="9" fill="rgba(100,116,139,0.75)">${formatDateLabel(day)}</text>`);
+        }
+      });
+
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${totalW} ${totalH}" style="width:100%;min-width:min(100%,${totalW}px);height:${totalH}px">${parts.join('')}</svg>`;
+      const legend = `<div class="chart-legend">
+        <span><span class="legend-dot" style="background:${COLOR_FR}"></span>FR</span>
+        <span><span class="legend-dot" style="background:${COLOR_ES}"></span>ES</span>
+      </div>`;
+      return `<div style="overflow-x:auto">${svg}</div>${legend}`;
+    }
+
+    function renderChart(rows) {
+      qs('chart').innerHTML = makeBarChartSVG(rows);
+    }
+
+    function renderRadio(radioByDay, radioSummary, radioTopStations) {
+      // Cards résumé
+      const totalH = Number(radioSummary.total_heures || 0);
+      const totalS = Number(radioSummary.total_sessions || 0);
+      const pctEs  = Math.round(Number(radioSummary.pct_es || 0));
+      qs('radio-cards').innerHTML = `
+        <div class="card">
+          <div class="card-label">Heures radio</div>
+          <div class="card-value">${totalH.toFixed(1)} h</div>
+        </div>
+        <div class="card">
+          <div class="card-label">Sessions</div>
+          <div class="card-value">${totalS}</div>
+        </div>
+        <div class="card">
+          <div class="card-label">Part espagnol</div>
+          <div class="card-value">${pctEs} %</div>
         </div>`;
-      chart.appendChild(header);
 
-      // Plus récent en premier
-      for (const [day, values] of [...grouped.entries()].reverse()) {
-        const dayRow = document.createElement('div');
-        dayRow.className = 'day-row';
-        dayRow.innerHTML = `
-          <div class="day-label">${formatDateLabel(day)}</div>
-          <div class="lang-bars">
-            <div class="lang-row">
-              <div class="lang-code">FR</div>
-              <div class="bar-track"><div class="bar-fill fr" style="width:${Math.max(0, Math.min(100, (values.fr / axisMax) * 100))}%"></div></div>
-              <div class="bar-minutes">${formatMinutes(values.fr)}</div>
-            </div>
-            <div class="lang-row">
-              <div class="lang-code">ES</div>
-              <div class="bar-track"><div class="bar-fill es" style="width:${Math.max(0, Math.min(100, (values.es / axisMax) * 100))}%"></div></div>
-              <div class="bar-minutes">${formatMinutes(values.es)}</div>
-            </div>
-          </div>`;
-        chart.appendChild(dayRow);
+      // Chart par jour
+      qs('radio-chart').innerHTML = makeBarChartSVG(radioByDay);
+
+      // Top stations
+      const wrap = qs('radio-stations-wrap');
+      if (!radioTopStations || !radioTopStations.length) {
+        wrap.innerHTML = '<div class="empty">Aucune écoute radio.</div>';
+        return;
       }
+      const body = radioTopStations.map(row => {
+        const lang = String(row.langue || 'fr').toLowerCase();
+        return `
+          <tr>
+            <td>${row.station || '—'}</td>
+            <td><span class="lang-pill ${lang === 'es' ? 'es' : 'fr'}">${lang.toUpperCase()}</span></td>
+            <td>${Number(row.nb_sessions || 0)}</td>
+            <td>${formatMinutes(row.minutes)}</td>
+          </tr>`;
+      }).join('');
+      wrap.innerHTML = `
+        <table>
+          <thead>
+            <tr>
+              <th>Station</th><th>Langue</th><th>Sessions</th><th>Temps total</th>
+            </tr>
+          </thead>
+          <tbody>${body}</tbody>
+        </table>`;
     }
 
     function renderDow(rows) {
@@ -522,7 +594,7 @@
         const avg  = r ? Number(r.avg_minutes || 0) : 0;
         const pct  = Math.max(0, Math.min(100, (avg / axisMax) * 100));
         const isWe = DOW_WEEKEND.includes(dow);
-        const color = isWe ? 'var(--es)' : 'var(--fr)';
+        const color = isWe ? COLOR_ES : COLOR_FR;
         const hasData = r !== undefined;
         return `
           <div style="display:grid;grid-template-columns:40px 1fr auto;gap:10px;align-items:center;margin-bottom:7px">
@@ -719,6 +791,7 @@
         renderSummary(payload.summary || {}, payload.streak || 0);
         renderChart(payload.by_day || []);
         renderDow(payload.by_dow || []);
+        renderRadio(payload.radio_by_day || [], payload.radio_summary || {}, payload.radio_top_stations || []);
         renderTopPods(payload.top_pods || []);
         renderFunnel(payload.funnel || {});
         renderHeatmap(payload.heatmap || []);
@@ -729,6 +802,7 @@
         renderSummary({}, 0);
         renderChart([]);
         renderDow([]);
+        renderRadio([], {}, []);
         renderTopPods([]);
         renderFunnel({});
         renderHeatmap([]);

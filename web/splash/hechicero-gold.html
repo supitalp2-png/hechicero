@@ -1,0 +1,68 @@
+<!doctype html>
+<!-- Page statique pour génération de l'image Plymouth (pas de redirect, pas d'animation) -->
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+@font-face {
+  font-family: 'Great Vibes';
+  src: url('../fonts/GreatVibes-Regular.ttf') format('truetype');
+  font-weight: normal; font-style: normal; font-display: block;
+}
+</style>
+<style>
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { width: 1024px; height: 600px; background: #070503; overflow: hidden; }
+.splash {
+  width: 1024px; height: 600px;
+  display: flex; align-items: center; justify-content: center;
+  position: relative;
+  background-image: repeating-linear-gradient(
+    0deg, transparent, transparent 2px, rgba(0,0,0,.07) 2px, rgba(0,0,0,.07) 3px
+  );
+}
+.glow {
+  position: absolute; inset: 0;
+  background: radial-gradient(ellipse 55% 45% at 50% 50%, rgba(110,65,8,.28), transparent 65%);
+}
+.frame { position: absolute; inset: 5%; border: 1px solid rgba(140,95,18,.40); }
+.center { display: grid; place-items: center; position: relative; z-index: 2; }
+.logo-glow {
+  grid-area: 1/1;
+  font-family: 'Great Vibes', 'Palatino Linotype', Palatino, serif;
+  font-size: 145px; font-weight: 400; white-space: nowrap;
+  color: rgba(210,140,12,.35); filter: blur(22px); user-select: none;
+}
+.logo {
+  grid-area: 1/1;
+  font-family: 'Great Vibes', 'Palatino Linotype', Palatino, serif;
+  font-size: 145px; font-weight: 400; white-space: nowrap;
+  background: linear-gradient(180deg,
+    #7a4e08 0%, #c88820 12%, #f0cc58 26%, #fff098 40%,
+    #f0cc50 54%, #c08018 65%, #eec850 76%, #d09828 88%, #7a4e08 100%
+  );
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.rule {
+  position: absolute;
+  bottom: calc(50% - 90px);
+  left: 50%; transform: translateX(-50%);
+  width: 280px; height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(200,136,32,.6), transparent);
+}
+</style>
+</head>
+<body>
+<div class="splash">
+  <div class="glow"></div>
+  <div class="frame"></div>
+  <div class="center">
+    <div class="logo-glow">Hechicero</div>
+    <div class="logo">Hechicero</div>
+  </div>
+  <div class="rule"></div>
+</div>
+</body>
+</html>
