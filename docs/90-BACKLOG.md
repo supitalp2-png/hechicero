@@ -203,18 +203,23 @@
       - Détecter : fichiers manquants, orphelins, M4A déguisés en .mp3, taille 0
       - Sortie lisible : [OK] / [WARN] / [ERR] par podcast et par type de problème
       - Script standalone : `scripts/rss_ingest/check_integrity.py`
-- [ ] TICKET-071 — feature/parental — Contrôle parental : grille horaire + verrou langue
-      - Grille 7 jours × 7 créneaux (0-7h et 22-24h toujours verrouillés)
-      - Interrupteur global on/off
-      - Verrou par langue : drapeau grisé → impossible de naviguer vers les podcasts de cette langue
-      - Comportement fin de plage : finir l'épisode en cours, puis stop + retour home
-      - Config uniquement depuis l'admin web (jamais depuis l'écran tactile)
-      - Stockage : `data/parental.json` (écriture atomique)
-- [ ] TICKET-070 — feature/analytics — Dashboard enrichi (style audimat podcast)
-      - Funnel de complétion : abandon rapide / début / moitié / presque / terminé
-      - Heatmap semaine × heure (intensité = minutes écoutées)
-      - Top 5 épisodes rejoués
-      - Streak : jours consécutifs avec écoute (card + icône 🔥)
+- [x] TICKET-071 — feature/parental — Contrôle parental : grille horaire + verrou langue
+      - ✅ `schedule_enabled` / `lang_enabled` dans config
+      - ✅ `isNowAllowed()` : vérifie les créneaux par jour de semaine
+      - ✅ `isLangAllowed()` : drapeau grisé si langue bloquée
+      - ✅ `checkParentalTime()` : polling toutes les 30s, stop + retour home en fin de plage
+- [x] TICKET-070 — feature/analytics — Dashboard enrichi (style audimat podcast)
+      - ✅ Funnel de complétion (q0→q4)
+      - ✅ Heatmap semaine × heure
+      - ✅ Streak jours consécutifs (🔥)
+      - ✅ Top 5 épisodes + top podcasts
+- [ ] TICKET-079 — UX/saisonnier — Mode Noël (décembre uniquement)
+      - Neige animée sur la page d'accueil
+      - Chapeau de Noël sur le coin des jaquettes podcast
+      - Traîneau du Père Noël qui passe de temps en temps en fond d'écran
+      - Actif uniquement du 1er au 31 décembre (détection côté JS : `new Date().getMonth() === 11`)
+      - Aucune dépendance réseau, aucun CDN
+
 - [ ] TICKET-058 — feature/UX — Série podcast "Décisions Prises" + easter egg
       - Série 7 épisodes générés par IA, FR + ES, dialogue deux voix
       - Easter egg : série cachée, déclencheur = 3 taps sur "Hechicero"
