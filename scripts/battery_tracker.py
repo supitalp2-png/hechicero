@@ -33,6 +33,10 @@ ESTIMATE_WINDOW = 10
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 LOGGER = logging.getLogger("battery_tracker")
+# DEBUG LOG — À SUPPRIMER APRÈS TESTS
+_debug_handler = logging.FileHandler("/tmp/hechicero_battery_debug.log")
+_debug_handler.setFormatter(logging.Formatter("%(asctime)s %(name)s %(levelname)s %(message)s"))
+logging.getLogger().addHandler(_debug_handler)
 
 
 def load_history() -> dict[str, Any]:
@@ -368,16 +372,32 @@ def main() -> int:
 
     interval = int(config.get("battery_check_interval_seconds", 60))
     LOGGER.info("Battery tracker starting from %s", PROJECT_ROOT)
+    # DEBUG LOG — À SUPPRIMER APRÈS TESTS
+    _alerted_30 = False
+    _alerted_10 = False
     while True:
         try:
-            sample, _, recorded = collect_once(sensor, config, simulate=simulate)
+            sample, stats, recorded = collect_once(sensor, config, simulate=simulate)
             LOGGER.info(
-                "Battery sample level=%s status=%s mpd=%s recorded=%s",
+                "Battery sample level=%s%% status=%s mpd=%s autonomy=%smin recorded=%s",
                 sample["level"],
                 sample["status"],
                 sample["mpd_mode"],
+                stats.get("estimated_autonomy_minutes"),
                 recorded,
             )
+            # DEBUG LOG — seuils d'alerte
+            autonomy = stats.get("estimated_autonomy_minutes")
+            if autonomy is not None and not sample["charging"]:
+                if autonomy <= 10 and not _alerted_10:
+                    LOGGER.warning("SEUIL 10 MIN atteint — autonomy=%smin level=%s%%", autonomy, sample["level"])
+                    _alerted_10 = True
+                elif autonomy <= 30 and not _alerted_30:
+                    LOGGER.warning("SEUIL 30 MIN atteint — autonomy=%smin level=%s%%", autonomy, sample["level"])
+                    _alerted_30 = True
+            if sample["charging"]:
+                _alerted_30 = False
+                _alerted_10 = False
         except Exception:
             LOGGER.exception("Battery tracker iteration failed")
         time.sleep(interval)
