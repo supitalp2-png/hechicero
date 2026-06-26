@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import socket
+import stat
 import subprocess
 import tempfile
 from datetime import datetime
@@ -53,6 +54,13 @@ def atomic_write_text(path: Path, data: str) -> None:
         with os.fdopen(fd, "w", encoding="utf-8") as handle:
             handle.write(data)
         os.replace(tmp_path, path)
+        try:
+            os.chmod(
+                path,
+                stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IWGRP | stat.S_IROTH,
+            )
+        except Exception:
+            pass
     except Exception:
         try:
             os.remove(tmp_path)

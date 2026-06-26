@@ -224,7 +224,7 @@ def compute_estimates(history: dict[str, Any], stats: dict[str, Any], window: in
 def build_sample(sensor: Any, config: dict[str, Any], simulate: bool = False) -> dict[str, Any]:
     if simulate:
         stats = load_stats()
-        status = stats.get("status", "discharging")
+        status = stats.get("status") or "discharging"
         level = int(stats.get("current_level", 73) or 73)
         charging = status == "charging"
         sensor_data = {

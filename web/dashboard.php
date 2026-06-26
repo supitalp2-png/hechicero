@@ -1,51 +1,17 @@
 ﻿<?php
+$currentPage = basename($_SERVER['PHP_SELF'] ?? 'dashboard.php');
 ?><!doctype html>
 <html lang="fr">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Hechicero Dashboard</title>
+  <link rel="stylesheet" href="/css/hechicero-admin.css">
   <style>
-    :root {
-      --bg: #0a0f1a;
-      --surface: #111827;
-      --border: #1e293b;
-      --accent: #c9a227;
-      --text: #e2e8f0;
-      --muted: #64748b;
-      --fr: #4a9eff;
-      --es: #c9a227;
-      --ok: #2ecc71;
-      --warn: #f59e0b;
-      --hot: #e74c3c;
-      --kibana-bg: #060b14;
-    }
-
-    * { box-sizing: border-box; }
-    body {
-      margin: 0;
-      min-height: 100vh;
-      color: var(--text);
-      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
-      background:
-        radial-gradient(circle at top left, rgba(201, 162, 39, 0.14), transparent 32%),
-        linear-gradient(180deg, #0a0f1a 0%, #0d1525 100%);
-    }
-    a { color: inherit; text-decoration: none; }
-
-    .page { max-width: 1320px; margin: 0 auto; padding: 24px; }
-    .header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 14px;
-      margin-bottom: 14px;
-    }
     .logo { font-size: 20px; font-weight: 700; letter-spacing: 0.04em; }
-    .nav { display: flex; gap: 10px; flex-wrap: wrap; }
-    .btn-nav, .period-select {
+    .period-select {
       border: 1px solid var(--border);
-      background: rgba(17, 24, 39, 0.9);
+      background: var(--surface-2);
       border-radius: 12px;
       color: var(--text);
       padding: 10px 14px;
@@ -68,14 +34,6 @@
       margin-bottom: 18px;
     }
     .muted { color: var(--muted); }
-
-    .section {
-      background: rgba(17, 24, 39, 0.92);
-      border: 1px solid var(--border);
-      border-radius: 18px;
-      padding: 18px;
-      box-shadow: 0 18px 60px rgba(0, 0, 0, 0.24);
-    }
 
     .cards {
       display: grid;
@@ -103,12 +61,6 @@
       line-height: 1.1;
     }
 
-    .grid {
-      display: grid;
-      grid-template-columns: 1.2fr 1fr;
-      gap: 18px;
-      margin-bottom: 18px;
-    }
     .chart-legend {
       display: flex;
       gap: 16px;
@@ -237,7 +189,6 @@
 
     .status-ok { color: var(--ok); font-weight: 700; }
     .status-warn { color: var(--warn); font-weight: 700; }
-    .empty { color: var(--muted); padding: 8px 0; }
     .error {
       border-color: rgba(239, 68, 68, 0.45);
       background: rgba(127, 29, 29, 0.15);
@@ -246,13 +197,11 @@
     }
 
     @media (max-width: 980px) {
-      .grid { grid-template-columns: 1fr; }
       .funnel-row { grid-template-columns: 1fr; }
       .funnel-pct { text-align: left; }
     }
     @media (max-width: 640px) {
-      .page { padding: 14px; }
-      .header, .toolbar { align-items: stretch; }
+      .ha-header, .toolbar { align-items: stretch; }
       .day-row { grid-template-columns: 1fr; }
       .lang-row { grid-template-columns: 24px 1fr auto; }
       table, thead, tbody, tr, th, td { display: block; }
@@ -263,13 +212,23 @@
   </style>
 </head>
 <body>
-  <div class="page">
-    <div class="header">
+  <div class="ha-page">
+    <div class="ha-header">
       <div class="logo">⚙ Hechicero</div>
-      <div class="nav">
-        <a href="/" class="btn-nav">← Admin</a>
-        <a href="/lecteur/" class="btn-nav">📻 Lecteur</a>
-      </div>
+      <nav class="ha-nav">
+        <a class="ha-btn <?php echo $currentPage === 'index.php' ? 'active' : ''; ?>" href="/">
+          <span class="ha-btn-icon">⚙</span> Admin
+        </a>
+        <a class="ha-btn <?php echo $currentPage === 'dashboard.php' ? 'active' : ''; ?>" href="/dashboard.php">
+          <span class="ha-btn-icon">📊</span> Écoute
+        </a>
+        <a class="ha-btn <?php echo $currentPage === 'battery_dashboard.php' ? 'active' : ''; ?>" href="/admin/battery_dashboard.php">
+          <span class="ha-btn-icon">🔋</span> Batterie
+        </a>
+        <a class="ha-btn" href="/lecteur/" target="_blank">
+          <span class="ha-btn-icon">📻</span> Lecteur
+        </a>
+      </nav>
     </div>
 
     <h1>📊 Dashboard d'écoute</h1>
@@ -285,9 +244,9 @@
       </label>
     </div>
 
-    <div id="error-box" class="section error" style="display:none"></div>
+    <div id="error-box" class="ha-panel error" style="display:none"></div>
 
-    <div class="cards">
+    <div class="ha-grid ha-cols-auto cards">
       <div class="card">
         <div class="card-label">Total écouté</div>
         <div id="card-total-heures" class="card-value">…</div>
@@ -310,44 +269,44 @@
       </div>
     </div>
 
-    <div class="grid">
-      <section class="section">
+    <div class="ha-grid ha-cols-2" style="margin-bottom:18px;">
+      <section class="ha-panel">
         <h2>Temps par langue par jour</h2>
-        <div id="chart" class="chart"></div>
+        <div id="chart" class="ha-chart"></div>
       </section>
 
-      <section class="section">
+      <section class="ha-panel">
         <h2>Moyenne par jour de la semaine</h2>
-        <div id="dow-wrap" class="chart"></div>
+        <div id="dow-wrap" class="ha-chart"></div>
       </section>
     </div>
 
-    <div class="grid" style="margin-bottom:18px">
-      <section class="section">
+    <div class="ha-grid ha-cols-2" style="margin-bottom:18px">
+      <section class="ha-panel">
         <h2>📻 Webradio — écoute par langue</h2>
-        <div id="radio-cards" class="cards" style="grid-template-columns:repeat(3,1fr);margin-bottom:14px"></div>
+        <div id="radio-cards" class="ha-grid ha-cols-auto cards" style="grid-template-columns:repeat(3,1fr);margin-bottom:14px"></div>
         <div id="radio-chart"></div>
       </section>
-      <section class="section">
+      <section class="ha-panel">
         <h2>📻 Top stations</h2>
         <div id="radio-stations-wrap"></div>
       </section>
     </div>
 
-    <div class="grid">
-      <section class="section" style="grid-column:1/-1">
+    <div class="ha-grid ha-cols-2" style="margin-bottom:18px;">
+      <section class="ha-panel" style="grid-column:1/-1">
         <h2>Top podcasts</h2>
         <div id="top-pods-wrap"></div>
       </section>
     </div>
 
-    <div class="grid">
-      <section class="section">
+    <div class="ha-grid ha-cols-2" style="margin-bottom:18px;">
+      <section class="ha-panel">
         <h2>Jusqu'où écoute-t-il ?</h2>
         <div id="funnel-wrap" class="funnel-wrap"></div>
       </section>
 
-      <section class="section">
+      <section class="ha-panel">
         <h2>Quand écoute-t-il ?</h2>
         <div class="heatmap-box">
           <div id="heatmap-grid"></div>
@@ -355,12 +314,12 @@
       </section>
     </div>
 
-    <section class="section" style="margin-bottom:18px">
+    <section class="ha-panel" style="margin-bottom:18px">
       <h2>Épisodes favoris</h2>
       <div id="top-episodes-wrap"></div>
     </section>
 
-    <section class="section">
+    <section class="ha-panel">
       <h2>Épisodes récents</h2>
       <div id="recent-wrap"></div>
     </section>
@@ -439,7 +398,7 @@
     const COLOR_ES = '#c9a227';
 
     function makeBarChartSVG(rows) {
-      if (!rows || !rows.length) return '<div class="empty">Aucune écoute sur la période.</div>';
+      if (!rows || !rows.length) return '<div class="ha-empty">Aucune écoute sur la période.</div>';
 
       const grouped = new Map();
       for (const row of rows) {
@@ -538,7 +497,7 @@
       // Top stations
       const wrap = qs('radio-stations-wrap');
       if (!radioTopStations || !radioTopStations.length) {
-        wrap.innerHTML = '<div class="empty">Aucune écoute radio.</div>';
+        wrap.innerHTML = '<div class="ha-empty">Aucune écoute radio.</div>';
         return;
       }
       const body = radioTopStations.map(row => {
@@ -565,7 +524,7 @@
     function renderDow(rows) {
       const wrap = document.getElementById('dow-wrap');
       if (!rows || !rows.length) {
-        wrap.innerHTML = '<div class="empty">Pas assez de données.</div>';
+        wrap.innerHTML = '<div class="ha-empty">Pas assez de données.</div>';
         return;
       }
       const DOW_LABELS = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];
@@ -612,7 +571,7 @@
     function renderTopPods(rows) {
       const wrap = qs('top-pods-wrap');
       if (!rows.length) {
-        wrap.innerHTML = '<div class="empty">Aucune donnée podcast.</div>';
+        wrap.innerHTML = '<div class="ha-empty">Aucune donnée podcast.</div>';
         return;
       }
 
@@ -713,7 +672,7 @@
       const wrap = qs('top-episodes-wrap');
       const topFive = (rows || []).slice(0, 5);
       if (!topFive.length) {
-        wrap.innerHTML = '<div class="empty">Aucune donnée de replay.</div>';
+        wrap.innerHTML = '<div class="ha-empty">Aucune donnée de replay.</div>';
         return;
       }
 
@@ -742,7 +701,7 @@
     function renderRecent(rows) {
       const wrap = qs('recent-wrap');
       if (!rows.length) {
-        wrap.innerHTML = '<div class="empty">Aucun épisode récent.</div>';
+        wrap.innerHTML = '<div class="ha-empty">Aucun épisode récent.</div>';
         return;
       }
 

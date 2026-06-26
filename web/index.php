@@ -5,7 +5,7 @@
 // Réseau local uniquement — pas d'authentification requise
 // ============================================================
 
-define('PROJECT_ROOT',  '/home/thomas/hechicero');
+define('PROJECT_ROOT',  is_dir('/home/thomas/hechicero') ? '/home/thomas/hechicero' : dirname(__DIR__));
 define('PODCASTS_JSON', PROJECT_ROOT . '/data/podcasts.json');
 define('DATA_JSON',     PROJECT_ROOT . '/web/lecteur/data.json');
 define('CONFIG_JSON',   PROJECT_ROOT . '/web/lecteur/config.json');
@@ -491,27 +491,17 @@ if (isset($_GET['action'])) {
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Hechicero — Admin</title>
+<link rel="stylesheet" href="/css/hechicero-admin.css">
 <style>
-* { box-sizing: border-box; margin: 0; padding: 0; }
 :root {
-  --bg:      #0d1117;
-  --surface: #161b22;
   --surf2:   #1c2128;
-  --border:  #30363d;
-  --accent:  #c8a050;
   --green:   #3fb950;
   --red:     #f85149;
   --blue:    #58a6ff;
-  --muted:   #8b949e;
-  --text:    #e6edf3;
 }
-body { background:var(--bg); color:var(--text);
-  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
-  font-size:14px; line-height:1.5; padding:20px 16px; max-width:1100px; margin:auto; }
+body { font-size:14px; line-height:1.5; }
 
 /* ── Header */
-.top-bar { display:flex; align-items:center; justify-content:space-between; margin-bottom:24px; flex-wrap:wrap; gap:10px; }
-.top-bar h1 { font-size:1.3rem; color:var(--accent); }
 .mode-switch { display:flex; border:1px solid var(--border); border-radius:6px; overflow:hidden; }
 .mode-btn { padding:6px 16px; background:transparent; color:var(--muted); border:none; cursor:pointer;
   font-size:12px; font-weight:600; transition:background .15s,color .15s; }
@@ -522,7 +512,7 @@ body { background:var(--bg); color:var(--text);
 @media(max-width:600px){ .sys-grid{ grid-template-columns:1fr; } }
 
 /* ── Cards */
-.card { background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:16px; }
+.card { background:var(--surface); border:1px solid var(--border); border-radius:18px; padding:16px; box-shadow:0 18px 60px rgba(0,0,0,.22); }
 .card-title { font-size:0.72rem; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.08em; margin-bottom:10px; }
 
 /* ── Stats */
@@ -539,7 +529,7 @@ body { background:var(--bg); color:var(--text);
 /* ── Section */
 section { margin-bottom:24px; }
 .sec-hdr { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
-.sec-hdr h2 { font-size:0.75rem; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.08em; }
+.sec-hdr h2 { font-size:0.95rem; font-weight:700; color:var(--text); letter-spacing:.02em; }
 .sec-count { font-size:11px; color:var(--muted); font-weight:400; margin-left:6px; }
 
 /* ── Colonnes FR / ES */
@@ -554,7 +544,6 @@ section { margin-bottom:24px; }
   .lang-cols  { grid-template-columns:1fr; }
   .add-grid   { grid-template-columns:1fr; }
   .sys-grid   { grid-template-columns:1fr; }
-  body        { padding:12px 10px; }
   .card       { padding:12px; }
   /* Sur mobile l'URL brute n'est pas lisible — on la masque même en mode expert */
   .item-url   { display:none !important; }
@@ -590,9 +579,9 @@ section { margin-bottom:24px; }
 
 /* ── Boutons */
 .btn { display:inline-flex; align-items:center; gap:5px; padding:6px 12px; border-radius:6px;
-  border:1px solid var(--border); background:var(--surface); color:var(--text);
+  border:1px solid var(--border); background:var(--surface-2); color:var(--text);
   cursor:pointer; font-size:12px; font-weight:600; transition:background .15s,border-color .15s; white-space:nowrap; }
-.btn:hover    { background:var(--surf2); border-color:var(--accent); }
+.btn:hover    { background:rgba(240,190,79,.08); border-color:var(--accent); }
 .btn:disabled { opacity:.4; cursor:not-allowed; }
 .btn-primary  { background:var(--accent); color:#000; border-color:var(--accent); }
 .btn-primary:hover { background:#b8903c; }
@@ -604,7 +593,7 @@ section { margin-bottom:24px; }
 .btn-xs { padding:3px 7px; font-size:10px; }
 
 /* ── Formulaires */
-.form-card { background:var(--surf2); border:1px solid var(--border); border-radius:8px; padding:16px; margin-bottom:14px; }
+.form-card { background:var(--surface); border:1px solid var(--border); border-radius:18px; padding:16px; margin-bottom:14px; box-shadow:0 18px 60px rgba(0,0,0,.22); }
 .form-card h3 { font-size:12px; font-weight:700; color:var(--accent); margin-bottom:12px; }
 .form-row { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
 @media(max-width:500px){ .form-row{ grid-template-columns:1fr; } }
@@ -687,19 +676,33 @@ input:checked + .slider:before { transform:translateX(20px); }
 </head>
 <body>
 
+<div class="ha-page">
+
 <!-- ── Header ──────────────────────────────────────────────── -->
-<div class="top-bar">
-  <h1>⚙ Hechicero</h1>
+<div class="ha-header">
+  <div>
+    <h1>Hechicero</h1>
+    <div class="ha-subtitle">Administration principale, contrôle parental et synchronisation.</div>
+  </div>
   <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
     <div class="mode-switch">
       <button class="mode-btn active" id="btn-normal" onclick="setMode('normal')">Normal</button>
       <button class="mode-btn"        id="btn-expert" onclick="setMode('expert')">Expert</button>
     </div>
-    <div style="display:flex;gap:8px;align-items:center;">
-      <a class="btn btn-sm" href="/lecteur/" target="_blank" title="Ouvrir le lecteur enfant">📻 Lecteur</a>
-      <a class="btn btn-sm" href="/dashboard.php" title="Dashboard d'écoute">📊 Dashboard</a>
-      <a class="btn btn-sm" href="/admin/battery_dashboard.php" title="Dashboard alimentation">🔋 Alimentation</a>
-    </div>
+    <nav class="ha-nav">
+      <a class="ha-btn active" href="/">
+        <span class="ha-btn-icon">⚙</span> Admin
+      </a>
+      <a class="ha-btn" href="/dashboard.php">
+        <span class="ha-btn-icon">📊</span> Écoute
+      </a>
+      <a class="ha-btn" href="/admin/battery_dashboard.php">
+        <span class="ha-btn-icon">🔋</span> Batterie
+      </a>
+      <a class="ha-btn" href="/lecteur/" target="_blank" title="Ouvrir le lecteur enfant">
+        <span class="ha-btn-icon">📻</span> Lecteur
+      </a>
+    </nav>
   </div>
 </div>
 
@@ -985,6 +988,8 @@ input:checked + .slider:before { transform:translateX(20px); }
     </details>
   </div>
 </section>
+
+</div>
 
 <script>
 // ── API ────────────────────────────────────────────────────
