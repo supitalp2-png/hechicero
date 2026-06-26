@@ -1,0 +1,17 @@
+{
+  "cycles": [
+    {
+      "datapoints": [
+        {
+          "t": "2026-06-26T21:29:25",
+          "level": 73,
+          "charging": false,
+          "mpd_mode": "idle",
+          "screen": true
+        }
+      ],
+      "discharge_start": "2026-06-26T21:29:25",
+      "level_start": 73
+    }
+  ]
+}

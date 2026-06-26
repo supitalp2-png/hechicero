@@ -1,0 +1,16 @@
+[Unit]
+Description=Hechicero Battery Tracker
+After=network.target mpd.service
+
+[Service]
+Type=simple
+User=thomas
+WorkingDirectory=/home/thomas/hechicero/scripts
+ExecStart=/usr/bin/python3 /home/thomas/hechicero/scripts/battery_tracker.py
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

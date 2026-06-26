@@ -396,6 +396,59 @@
     }
     .vol-pct      { font-size: 1rem; color: var(--muted); min-width: 40px; text-align: right; font-variant-numeric: tabular-nums; }
 
+    .battery-notice {
+      position: fixed;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 500;
+      min-width: min(92vw, 520px);
+      max-width: min(92vw, 520px);
+      background: rgba(15, 30, 46, 0.96);
+      border: 1.5px solid var(--border);
+      border-radius: 16px;
+      box-shadow: 0 18px 60px rgba(0, 0, 0, 0.35);
+      padding: 14px 18px;
+      color: var(--text);
+      backdrop-filter: blur(10px);
+    }
+    #battery-popup { top: 56px; }
+    #resume-prompt { top: 56px; }
+    #battery-alert {
+      bottom: 96px;
+      min-width: min(92vw, 640px);
+      max-width: min(92vw, 640px);
+    }
+    .battery-notice.warn { border-color: rgba(245, 166, 35, 0.55); }
+    .battery-notice.critical { border-color: rgba(226, 75, 74, 0.72); background: rgba(64, 20, 22, 0.96); }
+    .battery-notice-title { font-size: 0.9rem; color: var(--muted); margin-bottom: 4px; }
+    .battery-notice-msg { font-size: 1.12rem; font-weight: 600; }
+    .resume-actions {
+      display: flex;
+      gap: 10px;
+      margin-top: 12px;
+      justify-content: flex-end;
+    }
+    .resume-btn {
+      border-radius: 12px;
+      padding: 10px 14px;
+      border: 1.5px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      font-size: 1rem;
+      font-weight: 600;
+    }
+    .resume-btn.primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #03111b;
+    }
+
+    @media (max-width: 640px) {
+      #battery-alert { bottom: 88px; }
+      .resume-actions { flex-direction: column; }
+      .resume-btn { width: 100%; }
+    }
+
     /* ══════════════════════════════ */
     /* SCREEN 5 — RADIO PLAYER       */
     /* ══════════════════════════════ */
@@ -633,6 +686,17 @@
   <button id="mini-btn-pp">▶</button>
 </div>
 
+<div id="battery-popup" class="battery-notice hidden"></div>
+<div id="battery-alert" class="battery-notice hidden"></div>
+<div id="resume-prompt" class="battery-notice hidden">
+  <div class="battery-notice-title">Reprise après batterie faible</div>
+  <div class="battery-notice-msg" id="resume-text"></div>
+  <div class="resume-actions">
+    <button id="resume-dismiss" class="resume-btn">Plus tard</button>
+    <button id="resume-continue" class="resume-btn primary">Reprendre</button>
+  </div>
+</div>
+
 <script>
 // ═══════════════════════════════════════
 // HELPERS
@@ -684,6 +748,41 @@ function fmtDur(s) {
   return Math.floor(s/60) + ':' + String(s%60).padStart(2,'0');
 }
 
+function formatMinutes(minutes) {
+  const value = Math.round(Number(minutes));
+  if (!Number.isFinite(value) || value <= 0) return '—';
+  if (value < 60) return `${value}min`;
+  const hours = Math.floor(value / 60);
+  const remaining = value % 60;
+  return `${hours}h${String(remaining).padStart(2, '0')}`;
+}
+
+function isPlayingNow() {
+  return lastMpdState === 'play';
+}
+
+function showBatteryNotice(id, title, message, variant = '', duration = 8000) {
+  const node = el(id);
+  if (!node) return;
+  node.classList.remove('warn', 'critical', 'hidden');
+  if (variant) node.classList.add(variant);
+  node.innerHTML = `
+    <div class="battery-notice-title">${title}</div>
+    <div class="battery-notice-msg">${message}</div>
+  `;
+  if (duration > 0) {
+    const timerKey = id === 'battery-popup' ? '__batteryPopupTimer' : '__batteryAlertTimer';
+    clearTimeout(window[timerKey]);
+    window[timerKey] = setTimeout(() => node.classList.add('hidden'), duration);
+  }
+}
+
+function hideBatteryNotice(id) {
+  const node = el(id);
+  if (!node) return;
+  node.classList.add('hidden');
+}
+
 // ═══════════════════════════════════════
 // STATUS BAR
 // ═══════════════════════════════════════
@@ -693,7 +792,7 @@ function updateClock() {
 }
 setInterval(updateClock, 60000);
 
-function renderBattery(pct, charging) {
+function renderBattery(pct, charging, minutes) {
   const color = pct > 30 ? '#3dba6a' : pct > 10 ? '#f5a623' : '#e24b4a';
   return `
         <svg width="36" height="18" viewBox="0 0 22 11">
@@ -704,15 +803,16 @@ function renderBattery(pct, charging) {
           <rect x="19.5" y="3.5" width="2" height="4" rx="1" fill="#4a7a9b"/>
         </svg>
         <span style="font-size:16px;color:#c8dff0">${pct}%</span>
+        <span id="battery-time" style="font-size:16px;color:#7fa8c8">${formatMinutes(minutes)}</span>
         ${charging ? '<span style="color:#f5c842;font-size:16px">⚡</span>' : ''}
       `;
 }
 
 // Batterie : essaie navigator.getBattery(), sinon lit status.json (INA219)
-function updateBatteryDisplay(pct, charging) {
+function updateBatteryDisplay(pct, charging, minutes) {
   const el = document.getElementById('bat-display');
   if (!el) return;
-  el.innerHTML = renderBattery(Math.round(pct), charging);
+  el.innerHTML = renderBattery(Math.round(pct), charging, minutes);
 }
 
 function fetchBatteryFromStatus() {
@@ -721,27 +821,63 @@ function fetchBatteryFromStatus() {
     .then(d => {
       const pct = d.battery_percent ?? d.percent ?? d.soc ?? null;
       const charging = d.charging ?? (d.state ? d.state.toLowerCase().includes('charge') && !d.state.toLowerCase().includes('sur batterie') : false);
-      if (pct !== null) updateBatteryDisplay(pct, charging);
+      if (pct !== null) updateBatteryDisplay(pct, charging, null);
     })
     .catch(() => {});
 }
 
-if ('getBattery' in navigator) {
-  navigator.getBattery().then(bat => {
-    function update() { updateBatteryDisplay(Math.round(bat.level * 100), bat.charging); }
-    update();
-    bat.addEventListener('levelchange', update);
-    bat.addEventListener('chargingchange', update);
-  }).catch(() => {
-    // Browser Battery API non disponible → fallback status.json
-    fetchBatteryFromStatus();
-    setInterval(fetchBatteryFromStatus, 30000);
-  });
-} else {
-  // Pas d'API batterie → fallback status.json
-  fetchBatteryFromStatus();
-  setInterval(fetchBatteryFromStatus, 30000);
+let batterySnapshot = null;
+let activeBatteryAlertKey = null;
+let pendingResumeTarget = null;
+let resumePromptLoaded = false;
+
+function applyBatteryStats(stats) {
+  const pct = stats.current_level ?? stats.percent ?? stats.battery_percent ?? null;
+  if (pct === null || pct === undefined) return;
+  const charging = Boolean(stats.charging ?? (stats.status === 'charging'));
+  const rawAutonomy = window.__debugBatteryMinutes ?? stats.estimated_autonomy_minutes;
+  const autonomyMinutes = Number(rawAutonomy);
+  const chargeMinutes = Number(stats.estimated_charge_time_minutes);
+  const displayMinutes = charging ? chargeMinutes : autonomyMinutes;
+
+  updateBatteryDisplay(pct, charging, displayMinutes);
+
+  if (batterySnapshot?.status === 'discharging' && stats.status === 'charging' && Number.isFinite(chargeMinutes) && chargeMinutes > 0) {
+    showBatteryNotice('battery-popup', 'Alimentation', `Recharge estimée : ${formatMinutes(chargeMinutes)}`, '', 8000);
+  }
+
+  if (charging) {
+    activeBatteryAlertKey = null;
+    hideBatteryNotice('battery-alert');
+  } else if (!isPlayingNow() && Number.isFinite(autonomyMinutes) && autonomyMinutes > 0) {
+    if (autonomyMinutes < 10 && activeBatteryAlertKey !== '10') {
+      activeBatteryAlertKey = '10';
+      showBatteryNotice('battery-alert', 'Batterie faible', 'Il te reste 10 minutes, branche vite ta radio', 'critical', 20000);
+    } else if (autonomyMinutes < 30 && activeBatteryAlertKey !== '30') {
+      activeBatteryAlertKey = '30';
+      showBatteryNotice('battery-alert', 'Batterie faible', 'Il te reste 30 minutes, pense à brancher ta radio', 'warn', 20000);
+    }
+  }
+
+  batterySnapshot = stats;
 }
+
+function fetchBatteryStats() {
+  fetch('/index.php?action=battery_data', { cache: 'no-store' })
+    .then(r => r.json())
+    .then(payload => {
+      const stats = payload?.stats;
+      if (stats && typeof stats === 'object' && Object.keys(stats).length) {
+        applyBatteryStats(stats);
+      } else {
+        fetchBatteryFromStatus();
+      }
+    })
+    .catch(() => fetchBatteryFromStatus());
+}
+
+fetchBatteryStats();
+setInterval(fetchBatteryStats, 60000);
 
 // ═══════════════════════════════════════
 // RADIO STATIONS — chargées depuis data.json (clé radios)
@@ -837,7 +973,39 @@ async function loadData() {
       STATIONS.fr = DATA.radios.filter(r => (r.lang || r.langue || 'fr') === 'fr');
       STATIONS.es = DATA.radios.filter(r => (r.lang || r.langue || 'fr') === 'es');
     }
+    checkResumePrompt();
   } catch(e) { console.error('Impossible de charger data.json', e); }
+}
+
+function findEpisodeByAudio(audioPath) {
+  if (!DATA || !audioPath) return null;
+  for (const podcast of DATA.podcasts || []) {
+    const items = getDisplayItems(podcast);
+    const idx = items.findIndex(ch => ch.audio === audioPath);
+    if (idx >= 0) return { podcast, chapter: items[idx], idx };
+  }
+  return null;
+}
+
+function clearResumePrompt() {
+  pendingResumeTarget = null;
+  el('resume-prompt').classList.add('hidden');
+  fetch('/index.php?action=clear_battery_resume').catch(() => {});
+}
+
+async function checkResumePrompt() {
+  if (resumePromptLoaded || !DATA) return;
+  resumePromptLoaded = true;
+  try {
+    const response = await fetch('/index.php?action=battery_resume', { cache: 'no-store' });
+    const session = await response.json();
+    if (!session || session.shutdown_reason !== 'battery_critical' || !session.mpd_file) return;
+    const target = findEpisodeByAudio(session.mpd_file);
+    if (!target) return;
+    pendingResumeTarget = { ...target, session };
+    el('resume-text').textContent = `Reprendre ${target.chapter.titre} là où tu t'es arrêté ?`;
+    el('resume-prompt').classList.remove('hidden');
+  } catch (_) {}
 }
 
 async function loadParentalConfig() {
@@ -1322,6 +1490,24 @@ el('mini-btn-pp').addEventListener('click', async e => {
   e.stopPropagation();
   await sendRadio('pause');
   refreshStatus();
+});
+
+el('resume-dismiss').addEventListener('click', () => {
+  clearResumePrompt();
+});
+
+el('resume-continue').addEventListener('click', async () => {
+  if (!pendingResumeTarget) return;
+  const { podcast, chapter, idx, session } = pendingResumeTarget;
+  selectedLang = (podcast.langue || podcast.lang || podcast.language || 'fr').toLowerCase();
+  localStorage.setItem('hech_prog', JSON.stringify({
+    podcastId: podcast.id,
+    chapterId: chapter.id,
+    position: session.mpd_elapsed || 0,
+  }));
+  currentPodcast = podcast;
+  await playTrack(idx);
+  clearResumePrompt();
 });
 
 el('art-box').addEventListener('click', async () => {

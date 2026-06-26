@@ -10,6 +10,9 @@ define('PODCASTS_JSON', PROJECT_ROOT . '/data/podcasts.json');
 define('DATA_JSON',     PROJECT_ROOT . '/web/lecteur/data.json');
 define('CONFIG_JSON',   PROJECT_ROOT . '/web/lecteur/config.json');
 define('STATUS_JSON',   PROJECT_ROOT . '/web/status.json');   // servi à /status.json
+define('BATTERY_STATS_JSON',   PROJECT_ROOT . '/data/battery_stats.json');
+define('BATTERY_HISTORY_JSON', PROJECT_ROOT . '/data/battery_history.json');
+define('LAST_SESSION_JSON',    PROJECT_ROOT . '/data/last_session.json');
 define('TRACKING_DB',   PROJECT_ROOT . '/data/tracking.db');
 define('INGEST_LOG',    '/tmp/hechicero_ingest.log');
 define('INGEST_PID',    '/tmp/hechicero_ingest.pid');
@@ -30,6 +33,12 @@ function write_json_atomic(string $path, array $data): bool {
     $ok  = file_put_contents($tmp, json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
     if ($ok === false) return false;
     return rename($tmp, $path);
+}
+
+function battery_resume_payload(): array {
+  $resume = read_json(LAST_SESSION_JSON);
+  if (($resume['shutdown_reason'] ?? null) !== 'battery_critical') return [];
+  return $resume;
 }
 
 function pid_alive(string $f): bool {
@@ -188,6 +197,27 @@ if (isset($_GET['action'])) {
         ]);
         exit;
     }
+
+      if ($a === 'battery_data') {
+        echo json_encode([
+          'stats' => read_json(BATTERY_STATS_JSON),
+          'history' => read_json(BATTERY_HISTORY_JSON),
+          'resume' => battery_resume_payload(),
+        ]);
+        exit;
+      }
+
+      if ($a === 'battery_resume') {
+        echo json_encode(battery_resume_payload());
+        exit;
+      }
+
+      if ($a === 'clear_battery_resume') {
+        $ok = true;
+        if (file_exists(LAST_SESSION_JSON)) $ok = @unlink(LAST_SESSION_JSON);
+        echo json_encode(['ok' => (bool)$ok]);
+        exit;
+      }
 
     // ── Podcasts
     if ($a === 'get_podcasts') {
@@ -668,6 +698,7 @@ input:checked + .slider:before { transform:translateX(20px); }
     <div style="display:flex;gap:8px;align-items:center;">
       <a class="btn btn-sm" href="/lecteur/" target="_blank" title="Ouvrir le lecteur enfant">📻 Lecteur</a>
       <a class="btn btn-sm" href="/dashboard.php" title="Dashboard d'écoute">📊 Dashboard</a>
+      <a class="btn btn-sm" href="/admin/battery_dashboard.php" title="Dashboard alimentation">🔋 Alimentation</a>
     </div>
   </div>
 </div>
