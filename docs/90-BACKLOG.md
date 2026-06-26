@@ -7,6 +7,16 @@
 
 # 🔥 Priorité haute
 
+- [ ] TICKET-085 — infra — Ghost de la carte SD (image bootable sans audio)
+      - Exigence : copier l'image sur une nouvelle carte → ça redémarre et ça fonctionne directement
+      - Séquence :
+          1. Supprimer `podcasts/*/audio/`, `podcasts/*/images/`, `web/lecteur/images/` sur le Pi
+          2. `dd` de la carte SD → image bootable complète
+          3. PiShrink pour compresser l'espace vide
+          4. Stocker l'image sur disque externe
+          5. Relancer l'ingestion RSS pour re-télécharger MP3 et jackets
+      - À définir : fréquence (avant chaque sprint hardware minimum)
+
 - [ ] TICKET-083 — infra/sécurité — Arrêt propre sur batterie critique
       - Surveiller le seuil critique via GPIO HAT UPS D (signal avant coupure) + polling niveau
       - Sauvegarder contexte : position MPD (podcast + timestamp), écran actif, langue
@@ -40,40 +50,6 @@
 
 # 🟡 Priorité moyenne
 
-- [ ] TICKET-080 — backend/infra — Collecte de données batterie (service de mesure)
-      - Script `scripts/battery_tracker.py` tournant en service systemd
-      - Mesure événementielle : transitions secteur/batterie + delta niveau > 2% entre deux points
-      - Corrélation avec état MPD à chaque point : webradio / podcast local / pause / stop
-      - Corrélation état écran (allumé/éteint)
-      - Sortie : `data/battery_history.json` (cycles) + `data/battery_stats.json` (état courant)
-      - Voir `docs/80-ALIMENTATION.md` pour le schéma des données
-      - Prérequis à tous les autres tickets alimentation
-
-- [ ] TICKET-081 — UX/admin — Dashboard alimentation parent (page dédiée)
-      - Page PHP séparée du dashboard général
-      - 6 blocs : situation actuelle, courbe cycle en cours, profils conso par mode,
-        historique des cycles, courbes recharge, estimations avec indice de fiabilité
-      - Graphiques via Chart.js (déjà utilisé ailleurs ? à vérifier)
-      - Dépend de TICKET-080 (données) et TICKET-084 (modèle)
-      - Voir `docs/80-ALIMENTATION.md` §Dashboard parent
-
-- [ ] TICKET-082 — UX/enfant — Affichage autonomie + alertes batterie IHM enfant
-      - Indicateur en haut de l'écran kiosque : temps restant en format humain (2h30, 45min…)
-      - Pourcentage visible mais secondaire (pour le parent qui regarde)
-      - Popup au branchement : "Recharge estimée : 1h45" (sobre, style Android)
-      - Alerte 30 min restantes : bandeau discret non intrusif, jamais pendant la lecture
-      - Alerte 10 min restantes : plus visible, actionnable immédiatement
-      - Libellés en temps, jamais en % : "Il te reste 30 minutes, pense à brancher ta radio"
-      - Dépend de TICKET-080 + TICKET-084
-
-- [ ] TICKET-084 — backend — Modèle d'estimation d'autonomie (affinement progressif)
-      - Calcul des ratios : min/% décharge, min/% recharge, %/heure par mode MPD
-      - Moyenne glissante sur les N derniers cycles (paramétrable)
-      - `battery_stats.json` : `estimated_autonomy_minutes`, `estimated_charge_time_minutes`,
-        `cycles_recorded`, `model_confidence`
-      - Affinement automatique à chaque nouveau cycle complété
-      - Dépend de TICKET-080
-
 - [ ] TICKET-079 — UX/saisonnier — Mode Noël (décembre uniquement)
       - Neige animée sur la page d'accueil
       - Chapeau de Noël sur le coin des jaquettes podcast
@@ -97,9 +73,6 @@
       - Sortie lisible : [OK] / [WARN] / [ERR] par podcast et par type de problème
       - Script standalone : `scripts/rss_ingest/check_integrity.py`
 
-- [ ] TICKET-070 — feature/analytics — Dashboard enrichi (style audimat podcast)
-      - ✅ Funnel de complétion, heatmap, streak, top épisodes — **déjà implémenté**
-      - Reste : top 5 épisodes rejoués (à valider si présent)
 
 - [ ] TICKET-057 — UX/infra — Démarrage rapide de l'IHM enfant
       - Chromium met plusieurs secondes à démarrer après le boot
@@ -182,6 +155,18 @@
 - [x] TICKET-076 — UX/infra — Écran de démarrage Plymouth personnalisé (Great Vibes or)
 - [x] TICKET-077 — UX — Écran de veille thémé Great Vibes (retro/modern/classic × horloge)
 - [x] TICKET-078 — bug — Police Great Vibes cassée (woff2 4.5KB → TTF 445KB)
+- [x] TICKET-070 — feature/analytics — Dashboard enrichi (funnel, heatmap, streak, top épisodes rejoués)
+      - ✅ Tout implémenté dans `web/dashboard.php`
+- [x] TICKET-080 — backend/infra — Service de collecte batterie (`scripts/battery_tracker.py`)
+      - ✅ Mesure événementielle, corrélation MPD, écriture atomique, systemd actif
+- [x] TICKET-081 — UX/admin — Dashboard alimentation parent (`web/admin/battery_dashboard.php`)
+      - ✅ 6 blocs, Chart.js local, lien depuis l'admin
+- [x] TICKET-082 — UX/enfant — Affichage autonomie + alertes 30/10 min IHM enfant
+      - ✅ Temps restant, popup branchement, alertes non intrusives
+- [x] TICKET-083 — infra/sécurité — Arrêt propre sur batterie critique
+      - ✅ `scripts/battery_watchdog.py`, sauvegarde session, shutdown ordonné
+- [x] TICKET-084 — backend — Modèle d'estimation d'autonomie (affinement progressif)
+      - ✅ Ratios calculés après chaque cycle, `model_confidence` affiché
 
 ---
 

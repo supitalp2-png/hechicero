@@ -3,9 +3,9 @@
         "speakers_max": 52,
         "headphones_max": 60
     },
-    "chime_enabled": true,
+    "chime_enabled": false,
     "chime_volume": 18,
     "sleep_enabled": true,
     "sleep_delay": 300,
-    "sleep_mode": "modern_clock"
+    "sleep_mode": "retro_clock"
 }

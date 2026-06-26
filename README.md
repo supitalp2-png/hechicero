@@ -84,10 +84,9 @@ Le détail des tickets et des décisions techniques est dans `docs/`.
 | `docs/60-KIOSK_MODE.md` | Configuration mode kiosque Chromium |
 | `docs/70-SERVICES_SYSTEMD.md` | Services systemd (batterie, RSS, kiosque) |
 | `docs/80-hardware.md` | Matériel, câblage, comportements Pi 5 |
+| `docs/80-ALIMENTATION.md` | Gestion alimentation batterie — spec complète (TICKET-080 à 084) |
 | `docs/90-BACKLOG.md` | Tickets ouverts et fermés |
 | `docs/99-prompt.md` | Prompt de reprise de session pour Claude |
-
----
 
 ---
 

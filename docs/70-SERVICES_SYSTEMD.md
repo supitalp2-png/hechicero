@@ -14,53 +14,48 @@ Objectif : garantir un système **robuste**, **prévisible**, **auto‑récupér
 
 ## 1. Liste des services
 
-### 🔹 1.1 Service batterie
-Nom : `hechicero-monitor.service`  
-Rôle : lecture INA219 + écriture `status.json`
+| Service | Fichier | Rôle | Actif |
+|---|---|---|---|
+| `battery_tracker.service` | `scripts/battery_tracker.service` | Collecte batterie, cycles, estimations | ✅ |
+| RSS cron 3h | `crontab -l` | Ingestion podcasts | ✅ |
+| `hechicero-kiosk.service` | `~/.config/systemd/user/` | Relancer Chromium (optionnel) | selon config |
+| `battery_watchdog` | `scripts/battery_watchdog.py` | Arrêt propre sur batterie critique | à activer |
 
-### 🔹 1.2 Service ingestion RSS
-Nom : `hechicero-rss.service`  
-Timer : `hechicero-rss.timer`  
-Rôle : ingestion périodique des podcasts
-
-### 🔹 1.3 Service kiosque (optionnel)
-Nom : `hechicero-kiosk.service` (mode utilisateur)  
-Rôle : relancer Chromium en cas de crash
+> `hechicero-monitor.service` (ancien service batterie basé sur `get_status.py`) est remplacé par `battery_tracker.service`.
 
 ---
 
-## 2. Service batterie
-Fichier : `/etc/systemd/system/hechicero-monitor.service`
+## 2. Service batterie — battery_tracker
 
-```
+Fichier : `/etc/systemd/system/battery_tracker.service`
+
+```ini
 [Unit]
-Description=Hechicero Battery Monitor (INA219)
-After=network.target
+Description=Hechicero Battery Tracker
+After=network.target mpd.service
 
 [Service]
-Type=simple
+ExecStart=/usr/bin/python3 /home/thomas/hechicero/scripts/battery_tracker.py
+Restart=on-failure
+RestartSec=10
 User=thomas
-WorkingDirectory=/home/thomas/hechicero/scripts
-ExecStart=/usr/bin/python3 /home/thomas/hechicero/scripts/get_status.py
-Restart=always
-RestartSec=15
 
 [Install]
 WantedBy=multi-user.target
 ```
 
-> ⚠️ `get_status.py` utilise `tempfile.mkstemp()` + `os.chmod(tmp, 0o644)` + `os.replace()` pour l'écriture atomique.
-> Le `chmod 644` est obligatoire — `mkstemp()` crée les fichiers en 0o600, illisibles par `www-data`.
-
 ### Installation
-```
+```bash
+sudo cp scripts/battery_tracker.service /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable --now hechicero-monitor.service
+sudo systemctl enable --now battery_tracker
 ```
 
 ### Debug
-```
-journalctl -u hechicero-monitor.service -f
+```bash
+systemctl status battery_tracker
+journalctl -u battery_tracker -f
+cat data/battery_stats.json
 ```
 
 ---

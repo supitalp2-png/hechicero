@@ -119,7 +119,18 @@ def main() -> int:
         LOGGER.info("Battery watchdog started")
         while True:
             triggered = gpio_monitor.triggered()
-            level, charging = read_level(sensor, config)
+            try:
+                level, charging = read_level(sensor, config)
+            except OSError as e:
+                if e.errno == 121:
+                    LOGGER.warning("INA219 errno 121 — tentative de ré-initialisation")
+                    try:
+                        sensor = init_ina219(int(config.get("ina219_addr", 0x43)))
+                    except Exception:
+                        LOGGER.exception("Ré-initialisation INA219 échouée")
+                    time.sleep(poll_seconds)
+                    continue
+                raise
             if triggered:
                 LOGGER.warning("Critical battery GPIO triggered")
                 perform_shutdown_sequence(level, simulate=False)

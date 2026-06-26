@@ -398,6 +398,15 @@ def main() -> int:
             if sample["charging"]:
                 _alerted_30 = False
                 _alerted_10 = False
+        except OSError as e:
+            if e.errno == 121:
+                LOGGER.warning("INA219 errno 121 — tentative de ré-initialisation du capteur")
+                try:
+                    sensor = init_ina219(int(config.get("ina219_addr", 0x43)))
+                except Exception:
+                    LOGGER.exception("Ré-initialisation INA219 échouée")
+            else:
+                LOGGER.exception("Battery tracker iteration failed (OSError)")
         except Exception:
             LOGGER.exception("Battery tracker iteration failed")
         time.sleep(interval)

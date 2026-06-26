@@ -22,7 +22,8 @@ Le projet doit être **robuste**, **simple**, **maintenable**, **documenté**, e
 Arborescence réelle :
 
 ~/hechicero/
-├── data/              # config.json (seuils batterie), parental.json, tracking.db
+├── data/              # config.json, parental.json, tracking.db
+│                      # battery_stats.json, battery_history.json, last_session.json (gitignorés)
 ├── docs/              # documentation
 ├── podcasts/          # contenus téléchargés (RSS)
 │     └── <podcast_id>/
@@ -31,15 +32,22 @@ Arborescence réelle :
 │          └── meta.json
 ├── private/           # exclu du repo — scripts avec prénoms réels
 ├── scripts/           # Python : monitoring + ingestion RSS
-│     ├── get_status.py
-│     ├── hechicero-monitor.service
+│     ├── battery_common.py        # helpers partagés (INA219, MPD, écriture atomique)
+│     ├── battery_tracker.py       # collecte, cycles, estimations
+│     ├── battery_tracker.service  # service systemd
+│     ├── battery_watchdog.py      # arrêt propre sur seuil critique
 │     └── rss_ingest/
 ├── UX Design/         # maquettes, notes UX
 └── web/               # interface web (admin + lecteur)
+      ├── admin/
+      │     └── battery_dashboard.php   # dashboard alimentation parent
+      ├── css/
+      │     └── hechicero-admin.css     # CSS partagé des 3 pages admin
+      ├── js/
+      │     └── chart.min.js            # Chart.js 4.4.3 local (zéro CDN)
       ├── index.php
       ├── dashboard.php
       ├── tracking.php
-      ├── status.json
       └── lecteur/
             ├── index.html      # fichier unique (HTML + CSS + JS)
             ├── config.json     # config avancée (chime, sleep, volumes)
@@ -60,9 +68,10 @@ Règles fondamentales :
 # 3. Briques du système
 
 ### 🔹 Monitoring batterie
-- INA219 + Python  
-- Service systemd  
-- Écrit `web/status.json`  
+- INA219 + Python (`battery_tracker.py`, `battery_watchdog.py`, `battery_common.py`)
+- `battery_tracker.service` (systemd, `Restart=on-failure`)
+- Écrit `data/battery_stats.json` + `data/battery_history.json` (atomique, 664)
+- Dashboard parent : `web/admin/battery_dashboard.php`  
 
 ### 🔹 Audio
 - MPD + ALSA + HiFiBerry Amp4  
@@ -199,63 +208,59 @@ Objectif : **zéro surprise, zéro magie, zéro casse**.
 
 ---
 
-# 10. État du projet au 2026-06-24 (session 4)
+# 10. État du projet au 2026-06-26 (session 7)
 
 ## Ce qui est fait et validé
-- 18 podcasts FR + 2 podcasts ES ingérés et fonctionnels (pipeline RSS complet)
+- 18+ podcasts FR + podcasts ES ingérés, pipeline RSS complet et robuste
 - 2 webradios (France Inter FR, Radio Nacional ES)
-- IHM enfant 5 écrans complète et validée sur le Pi
-- Interface admin parent complète (mode normal / expert, section “Administration avancée” expert-only)
-- Son de démarrage (chime) : accord Web Audio API, config dans `web/lecteur/config.json`
-- Fix screensaver : suppression de `pointermove` (générait des events fantômes sur Pi)
-- Dashboard analytics (`web/dashboard.php`) : bar chart FR/ES + camembert journée + DOW chart
-- Tracking SQLite (`web/tracking.php`, `data/tracking.db`)
-- Enchaînement automatique des épisodes (TICKET-069 ✅)
-- Jaquettes podcasts servies depuis `web/lecteur/images/{id}.jpg` (Apache-accessible)
-- Permissions Pi correctes (`thomas:www-data`, cron 3h, umask 002)
+- IHM enfant 5 écrans complète, screensaver 6 modes Great Vibes (retro/modern/classic × horloge)
+- Police Great Vibes : TTF 445KB local, `@font-face` TTF uniquement (woff2 était corrompu)
+- Plymouth boot screen : `hechicero-gold.html` → Chromium headless → PNG → Plymouth
+- Son de démarrage (chime) : joué après Chromium via `kiosk.sh` (Chromium en bg, sleep, chime)
+- Interface admin parent complète + Dashboard écoute (`web/dashboard.php`)
+- **Gestion alimentation batterie complète** (session 7) :
+  - `scripts/battery_tracker.py` + `battery_tracker.service` : collecte, cycles, estimations
+  - `scripts/battery_watchdog.py` : arrêt propre sur seuil critique
+  - `web/admin/battery_dashboard.php` : dashboard parent (6 blocs, Chart.js local)
+  - Alertes 30min/10min dans l'IHM enfant, popup branchement
+- Harmonisation UI 3 pages admin : CSS partagé `web/css/hechicero-admin.css`
+- Durées épisodes via ffprobe (TICKET-059 ✅, 365 épisodes corrigés)
+- Contrôle parental (TICKET-071 ✅) : grille horaire + verrou langue
+- Tracking SQLite (`data/tracking.db`), dashboard analytics complet
 
 ## Source de vérité — rappel critique
 - `data/podcasts.json` → config podcasts ET radios (écrit par l'admin PHP)
 - `web/lecteur/config.json` → config avancée : `chime_enabled`, `chime_volume`, `sleep_enabled`, `sleep_delay`, `sleep_mode`, `speakers_max`, `headphones_max`
-- `data/config.json` → seuils batterie uniquement (lu par `get_status.py`)
+- `data/config.json` → seuils batterie (lu par `battery_tracker.py` et `battery_watchdog.py`)
+- `data/battery_stats.json` → état courant batterie (lu par l'IHM enfant et le dashboard)
+- `data/battery_history.json` → cycles de décharge/recharge (lu par le dashboard alimentation)
 - `writer.py` → lit les radios depuis `podcasts.json`, génère `web/lecteur/data.json`
 - `web/` → seul répertoire servi par Apache (les chemins `/podcasts/` ne sont PAS accessibles HTTP)
+- `web/css/hechicero-admin.css` → CSS partagé des 3 pages admin
 
 ## Tickets ouverts prioritaires
-- TICKET-072 : bug mini-lecteur (affiche la radio au lieu du podcast en cours)
-- TICKET-059 : durées via ffprobe
-- TICKET-038 : bouton RUN physique Pi
-- TICKET-058 : série easter egg “Décisions Prises”
+- TICKET-058 : easter egg “Décisions Prises” (mécanisme 3 taps + création épisodes)
+- TICKET-038 : bouton RUN physique Pi (hardware)
+- TICKET-031 : sortie casque (hardware)
+- TICKET-048 : script d'intégrité audio/images/data.json
+- TICKET-079 : Mode Noël (décembre)
+
+## Notes Coco (Copilot Pro)
+- PHP n'est pas installé sur Windows → pas de `php -l` en local, toujours valider sur le Pi
+- `battery_stats.json` et `battery_history.json` doivent être `rw-rw-r--` (664) — géré par `battery_common.py`
+- `chart.min.js` doit être téléchargé localement sur le Pi (zéro CDN)
+- Voir `prompts/coco-notes-generales.md` pour les règles Coco
 
 ---
 
-# 11. Message à Copilot Pro — retour session 3
+# 11. Notes de session — leçons retenues
 
-> Ce bloc documente ce qui n'a pas fonctionné ce matin pour améliorer la collaboration future.
+**Session 3 — bugs Copilot en cascade :**
+- Filtre `if e.local_audio` dans `writer.py` : les épisodes sont TOUJOURS dans `data.json`
+- Source des radios : `data/podcasts.json`, pas `data.json`
+- Webroot Apache = `web/`, pas la racine du projet
 
-**Trois bugs introduits en cascade :**
-
-**Bug 1 — Filtre `if e.local_audio` dans `writer.py`**
-Un filtre a été ajouté supposant que les épisodes sans audio téléchargé devaient être exclus.
-C'est l'inverse : les épisodes sont TOUJOURS inclus dans `data.json`, avec `”audio”: “”` si le
-téléchargement est en cours ou a échoué. Le filtre a vidé silencieusement tous les podcasts du lecteur.
-
-**Bug 2 — Source des radios changée vers `data.json`**
-Avant de lire `index.php`, une hypothèse incorrecte a conduit à changer la source des radios
-dans `writer.py`. La réalité : l'admin PHP écrit les radios dans `data/podcasts.json` (pas `data.json`).
-Ce bug n'a été détecté qu'après audit complet de `index.php`.
-
-**Bug 3 — Covers déplacées vers un chemin non-accessible Apache**
-Les covers ont été proposées à `podcasts/{id}/cover.jpg` sans vérifier que ce chemin n'est pas
-servi par Apache. Le webroot est `web/`, pas la racine du projet.
-Résultat : toutes les jaquettes sont devenues des images cassées.
-
-**Ce qui aurait évité ces trois bugs :**
-- Lire le fichier cible (`index.php`, `.htaccess` ou config Apache) AVANT de toucher à la logique
-- Poser la question “est-ce que ce chemin est servi par Apache ?” avant de proposer un path
-- Un seul changement à la fois, validé sur le Pi avant le suivant
-- Ne pas “corriger” du code sans comprendre pourquoi il est écrit comme il est
-
-**Pour les prochaines sessions :**
-Quand l'architecture n'est pas certaine (chemins, sources de données, rôle d'un fichier),
-lire le fichier ou poser la question. Ne pas supposer.
+**Session 6-7 — alimentation et UI :**
+- `chart.min.js` : Coco a écrit un stub 6KB au lieu du vrai Chart.js (200KB) → toujours vérifier la taille
+- `battery_stats.json` créé avec permissions `rw-------` → `www-data` ne peut pas lire → fix dans `battery_common.py`
+- I2C errno 121 au redémarrage du service : erreur transitoire, se résout seule en quelques secondes

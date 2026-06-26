@@ -3,14 +3,72 @@
     {
       "datapoints": [
         {
-          "t": "2026-06-26T21:29:25",
+          "t": "2026-06-26T21:59:53",
           "level": 73,
           "charging": false,
           "mpd_mode": "idle",
           "screen": true
         }
       ],
-      "discharge_start": "2026-06-26T21:29:25",
+      "discharge_start": "2026-06-26T21:59:53",
+      "level_start": 73,
+      "charge_start": "2026-06-26T21:59:56",
+      "charge_end": "2026-06-26T21:59:56",
+      "charge_duration_minutes": 0
+    },
+    {
+      "datapoints": [
+        {
+          "t": "2026-06-26T21:59:56",
+          "level": 73,
+          "charging": false,
+          "mpd_mode": "idle",
+          "screen": true
+        },
+        {
+          "t": "2026-06-26T22:03:04",
+          "level": 73,
+          "charging": false,
+          "mpd_mode": "webradio",
+          "screen": true
+        },
+        {
+          "t": "2026-06-26T22:13:09",
+          "level": 71,
+          "charging": false,
+          "mpd_mode": "webradio",
+          "screen": true
+        },
+        {
+          "t": "2026-06-26T22:13:59",
+          "level": 68,
+          "charging": false,
+          "mpd_mode": "webradio",
+          "screen": true
+        },
+        {
+          "t": "2026-06-26T22:14:09",
+          "level": 70,
+          "charging": false,
+          "mpd_mode": "webradio",
+          "screen": true
+        },
+        {
+          "t": "2026-06-26T22:14:20",
+          "level": 66,
+          "charging": false,
+          "mpd_mode": "webradio",
+          "screen": true
+        },
+        {
+          "t": "2026-06-26T22:15:20",
+          "level": 71,
+          "charging": false,
+          "mpd_mode": "webradio",
+          "screen": true
+        }
+      ],
+      "discharge_start": "2026-06-26T21:59:56",
       "level_start": 73
     }
   ]

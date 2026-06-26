@@ -1,147 +1,115 @@
 # Power Management — Projet Hechicero
 
+> Dernière mise à jour : 2026-06-26 (session 7)
+> Spec complète : `docs/80-ALIMENTATION.md`
+
 Ce document décrit la gestion de l’alimentation et de la batterie du système Hechicero.
-Il couvre le monitoring, les services systemd et les règles de robustesse.
 
 ---
 
 ## 1. Objectif
-Assurer :
-- un suivi fiable de l’état batterie
-- une mise à jour régulière du statut dans l’interface web
-- la prévention des coupures brutales
-- un shutdown propre lorsque la tension devient critique
+
+- Suivi fiable de l’état batterie (niveau, tension, courant)
+- Mesure de l’autonomie réelle en **temps d’écoute** (pas en mAh)
+- Affichage du temps restant à l’enfant et au parent
+- Alertes progressives : 30 min → 10 min → arrêt propre
+- Prévention des corruptions de carte SD par shutdown ordonné
 
 ---
 
-## 2. Fichiers clés
-- `scripts/get_status.py`  
-  Lit le capteur, calcule l’état batterie, écrit `web/status.json` (écriture atomique).
+## 2. Architecture — trois scripts
 
-- `web/status.json`  
-  Fichier lu par l’interface admin.
-
-- `data/config.json`  
-  Contient les seuils (warning, critical) et l’intervalle de polling.
-
-- `data/shutdown_pending`  
-  Fichier créé lorsque le seuil critique est atteint.
+| Script | Rôle | Service systemd |
+|---|---|---|
+| `scripts/battery_common.py` | Helpers partagés (INA219, MPD, écriture atomique) | — |
+| `scripts/battery_tracker.py` | Collecte des données, détection cycles, estimations | `battery_tracker.service` |
+| `scripts/battery_watchdog.py` | Surveillance seuil critique, arrêt propre | à activer manuellement |
 
 ---
 
-## 3. Installation rapide
+## 3. Fichiers de données
 
-### 3.1 Permissions
-```
-sudo chown -R thomas:www-data /home/thomas/hechicero
-sudo chmod -R 775 /home/thomas/hechicero/scripts
-sudo chmod -R 775 /home/thomas/hechicero/web
-sudo chmod -R 775 /home/thomas/hechicero/data
-```
+| Fichier | Contenu | Écrit par |
+|---|---|---|
+| `data/battery_history.json` | Cycles complets avec datapoints | `battery_tracker.py` |
+| `data/battery_stats.json` | État courant + estimations | `battery_tracker.py` |
+| `data/last_session.json` | Position MPD au moment du shutdown critique | `battery_watchdog.py` |
+| `data/config.json` | Seuils (critical_level_percent, etc.) | admin PHP |
 
-> Le service tourne sous `User=thomas`. L’utilisateur `thomas` doit être membre du groupe `www-data` :
-> `sudo usermod -aG www-data thomas`
+> ⚠️ Ces fichiers sont dans `.gitignore` — ils ne sont jamais versionnés.
+> ⚠️ Permissions obligatoires : `rw-rw-r--` (664) — `battery_common.py` les applique après chaque écriture.
 
 ---
 
-## 4. Service systemd
-Fichier : `/etc/systemd/system/hechicero-monitor.service`
-(source dans le repo : `scripts/hechicero-monitor.service`)
+## 4. Service battery_tracker
 
-```
+Fichier : `/etc/systemd/system/battery_tracker.service`
+(source dans le repo : `scripts/battery_tracker.service`)
+
+```ini
 [Unit]
-Description=Hechicero Battery Monitor (INA219)
-After=network.target
+Description=Hechicero Battery Tracker
+After=network.target mpd.service
 
 [Service]
-Type=simple
+ExecStart=/usr/bin/python3 /home/thomas/hechicero/scripts/battery_tracker.py
+Restart=on-failure
+RestartSec=10
 User=thomas
-WorkingDirectory=/home/thomas/hechicero/scripts
-ExecStart=/usr/bin/python3 /home/thomas/hechicero/scripts/get_status.py
-Restart=always
-RestartSec=15
-StandardOutput=journal
-StandardError=journal
 
 [Install]
 WantedBy=multi-user.target
 ```
 
-> ⚠️ `get_status.py` utilise `tempfile.mkstemp()` + `os.chmod(tmp, 0o644)` + `os.replace()` pour l'écriture atomique.
-> Le `chmod 644` est obligatoire — `mkstemp()` crée les fichiers en 0o600, illisibles par `www-data`.
-
-### Activer le service
-```
-sudo cp scripts/hechicero-monitor.service /etc/systemd/system/
+### Activer
+```bash
+sudo cp scripts/battery_tracker.service /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable --now hechicero-monitor.service
+sudo systemctl enable --now battery_tracker
 ```
 
-### Vérifier le statut
+### Vérifier
+```bash
+systemctl status battery_tracker
+journalctl -u battery_tracker -f
+cat data/battery_stats.json
 ```
-systemctl status hechicero-monitor.service
-journalctl -u hechicero-monitor.service -f
+
+---
+
+## 5. Stratégie de mesure
+
+- Mesure **événementielle + delta** : un point est enregistré si transition détectée (charge ↔ décharge, changement mode MPD) OU si le niveau a varié de ≥ 2%
+- Corrélation avec l’état MPD à chaque point : `webradio` / `podcast` / `idle`
+- Les estimations s’affinent automatiquement au fil des cycles complets
+
+---
+
+## 6. Alertes et seuils
+
+| Seuil | Déclencheur | Action |
+|---|---|---|
+| 30 min restantes | `battery_tracker.py` → `battery_stats.json` | IHM enfant affiche bandeau discret |
+| 10 min restantes | idem | IHM enfant affiche alerte visible |
+| Critique (7% défaut) | `battery_watchdog.py` ou GPIO HAT | Arrêt propre automatique |
+
+---
+
+## 7. Arrêt propre (battery_watchdog)
+
+Séquence déclenchée au seuil critique :
+1. Sauvegarder position MPD dans `data/last_session.json`
+2. `mpc stop`
+3. `sync` (flush filesystem)
+4. `sudo shutdown -h now`
+
+Au redémarrage, l’IHM enfant propose de reprendre là où on s’est arrêté.
+
+### Test simulation
+```bash
+python3 scripts/battery_watchdog.py --simulate-critical
+cat data/last_session.json
 ```
-
----
-
-## 5. Format attendu de `status.json`
-{
-  "percent": 98,
-  "voltage_v": 4.188,
-  "current_ma": 0,
-  "power_w": 0.006,
-  "state": "Sur batterie",
-  "alert": null,
-  "ts": 1780818044
-}
-
-Champs :
-- percent : pourcentage estimé  
-- voltage_v : tension mesurée  
-- current_ma : courant instantané  
-- power_w : puissance  
-- state : secteur / batterie  
-- alert : warning / critical / null  
-- ts : timestamp UNIX  
-
----
-
-## 6. Fréquences
-- Frontend (admin web) : polling toutes les 10 s  
-- Backend (get_status.py) : intervalle configurable dans `data/config.json`
-
----
-
-## 7. Recommandations techniques
-### Écriture atomique
-- écrire dans `status.json.tmp`
-- puis `mv status.json.tmp status.json`
-
-### Permissions
-- `status.json` : `644`
-- propriétaire : `thomas:www-data`
-
-### Validation JSON
-- utiliser `json.dumps()`
-- flush + fsync avant rename
-
----
-
-## 8. Shutdown propre
-Lorsque la batterie atteint le seuil critique :
-1. `data/shutdown_pending` est créé  
-2. `status.json` contient `alert: "critical"`  
-3. un service externe peut déclencher un `sudo shutdown now`  
-
----
-
-## 9. Critères d’acceptation
-- statut batterie affiché correctement  
-- `status.json` mis à jour régulièrement  
-- seuils warning / critical détectés  
-- fichier `shutdown_pending` créé au bon moment  
-- aucun JSON corrompu  
 
 ---
 
