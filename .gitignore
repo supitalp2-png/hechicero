@@ -24,3 +24,10 @@ private/
 
 # --- Briefs Copilot/Claude (usage ponctuel, non versionné) ---
 prompts/
+
+# --- Données runtime batterie ---
+data/battery_stats.json
+data/battery_history.json
+data/last_session.json
+data/tracking.db
+data/tracking.db
