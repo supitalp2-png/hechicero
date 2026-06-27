@@ -66,10 +66,92 @@
           "charging": false,
           "mpd_mode": "webradio",
           "screen": true
+        },
+        {
+          "t": "2026-06-27T00:04:04",
+          "level": 21,
+          "charging": false,
+          "mpd_mode": "idle",
+          "screen": true
+        },
+        {
+          "t": "2026-06-27T06:35:01",
+          "level": 33,
+          "charging": true,
+          "mpd_mode": "idle",
+          "screen": true
+        },
+        {
+          "t": "2026-06-27T06:37:01",
+          "level": 38,
+          "charging": true,
+          "mpd_mode": "idle",
+          "screen": true
+        },
+        {
+          "t": "2026-06-27T06:40:01",
+          "level": 40,
+          "charging": true,
+          "mpd_mode": "idle",
+          "screen": true
+        },
+        {
+          "t": "2026-06-27T06:42:01",
+          "level": 43,
+          "charging": true,
+          "mpd_mode": "idle",
+          "screen": true
+        },
+        {
+          "t": "2026-06-27T06:46:01",
+          "level": 45,
+          "charging": true,
+          "mpd_mode": "idle",
+          "screen": true
+        },
+        {
+          "t": "2026-06-27T06:51:01",
+          "level": 47,
+          "charging": true,
+          "mpd_mode": "idle",
+          "screen": true
+        },
+        {
+          "t": "2026-06-27T06:54:01",
+          "level": 50,
+          "charging": true,
+          "mpd_mode": "idle",
+          "screen": true
+        },
+        {
+          "t": "2026-06-27T06:59:01",
+          "level": 52,
+          "charging": true,
+          "mpd_mode": "idle",
+          "screen": true
+        },
+        {
+          "t": "2026-06-27T07:12:50",
+          "level": 54,
+          "charging": true,
+          "mpd_mode": "idle",
+          "screen": true
+        },
+        {
+          "t": "2026-06-27T07:15:50",
+          "level": 56,
+          "charging": true,
+          "mpd_mode": "idle",
+          "screen": true
         }
       ],
       "discharge_start": "2026-06-26T21:59:56",
-      "level_start": 73
+      "level_start": 73,
+      "discharge_end": "2026-06-27T00:04:04",
+      "level_end": 55,
+      "duration_minutes": 124,
+      "dominant_mode": "webradio",
+      "charge_start": "2026-06-27T00:04:04"
     }
   ]
 }

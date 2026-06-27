@@ -371,7 +371,9 @@ def main() -> int:
         return 0
 
     interval = int(config.get("battery_check_interval_seconds", 60))
-    LOGGER.info("Battery tracker starting from %s", PROJECT_ROOT)
+    startup_delay = int(config.get("battery_startup_delay_seconds", 30))
+    LOGGER.info("Battery tracker starting from %s — attente %ss stabilisation INA219", PROJECT_ROOT, startup_delay)
+    time.sleep(startup_delay)
     # DEBUG LOG — À SUPPRIMER APRÈS TESTS
     _alerted_30 = False
     _alerted_10 = False

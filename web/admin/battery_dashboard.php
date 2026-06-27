@@ -72,7 +72,7 @@ foreach (array_slice(array_reverse($cycles), 0, 5) as $index => $cycle) {
     ];
 }
 
-$currentCyclePoints = cycle_points($currentCycle, ($stats['status'] ?? '') === 'charging');
+$currentCyclePoints = array_map(fn($p) => ['t' => $p['t'] ?? '', 'level' => $p['level'] ?? null], $currentCycle['datapoints'] ?? []);
 $consumption = $stats['consumption_by_mode'] ?? [];
 $currentPage = basename($_SERVER['PHP_SELF'] ?? 'battery_dashboard.php');
 ?><!doctype html>
@@ -80,7 +80,7 @@ $currentPage = basename($_SERVER['PHP_SELF'] ?? 'battery_dashboard.php');
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Hechicero · Batterie</title>
+<title>Hechicero · Batterie</title>
   <link rel="stylesheet" href="/css/hechicero-admin.css">
   <style>
     .status-pill {
@@ -252,16 +252,35 @@ $currentPage = basename($_SERVER['PHP_SELF'] ?? 'battery_dashboard.php');
     const chargeCurves = <?php echo json_encode($chargeCurves, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
     const consumption = <?php echo json_encode($consumption, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
 
+    const GAP_MS = 2 * 3600 * 1000; // coupure de courbe si écart > 2h
+
     function chartDatasets(curves, palette) {
-      return curves.map((curve, index) => ({
-        label: curve.label,
-        data: curve.points.map((point, pointIndex) => ({ x: pointIndex, y: point.level })),
-        borderColor: palette[index % palette.length],
-        backgroundColor: palette[index % palette.length],
-        borderWidth: 2,
-        tension: 0.22,
-        pointRadius: 2,
-      }));
+      return curves.map((curve, index) => {
+        const data = [];
+        curve.points.forEach((point, i) => {
+          const ms = new Date(point.t).getTime();
+          if (i > 0) {
+            const prevMs = new Date(curve.points[i - 1].t).getTime();
+            if (ms - prevMs > GAP_MS) data.push({ x: prevMs + 1, y: null });
+          }
+          data.push({ x: ms, y: point.level });
+        });
+        return {
+          label: curve.label,
+          data,
+          borderColor: palette[index % palette.length],
+          backgroundColor: palette[index % palette.length],
+          borderWidth: 2,
+          tension: 0.22,
+          pointRadius: 4,
+          spanGaps: false,
+        };
+      });
+    }
+
+    function fmtTime(ms) {
+      const d = new Date(ms);
+      return String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
     }
 
     function createLineChart(id, curves, palette) {
@@ -274,8 +293,13 @@ $currentPage = basename($_SERVER['PHP_SELF'] ?? 'battery_dashboard.php');
           maintainAspectRatio: false,
           parsing: false,
           scales: {
-            x: { title: { display: true, text: 'Points de mesure' }, ticks: { color: '#86a5c0' }, grid: { color: 'rgba(32,66,100,0.25)' } },
-            y: { title: { display: true, text: 'Niveau (%)' }, min: 0, max: 100, ticks: { color: '#86a5c0' }, grid: { color: 'rgba(32,66,100,0.25)' } },
+            x: {
+              type: 'linear',
+              title: { display: true, text: 'Heure', color: '#86a5c0' },
+              ticks: { color: '#86a5c0', callback: v => fmtTime(v) },
+              grid: { color: 'rgba(32,66,100,0.25)' }
+            },
+            y: { title: { display: true, text: 'Niveau (%)' }, min: 0, ticks: { color: '#86a5c0' }, grid: { color: 'rgba(32,66,100,0.25)' } },
           },
           plugins: { legend: { labels: { color: '#e8f0f6' } } }
         }
