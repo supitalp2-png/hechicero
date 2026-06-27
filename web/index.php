@@ -355,6 +355,9 @@ if (isset($_GET['action'])) {
         if (isset($_GET['sleep_enabled'])) $cfg['sleep_enabled'] = (bool)(int)$_GET['sleep_enabled'];
         if (isset($_GET['sleep_delay']))   $cfg['sleep_delay']   = max(10, min(300, (int)$_GET['sleep_delay']));
         if (isset($_GET['sleep_mode']))    $cfg['sleep_mode']    = in_array($_GET['sleep_mode'], ['classic','classic_clock','retro','retro_clock','modern','modern_clock','clock','brand','both']) ? $_GET['sleep_mode'] : 'retro';
+        // Extinction écran
+        if (isset($_GET['screen_off_enabled'])) $cfg['screen_off_enabled'] = (bool)(int)$_GET['screen_off_enabled'];
+        if (isset($_GET['screen_off_delay']))   $cfg['screen_off_delay']   = in_array((int)$_GET['screen_off_delay'], [600,900,1200,1800]) ? (int)$_GET['screen_off_delay'] : 600;
         echo json_encode(['ok' => write_json_atomic(CONFIG_JSON, $cfg)]);
         exit;
     }
@@ -855,6 +858,27 @@ input:checked + .slider:before { transform:translateX(20px); }
         <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="radio" name="sleep-mode" value="modern"> Chrome</label>
         <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="radio" name="sleep-mode" value="modern_clock"> Chrome + horloge</label>
       </div>
+      <hr style="border:none;border-top:1px solid #1e293b;margin:16px 0">
+      <div class="card-title">💤 Extinction écran</div>
+      <div style="display:flex;gap:32px;flex-wrap:wrap;align-items:center">
+        <div class="stat" style="margin:0">
+          <span class="stat-l">Activée</span>
+          <label class="toggle-switch">
+            <input type="checkbox" id="screen-off-enabled" checked>
+            <span class="slider"></span>
+          </label>
+        </div>
+        <label style="font-size:13px;color:var(--muted)">
+          Délai :
+          <select id="screen-off-delay" style="margin-left:6px;background:#0b1220;color:var(--text);border:1px solid #1e293b;border-radius:4px;padding:3px 8px">
+            <option value="600">10 min</option>
+            <option value="900">15 min</option>
+            <option value="1200">20 min</option>
+            <option value="1800">30 min</option>
+          </select>
+        </label>
+      </div>
+      <p style="font-size:11px;color:var(--muted);margin-top:10px">Coupe le rétroéclairage après inactivité. Premier toucher = rallumage. Géré par <code>hechicero-idle.service</code>.</p>
     </div>
 
   </div>
@@ -1070,6 +1094,9 @@ async function loadConfig() {
   const modeVal = c.sleep_mode ?? 'retro';
   const modeInput = document.querySelector(`input[name="sleep-mode"][value="${modeVal}"]`);
   if (modeInput) modeInput.checked = true;
+  // Extinction écran
+  document.getElementById('screen-off-enabled').checked = !!(c.screen_off_enabled ?? true);
+  document.getElementById('screen-off-delay').value     = String(c.screen_off_delay ?? 600);
 }
 async function saveConfig() {
   const r = await api({
@@ -1078,9 +1105,11 @@ async function saveConfig() {
     headphones_max: document.getElementById('vol-headphones').value,
     chime_enabled:  document.getElementById('chime-enabled').checked ? 1 : 0,
     chime_volume:   document.getElementById('chime-volume').value,
-    sleep_enabled:  document.getElementById('sleep-enabled').checked ? 1 : 0,
-    sleep_delay:    document.getElementById('sleep-delay').value,
-    sleep_mode:     (document.querySelector('input[name="sleep-mode"]:checked') || {value:'retro'}).value,
+    sleep_enabled:       document.getElementById('sleep-enabled').checked ? 1 : 0,
+    sleep_delay:         document.getElementById('sleep-delay').value,
+    sleep_mode:          (document.querySelector('input[name="sleep-mode"]:checked') || {value:'retro'}).value,
+    screen_off_enabled:  document.getElementById('screen-off-enabled').checked ? 1 : 0,
+    screen_off_delay:    document.getElementById('screen-off-delay').value,
   });
   const btn = document.getElementById('btn-save-adv');
   btn.textContent = r.ok ? '✓ Enregistré' : '✗ Erreur';

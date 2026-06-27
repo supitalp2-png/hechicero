@@ -210,7 +210,7 @@ Objectif : **zéro surprise, zéro magie, zéro casse**.
 
 ---
 
-# 10. État du projet au 2026-06-27 (session 8/9)
+# 10. État du projet au 2026-06-27 (session 10)
 
 ## Ce qui est fait et validé
 - 18+ podcasts FR + podcasts ES ingérés, pipeline RSS complet et robuste
@@ -220,19 +220,25 @@ Objectif : **zéro surprise, zéro magie, zéro casse**.
 - Plymouth boot screen : `hechicero-gold.html` → Chromium headless → PNG → Plymouth
 - Son de démarrage (chime) : joué après Chromium via `kiosk.sh` (Chromium en bg, sleep, chime)
 - Interface admin parent complète + Dashboard écoute (`web/dashboard.php`)
-- **Gestion alimentation batterie complète** (session 7/8) :
+- **Gestion alimentation batterie complète** (session 7/8/10) :
   - `scripts/battery_tracker.py` + `battery_tracker.service` : collecte, cycles, estimations
-  - `scripts/battery_watchdog.py` : arrêt propre sur seuil critique
-  - `web/admin/battery_dashboard.php` : dashboard parent — axe temporel réel, détection trous >2h
+  - `scripts/battery_watchdog.py` + `battery_watchdog.service` : arrêt propre sur seuil critique (**actif**)
+  - `web/admin/battery_dashboard.php` : dashboard parent — courbes charge/décharge en temps relatif (superposition cycles)
   - INA219 errno 121 : réinitialisation capteur en boucle (plus de crash service)
   - Délai démarrage 30s pour éviter le faux positif “charging” au boot
   - Alertes 30min/10min dans l'IHM enfant, popup branchement
+  - Logs debug supprimés de `battery_tracker.py` et `battery_watchdog.py`
 - **Tracking lecture event-driven** (session 9) :
   - `scripts/play_tracker.py` + `play_tracker.service` : MPD `idle player mixer`, zéro poll
   - Podcasts ET webradio trackés côté serveur (indépendant du client)
   - `volume_pct` (moyenne MPD par session) enregistré → futur limiteur d'exposition sonore
   - Réparation sessions interrompues via `/proc/uptime` au démarrage
   - Bug radio corrigé : `openRadioPlayer` réinitialise `currentPodcast`/`currentIdx` pour stopper l'auto-next
+- **Extinction écran automatique** (session 10) :
+  - `scripts/idle_screen.sh` : wrapper swayidle qui relit `config.json` toutes les 30s
+  - `hechicero-idle.service` (user) : éteint l'écran après inactivité, rallumage au toucher
+  - `WAYLAND_DISPLAY=wayland-0` sur ce Pi
+  - Config depuis l'admin : `screen_off_enabled` + `screen_off_delay` (10/15/20/30 min)
 - Harmonisation UI 3 pages admin : CSS partagé `web/css/hechicero-admin.css`
 - Durées épisodes via ffprobe (TICKET-059 ✅, 365 épisodes corrigés)
 - Contrôle parental (TICKET-071 ✅) : grille horaire + verrou langue
@@ -240,7 +246,7 @@ Objectif : **zéro surprise, zéro magie, zéro casse**.
 
 ## Source de vérité — rappel critique
 - `data/podcasts.json` → config podcasts ET radios (écrit par l'admin PHP)
-- `web/lecteur/config.json` → config avancée : `chime_enabled`, `chime_volume`, `sleep_enabled`, `sleep_delay`, `sleep_mode`, `speakers_max`, `headphones_max`
+- `web/lecteur/config.json` → config avancée : `chime_enabled`, `chime_volume`, `sleep_enabled`, `sleep_delay`, `sleep_mode`, `speakers_max`, `headphones_max`, `screen_off_enabled`, `screen_off_delay`
 - `data/config.json` → seuils batterie (lu par `battery_tracker.py` et `battery_watchdog.py`)
 - `data/battery_stats.json` → état courant batterie (lu par l'IHM enfant et le dashboard)
 - `data/battery_history.json` → cycles de décharge/recharge (lu par le dashboard alimentation)
@@ -278,6 +284,13 @@ Objectif : **zéro surprise, zéro magie, zéro casse**.
 - `chart.min.js` : Coco a écrit un stub 6KB au lieu du vrai Chart.js (200KB) → toujours vérifier la taille
 - `battery_stats.json` créé avec permissions `rw-------` → `www-data` ne peut pas lire → fix dans `battery_common.py`
 - I2C errno 121 au redémarrage du service : erreur transitoire, se résout seule en quelques secondes
+
+**Session 10 — extinction écran et stabilité batterie :**
+- `battery_tracker.py` crashait au démarrage : log debug `/tmp/hechicero_battery_debug.log` créé par root → `PermissionError` → supprimer les blocs debug dès qu'ils sont validés
+- `battery_watchdog.service` n'existait pas malgré le script → toujours créer le `.service` en même temps que le script
+- `wlopm` et `swayidle` nécessitent `WAYLAND_DISPLAY=wayland-0` (pas `wayland-1`) sur ce Pi
+- Courbes charge/décharge en temps relatif : `x = (ms - t0) / 60000` pour superposer les cycles
+- `idle_screen.sh` : wrapper bash qui poll `config.json` toutes les 30s → swayidle relancé si délai change, pas besoin de redémarrer le service
 
 **Session 8/9 — tracking et batterie :**
 - Dashboard batterie : axe X Chart.js doit être `type: 'linear'` + `callback: ms => fmtTime(ms)`, pas `type: 'time'`

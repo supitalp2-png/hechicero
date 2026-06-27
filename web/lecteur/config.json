@@ -7,5 +7,7 @@
     "chime_volume": 18,
     "sleep_enabled": true,
     "sleep_delay": 300,
-    "sleep_mode": "retro_clock"
+    "sleep_mode": "retro_clock",
+    "screen_off_enabled": true,
+    "screen_off_delay": 600
 }

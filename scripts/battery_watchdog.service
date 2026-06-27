@@ -1,0 +1,17 @@
+[Unit]
+Description=Hechicero Battery Watchdog
+After=battery_tracker.service
+Wants=battery_tracker.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/home/thomas/hechicero/scripts
+ExecStart=/usr/bin/python3 /home/thomas/hechicero/scripts/battery_watchdog.py
+Restart=always
+RestartSec=15
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

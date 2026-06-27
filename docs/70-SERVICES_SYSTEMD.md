@@ -20,7 +20,7 @@ Objectif : garantir un système **robuste**, **prévisible**, **auto‑récupér
 | `play_tracker.service` | `scripts/play_tracker.service` | Suivi de lecture MPD (event-driven, idle player mixer) | ✅ |
 | RSS cron 3h | `crontab -l` | Ingestion podcasts | ✅ |
 | `hechicero-kiosk.service` | `~/.config/systemd/user/` | Relancer Chromium (optionnel) | selon config |
-| `battery_watchdog` | `scripts/battery_watchdog.py` | Arrêt propre sur batterie critique | à activer |
+| `battery_watchdog.service` | `scripts/battery_watchdog.service` | Arrêt propre sur batterie critique | ✅ |
 
 > `hechicero-monitor.service` (ancien service batterie basé sur `get_status.py`) est remplacé par `battery_tracker.service`.
 
@@ -100,7 +100,43 @@ python3 -c "import sqlite3; c=sqlite3.connect('/home/thomas/hechicero/data/track
 
 ---
 
-## 4. Ingestion RSS — Cron nocturne
+## 4. Service watchdog — battery_watchdog
+
+Fichier : `/etc/systemd/system/battery_watchdog.service`
+
+Surveille le niveau batterie toutes les N secondes. Si le niveau tombe sous `shutdown_threshold_percent` (défini dans `data/config.json`), sauvegarde l'état MPD et déclenche `shutdown -h now`. Tourne en `root` pour avoir le droit d'arrêter le système.
+
+```ini
+[Unit]
+Description=Hechicero Battery Watchdog
+After=battery_tracker.service
+Wants=battery_tracker.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/home/thomas/hechicero/scripts
+ExecStart=/usr/bin/python3 /home/thomas/hechicero/scripts/battery_watchdog.py
+Restart=always
+RestartSec=15
+```
+
+### Installation
+```bash
+sudo cp scripts/battery_watchdog.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now battery_watchdog
+```
+
+### Debug
+```bash
+systemctl status battery_watchdog
+journalctl -u battery_watchdog -f
+```
+
+---
+
+## 5. Ingestion RSS — Cron nocturne
 
 > ⚠️ L'ingestion RSS est gérée par **cron** (crontab de l'utilisateur `thomas`), pas par un service systemd.  
 > Le service/timer ci-dessous est documenté pour référence mais n'est pas activé.
@@ -144,7 +180,64 @@ Timer : `OnBootSec=5min`, `OnUnitActiveSec=6h`
 
 ---
 
-## 5. Service kiosque (optionnel)
+## 6. Service extinction écran — hechicero-idle
+
+Fichier : `~/.config/systemd/user/hechicero-idle.service`
+
+Appelle `scripts/idle_screen.sh` qui relit `web/lecteur/config.json` toutes les 30 secondes. Si `screen_off_enabled` ou `screen_off_delay` change, swayidle est relancé avec le nouveau délai. Éteint l'écran via `wlopm --off \*`, le rallume au premier toucher/clic via `wlopm --on \*`.
+
+Dépendances : `swayidle`, `wlopm` (paquets apt). `WAYLAND_DISPLAY=wayland-0`, `XDG_RUNTIME_DIR=/run/user/1000`.
+
+```ini
+[Unit]
+Description=Hechicero Screen Idle (éteint écran après inactivité)
+After=graphical-session.target
+
+[Service]
+ExecStart=/bin/bash /home/thomas/hechicero/scripts/idle_screen.sh
+Restart=on-failure
+Environment=WAYLAND_DISPLAY=wayland-0
+Environment=XDG_RUNTIME_DIR=/run/user/1000
+
+[Install]
+WantedBy=default.target
+```
+
+### Installation / mise à jour
+```bash
+cat > ~/.config/systemd/user/hechicero-idle.service << 'EOF'
+[Unit]
+Description=Hechicero Screen Idle (éteint écran après inactivité)
+After=graphical-session.target
+
+[Service]
+ExecStart=/bin/bash /home/thomas/hechicero/scripts/idle_screen.sh
+Restart=on-failure
+Environment=WAYLAND_DISPLAY=wayland-0
+Environment=XDG_RUNTIME_DIR=/run/user/1000
+
+[Install]
+WantedBy=default.target
+EOF
+chmod +x ~/hechicero/scripts/idle_screen.sh
+systemctl --user daemon-reload
+systemctl --user restart hechicero-idle.service
+```
+
+### Config (via admin web → Expert → Écran de veille)
+- `screen_off_enabled` : true/false
+- `screen_off_delay` : 600 / 900 / 1200 / 1800 (secondes)
+- Prise en compte dans les 30 secondes sans redémarrage du service.
+
+### Debug
+```bash
+systemctl --user status hechicero-idle.service
+journalctl --user -u hechicero-idle.service -f
+```
+
+---
+
+## 7. Service kiosque (optionnel)
 Ce service est utilisé uniquement si l’on souhaite relancer Chromium automatiquement.
 
 Fichier : `~/.config/systemd/user/hechicero-kiosk.service`
@@ -176,7 +269,7 @@ journalctl --user -u hechicero-kiosk.service -f
 
 ---
 
-## 6. Règles de sécurité systemd
+## 8. Règles de sécurité systemd
 Pour garantir la robustesse :
 
 - tous les services doivent avoir `Restart=always` ou `on-failure`  
@@ -188,7 +281,7 @@ Pour garantir la robustesse :
 
 ---
 
-## 7. Invariants systemd
+## 9. Invariants systemd
 Ces règles ne doivent **jamais** être violées :
 
 - un service ne doit jamais bloquer le boot  
@@ -200,7 +293,7 @@ Ces règles ne doivent **jamais** être violées :
 
 ---
 
-## 8. Tests de validation
+## 10. Tests de validation
 ### 🔹 Test 1 : reboot complet
 ```
 sudo reboot
@@ -226,7 +319,7 @@ Attendu :
 
 ---
 
-## 9. Notes
+## 11. Notes
 - Tous les services doivent être documentés ici  
 - Toute modification doit être testée sur un reboot complet  
 - Le système doit rester robuste même en cas de coupure  

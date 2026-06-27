@@ -254,6 +254,7 @@ $currentPage = basename($_SERVER['PHP_SELF'] ?? 'battery_dashboard.php');
 
     const GAP_MS = 2 * 3600 * 1000; // coupure de courbe si écart > 2h
 
+    // Axe absolu : x = ms epoch (utilisé pour le cycle en cours)
     function chartDatasets(curves, palette) {
       return curves.map((curve, index) => {
         const data = [];
@@ -278,9 +279,44 @@ $currentPage = basename($_SERVER['PHP_SELF'] ?? 'battery_dashboard.php');
       });
     }
 
+    // Axe relatif : x = minutes depuis le 1er point du cycle (pour superposer les cycles)
+    function chartDatasetsRelative(curves, palette) {
+      return curves.map((curve, index) => {
+        if (!curve.points.length) return null;
+        const t0 = new Date(curve.points[0].t).getTime();
+        const data = [];
+        curve.points.forEach((point, i) => {
+          const ms = new Date(point.t).getTime();
+          const xMin = (ms - t0) / 60000;
+          if (i > 0) {
+            const prevMs = new Date(curve.points[i - 1].t).getTime();
+            if (ms - prevMs > GAP_MS) data.push({ x: (prevMs - t0) / 60000 + 0.01, y: null });
+          }
+          data.push({ x: xMin, y: point.level });
+        });
+        // Raccourcir le label : garder seulement la date+heure de départ
+        const startLabel = curve.label.replace('T', ' ').substring(0, 16);
+        return {
+          label: startLabel,
+          data,
+          borderColor: palette[index % palette.length],
+          backgroundColor: palette[index % palette.length],
+          borderWidth: 2,
+          tension: 0.22,
+          pointRadius: 4,
+          spanGaps: false,
+        };
+      }).filter(Boolean);
+    }
+
     function fmtTime(ms) {
       const d = new Date(ms);
       return String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
+    }
+
+    function fmtMin(min) {
+      if (min < 60) return Math.round(min) + ' min';
+      return Math.floor(min / 60) + 'h' + String(Math.round(min % 60)).padStart(2, '0');
     }
 
     function createLineChart(id, curves, palette) {
@@ -297,6 +333,29 @@ $currentPage = basename($_SERVER['PHP_SELF'] ?? 'battery_dashboard.php');
               type: 'linear',
               title: { display: true, text: 'Heure', color: '#86a5c0' },
               ticks: { color: '#86a5c0', callback: v => fmtTime(v) },
+              grid: { color: 'rgba(32,66,100,0.25)' }
+            },
+            y: { title: { display: true, text: 'Niveau (%)' }, min: 0, ticks: { color: '#86a5c0' }, grid: { color: 'rgba(32,66,100,0.25)' } },
+          },
+          plugins: { legend: { labels: { color: '#e8f0f6' } } }
+        }
+      });
+    }
+
+    function createRelativeChart(id, curves, palette) {
+      if (!window.Chart || !document.getElementById(id) || !curves.length) return;
+      new Chart(document.getElementById(id), {
+        type: 'line',
+        data: { datasets: chartDatasetsRelative(curves, palette) },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          parsing: false,
+          scales: {
+            x: {
+              type: 'linear',
+              title: { display: true, text: 'Durée depuis début du cycle', color: '#86a5c0' },
+              ticks: { color: '#86a5c0', callback: v => fmtMin(v) },
               grid: { color: 'rgba(32,66,100,0.25)' }
             },
             y: { title: { display: true, text: 'Niveau (%)' }, min: 0, ticks: { color: '#86a5c0' }, grid: { color: 'rgba(32,66,100,0.25)' } },
@@ -331,8 +390,8 @@ $currentPage = basename($_SERVER['PHP_SELF'] ?? 'battery_dashboard.php');
     }
 
     createLineChart('current-cycle-chart', currentCyclePoints.length ? [{ label: 'Cycle en cours', points: currentCyclePoints }] : [], ['#f0be4f']);
-    createLineChart('discharge-chart', dischargeCurves, ['#4a9eff', '#f0be4f', '#3dba6a', '#d97706', '#8b5cf6']);
-    createLineChart('charge-chart', chargeCurves, ['#3dba6a', '#86efac', '#f0be4f', '#38bdf8', '#fb7185']);
+    createRelativeChart('discharge-chart', dischargeCurves, ['#4a9eff', '#f0be4f', '#3dba6a', '#d97706', '#8b5cf6']);
+    createRelativeChart('charge-chart', chargeCurves, ['#3dba6a', '#86efac', '#f0be4f', '#38bdf8', '#fb7185']);
   </script>
 </body>
 </html>

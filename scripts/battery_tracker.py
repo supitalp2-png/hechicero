@@ -33,10 +33,6 @@ ESTIMATE_WINDOW = 10
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 LOGGER = logging.getLogger("battery_tracker")
-# DEBUG LOG — À SUPPRIMER APRÈS TESTS
-_debug_handler = logging.FileHandler("/tmp/hechicero_battery_debug.log")
-_debug_handler.setFormatter(logging.Formatter("%(asctime)s %(name)s %(levelname)s %(message)s"))
-logging.getLogger().addHandler(_debug_handler)
 
 
 def load_history() -> dict[str, Any]:
