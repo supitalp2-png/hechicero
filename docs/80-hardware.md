@@ -31,14 +31,30 @@ Objectifs :
 - pas de contrôle de volume matériel  
 → volume logiciel obligatoire  
 
-### 🔹 Écran tactile
+### 🔹 Écran tactile — Waveshare 7" 1024×600
 - interface enfant principale  
-- connecté en DSI ou HDMI selon modèle  
+- connecté en HDMI + USB (tactile)
 - nécessite Raspberry Pi OS avec bureau  
+- 4 trous de montage aux coins (vis M3)
+
+### 🔹 Enceintes passives
+- 2 HP démontés de leur châssis d'origine
+- membrane ~65 mm de diamètre chacun
+- intégrés dans le boîtier (gauche et droite de l'écran)
+- alimentés par le HiFiBerry Amp4
+
+### 🔹 Boîtier — Grundig Concert Boy 206 (1966)
+- carcasse radio vintage récupérée
+- dimensions extérieures : 360 × 210 × 110 mm
+- revêtement vinyle noir + bandeau chrome aluminium
+- poignée métal chromée centrale (transport)
+- façades avant et arrière remplacées : contreplaqué bouleau 4mm découpé laser, tissu acoustique tendu
+- antenne d'origine supprimée
 
 ### 🔹 Bouton RUN externe
 - indispensable pour démarrer le Pi 5 avec le HAT  
-- équivalent à un appui sur le bouton POWER  
+- équivalent à un appui sur le bouton POWER
+- à câbler sur l'un des boutons d'origine du dessus du Concert Boy (GPIO Pi 5)
 
 ---
 
@@ -130,10 +146,45 @@ Les broches RUN sont situées sur un connecteur 2 broches dédié.
 
 ---
 
-## 7. Schéma d’empilement matériel
+## 7. Boîtier — Grundig Concert Boy 206
+
+### 🔹 Concept
+Radio portable vintage dont les entrailles sont remplacées par l’électronique Hechicero.
+La carcasse d’origine (vinyle noir, bandeau chrome, poignée métal) est conservée intégralement.
+
+### 🔹 Layout façade avant
+```
+┌──────┬──────────────────────────┬──────┐
+│  HP  │                          │  HP  │
+│ ∅65  │     Écran 7" tactile     │ ∅65  │
+│  mm  │       1024 × 600         │  mm  │
+└──────┴──────────────────────────┴──────┘
+              poignée métal
+```
+
+### 🔹 Façades (remplacement)
+- **Matériau** : contreplaqué bouleau 4 mm
+- **Découpe** : laser (service en ligne — Snijlab, Sculpteo, LaserBoost)
+- **Finition** : teinte ébène ou noyer + tissu acoustique noir tendu (mousse 3 mm intercalée)
+- **Fixation** : vis M3 tête fraisée, noyées sous le tissu — inserts laiton M3 dans le bois
+
+### 🔹 Boutons du dessus (conservés)
+Les boutons d’origine du Concert Boy sont recâblés sur les GPIO du Pi 5 :
+- bouton RUN (démarrage)
+- volume +/–
+- lecture/pause
+
+### 🔹 Procédure de validation avant fabrication
+1. Maquette carton du fichier de découpe → emboîtage dans la carcasse
+2. Pose de tous les composants en vrac (sans colle) → vérification câbles et ventilation
+3. Photo de l’intérieur câblé avant fermeture définitive
+
+---
+
+## 8. Schéma d’empilement matériel
 Ordre recommandé :
 ```
-[Écran tactile] (DSI/HDMI)
+[Écran tactile 7"] (HDMI + USB)
        │
 [Raspberry Pi 5]
        │
@@ -141,12 +192,12 @@ Ordre recommandé :
        │
 [HiFiBerry Amp4]
        │
-[Enceintes passives]
+[HP gauche]   [HP droit]
 ```
 
 ---
 
-## 8. Invariants matériels
+## 9. Invariants matériels
 Ces règles ne doivent **jamais** être violées :
 
 - le Pi 5 doit pouvoir démarrer via RUN  
@@ -158,7 +209,7 @@ Ces règles ne doivent **jamais** être violées :
 
 ---
 
-## 9. Tests de validation
+## 10. Tests de validation
 ### 🔹 Test 1 : démarrage via RUN
 - alimenter le HAT  
 - appuyer sur le bouton RUN  
@@ -178,7 +229,7 @@ Ces règles ne doivent **jamais** être violées :
 
 ---
 
-## 10. Notes
+## 11. Notes
 - Le matériel doit rester simple, robuste et réparable  
 - Toute modification matérielle doit être documentée ici  
 - Le bouton RUN est critique pour l’usage enfant  
