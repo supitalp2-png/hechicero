@@ -19,8 +19,11 @@ function get_db(): PDO {
         station_name TEXT DEFAULT NULL,
         duration_s   REAL DEFAULT 0,
         listened_s   REAL NOT NULL DEFAULT 0,
-        completed    INTEGER NOT NULL DEFAULT 0
+        completed    INTEGER NOT NULL DEFAULT 0,
+        volume_pct   INTEGER DEFAULT NULL
     )");
+    // Migration : ajout de volume_pct sur base existante
+    try { $db->exec("ALTER TABLE play_events ADD COLUMN volume_pct INTEGER DEFAULT NULL"); } catch (Exception $e) {}
     $db->exec('CREATE INDEX IF NOT EXISTS idx_ts   ON play_events(ts_start)');
     $db->exec('CREATE INDEX IF NOT EXISTS idx_lang ON play_events(langue)');
     $db->exec('CREATE INDEX IF NOT EXISTS idx_pod  ON play_events(podcast_id)');

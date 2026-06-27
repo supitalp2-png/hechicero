@@ -926,6 +926,24 @@ function getDisplayItems(podcast) {
   return [...raw].reverse();
 }
 
+async function startRadioTracking(st) {
+  await endTracking();
+  trackingPollCount = 0;
+  try {
+    const params = new URLSearchParams({
+      action: 'start',
+      podcast_id: st.id,
+      langue: (st.lang || st.langue || 'fr').toLowerCase(),
+      is_radio: '1',
+      station_name: st.name,
+      duration_s: '0',
+    });
+    const r = await fetch('/tracking.php?' + params);
+    const d = await r.json();
+    if (d.id) trackingId = d.id;
+  } catch (_) {}
+}
+
 // ch = objet épisode (pas l'index) pour éviter les problèmes de mapping
 async function startTracking(podcast, ch, duration_s) {
   await endTracking();
@@ -1230,7 +1248,10 @@ function openRadioCatalog() {
 
 function openRadioPlayer(st) {
   currentStation = st;
+  currentPodcast = null;   // empêche l'auto-next pendant le clear MPD (TICKET-072 symétrique)
+  currentIdx = -1;
   sendRadio('play', { url: st.url });
+  startRadioTracking(st);
   // Station image (with fallback handled via onerror in HTML)
   const img = el('rp-art');
   img.style.display = 'block';
@@ -1411,7 +1432,7 @@ el('back-home').addEventListener('click', () => show('home'));
 el('back-pods-radio').addEventListener('click', () => show('podcasts'));
 el('back-pods-ch').addEventListener('click', () => { endTracking(); show('podcasts'); });
 el('back-ch').addEventListener('click', () => { endTracking(); show('chapters'); });
-el('back-radio-catalog').addEventListener('click', () => show('radio-catalog'));
+el('back-radio-catalog').addEventListener('click', () => { endTracking(); show('radio-catalog'); });
 el('rp-btn-pp').addEventListener('click', async () => { await sendRadio('pause'); refreshStatus(); });
 el('rp-vd').addEventListener('click', async () => { await sendRadio('voldown'); refreshStatus(); });
 el('rp-vu').addEventListener('click', async () => { if (currentVolume < 100) { await sendRadio('volup'); refreshStatus(); } });

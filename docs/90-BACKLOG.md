@@ -1,7 +1,7 @@
 # Backlog Hechicero
 
 > Convention : `TICKET-### — [type] — Titre — (prio) — owner`
-> Dernière mise à jour : 2026-06-26 (session 7)
+> Dernière mise à jour : 2026-06-27 (session 8/9)
 
 ---
 
@@ -62,6 +62,16 @@
       - Label : "Les Bestioles fossiles"
       - ⚠️ Dossier audio sur disque créé avec cet ID → ne pas renommer sans migration manuelle
       - À corriger lors d'une maintenance : renommer dossier + mettre à jour `podcasts.json`
+
+- [ ] TICKET-086 — backend — Déduplication tracking JS vs play_tracker
+      - `play_tracker.py` (serveur, MPD idle) est désormais la source de vérité
+      - Le tracking JS dans `lecteur/index.html` (`startTracking`, `startRadioTracking`) crée des doublons pour les podcasts
+      - À faire : supprimer les appels JS `startTracking` / `startRadioTracking` / `endTracking` une fois play_tracker validé en prod
+
+- [ ] TICKET-087 — feature/parental — Limiteur d'exposition sonore
+      - `play_events.volume_pct` (moyenne MPD par session) est enregistré depuis session 9
+      - Dashboard : afficher volume moyen par jour / par podcast
+      - Config : seuil max volume dans `config.json` + avertissement si dépassé (IHM enfant)
 
 - [ ] TICKET-061 — content — Saison 2 Professeur Caillou introuvable
       - RSS actuel : 10 épisodes, saison 2 absente
@@ -135,6 +145,9 @@
 - [x] TICKET-053 — UX — Grille 2 colonnes + scroll tactile
 - [x] TICKET-054 — backend — Jaquettes par épisode dans `data.json`
 - [x] TICKET-055 — feature — Statistiques d'écoute + dashboard parent
+      - ✅ Session 9 : refonte tracking event-driven côté serveur (`play_tracker.py`, MPD idle)
+      - ✅ `volume_pct` (moyenne MPD) enregistré par session pour futur limiteur d'exposition
+      - ✅ Bug radio corrigé : auto-next ne se déclenche plus quand on lance la webradio pendant un podcast
 - [x] TICKET-059 — backend — Durée des épisodes via ffprobe
       - ✅ `fix_durations.py` : 365 épisodes corrigés
       - ✅ `downloader.py` : `probe_duration()` appelé après chaque téléchargement

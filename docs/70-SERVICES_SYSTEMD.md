@@ -17,6 +17,7 @@ Objectif : garantir un système **robuste**, **prévisible**, **auto‑récupér
 | Service | Fichier | Rôle | Actif |
 |---|---|---|---|
 | `battery_tracker.service` | `scripts/battery_tracker.service` | Collecte batterie, cycles, estimations | ✅ |
+| `play_tracker.service` | `scripts/play_tracker.service` | Suivi de lecture MPD (event-driven, idle player mixer) | ✅ |
 | RSS cron 3h | `crontab -l` | Ingestion podcasts | ✅ |
 | `hechicero-kiosk.service` | `~/.config/systemd/user/` | Relancer Chromium (optionnel) | selon config |
 | `battery_watchdog` | `scripts/battery_watchdog.py` | Arrêt propre sur batterie critique | à activer |
@@ -60,7 +61,46 @@ cat data/battery_stats.json
 
 ---
 
-## 3. Ingestion RSS — Cron nocturne
+## 3. Service suivi de lecture — play_tracker
+
+Fichier : `/etc/systemd/system/play_tracker.service`
+
+Écoute les événements MPD (`idle player mixer`) en temps réel. Enregistre chaque session de lecture dans `data/tracking.db` (table `play_events`) avec : podcast/radio identifié, durée écoutée, volume moyen, langue.
+
+Avantages vs tracking JS : fonctionne quelle que soit l'interface (PC, Pi, terminal), résistant aux coupures (sessions réparées via `/proc/uptime` au démarrage).
+
+```ini
+[Unit]
+Description=Hechicero Play Tracker (MPD idle)
+After=mpd.service
+Requires=mpd.service
+
+[Service]
+Type=simple
+User=thomas
+WorkingDirectory=/home/thomas/hechicero/scripts
+ExecStart=/usr/bin/python3 /home/thomas/hechicero/scripts/play_tracker.py
+Restart=always
+RestartSec=15
+```
+
+### Installation
+```bash
+sudo cp scripts/play_tracker.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now play_tracker
+```
+
+### Debug
+```bash
+systemctl status play_tracker
+journalctl -u play_tracker -f
+python3 -c "import sqlite3; c=sqlite3.connect('/home/thomas/hechicero/data/tracking.db'); print(c.execute('SELECT id,podcast_id,is_radio,listened_s,volume_pct FROM play_events ORDER BY id DESC LIMIT 5').fetchall())"
+```
+
+---
+
+## 4. Ingestion RSS — Cron nocturne
 
 > ⚠️ L'ingestion RSS est gérée par **cron** (crontab de l'utilisateur `thomas`), pas par un service systemd.  
 > Le service/timer ci-dessous est documenté pour référence mais n'est pas activé.
@@ -104,7 +144,7 @@ Timer : `OnBootSec=5min`, `OnUnitActiveSec=6h`
 
 ---
 
-## 4. Service kiosque (optionnel)
+## 5. Service kiosque (optionnel)
 Ce service est utilisé uniquement si l’on souhaite relancer Chromium automatiquement.
 
 Fichier : `~/.config/systemd/user/hechicero-kiosk.service`
@@ -136,7 +176,7 @@ journalctl --user -u hechicero-kiosk.service -f
 
 ---
 
-## 5. Règles de sécurité systemd
+## 6. Règles de sécurité systemd
 Pour garantir la robustesse :
 
 - tous les services doivent avoir `Restart=always` ou `on-failure`  
@@ -148,7 +188,7 @@ Pour garantir la robustesse :
 
 ---
 
-## 6. Invariants systemd
+## 7. Invariants systemd
 Ces règles ne doivent **jamais** être violées :
 
 - un service ne doit jamais bloquer le boot  
@@ -160,7 +200,7 @@ Ces règles ne doivent **jamais** être violées :
 
 ---
 
-## 7. Tests de validation
+## 8. Tests de validation
 ### 🔹 Test 1 : reboot complet
 ```
 sudo reboot
@@ -186,7 +226,7 @@ Attendu :
 
 ---
 
-## 8. Notes
+## 9. Notes
 - Tous les services doivent être documentés ici  
 - Toute modification doit être testée sur un reboot complet  
 - Le système doit rester robuste même en cas de coupure  

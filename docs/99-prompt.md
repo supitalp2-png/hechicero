@@ -36,6 +36,8 @@ Arborescence réelle :
 │     ├── battery_tracker.py       # collecte, cycles, estimations
 │     ├── battery_tracker.service  # service systemd
 │     ├── battery_watchdog.py      # arrêt propre sur seuil critique
+│     ├── play_tracker.py          # suivi lecture MPD idle (event-driven)
+│     ├── play_tracker.service     # service systemd
 │     └── rss_ingest/
 ├── UX Design/         # maquettes, notes UX
 └── web/               # interface web (admin + lecteur)
@@ -208,7 +210,7 @@ Objectif : **zéro surprise, zéro magie, zéro casse**.
 
 ---
 
-# 10. État du projet au 2026-06-26 (session 7)
+# 10. État du projet au 2026-06-27 (session 8/9)
 
 ## Ce qui est fait et validé
 - 18+ podcasts FR + podcasts ES ingérés, pipeline RSS complet et robuste
@@ -218,15 +220,23 @@ Objectif : **zéro surprise, zéro magie, zéro casse**.
 - Plymouth boot screen : `hechicero-gold.html` → Chromium headless → PNG → Plymouth
 - Son de démarrage (chime) : joué après Chromium via `kiosk.sh` (Chromium en bg, sleep, chime)
 - Interface admin parent complète + Dashboard écoute (`web/dashboard.php`)
-- **Gestion alimentation batterie complète** (session 7) :
+- **Gestion alimentation batterie complète** (session 7/8) :
   - `scripts/battery_tracker.py` + `battery_tracker.service` : collecte, cycles, estimations
   - `scripts/battery_watchdog.py` : arrêt propre sur seuil critique
-  - `web/admin/battery_dashboard.php` : dashboard parent (6 blocs, Chart.js local)
+  - `web/admin/battery_dashboard.php` : dashboard parent — axe temporel réel, détection trous >2h
+  - INA219 errno 121 : réinitialisation capteur en boucle (plus de crash service)
+  - Délai démarrage 30s pour éviter le faux positif “charging” au boot
   - Alertes 30min/10min dans l'IHM enfant, popup branchement
+- **Tracking lecture event-driven** (session 9) :
+  - `scripts/play_tracker.py` + `play_tracker.service` : MPD `idle player mixer`, zéro poll
+  - Podcasts ET webradio trackés côté serveur (indépendant du client)
+  - `volume_pct` (moyenne MPD par session) enregistré → futur limiteur d'exposition sonore
+  - Réparation sessions interrompues via `/proc/uptime` au démarrage
+  - Bug radio corrigé : `openRadioPlayer` réinitialise `currentPodcast`/`currentIdx` pour stopper l'auto-next
 - Harmonisation UI 3 pages admin : CSS partagé `web/css/hechicero-admin.css`
 - Durées épisodes via ffprobe (TICKET-059 ✅, 365 épisodes corrigés)
 - Contrôle parental (TICKET-071 ✅) : grille horaire + verrou langue
-- Tracking SQLite (`data/tracking.db`), dashboard analytics complet
+- Tracking SQLite (`data/tracking.db`, table `play_events`), dashboard analytics complet
 
 ## Source de vérité — rappel critique
 - `data/podcasts.json` → config podcasts ET radios (écrit par l'admin PHP)
@@ -237,13 +247,17 @@ Objectif : **zéro surprise, zéro magie, zéro casse**.
 - `writer.py` → lit les radios depuis `podcasts.json`, génère `web/lecteur/data.json`
 - `web/` → seul répertoire servi par Apache (les chemins `/podcasts/` ne sont PAS accessibles HTTP)
 - `web/css/hechicero-admin.css` → CSS partagé des 3 pages admin
+- `data/tracking.db` → SQLite, table `play_events` (gitignorée)
 
 ## Tickets ouverts prioritaires
+- TICKET-086 : déduplication tracking JS vs play_tracker (supprimer appels JS une fois play_tracker validé)
+- TICKET-087 : limiteur d'exposition sonore (`volume_pct` déjà enregistré, UI + config à faire)
+- TICKET-061 : Saison 2 Professeur Caillou (URL directe à trouver)
 - TICKET-058 : easter egg “Décisions Prises” (mécanisme 3 taps + création épisodes)
 - TICKET-038 : bouton RUN physique Pi (hardware)
 - TICKET-031 : sortie casque (hardware)
 - TICKET-048 : script d'intégrité audio/images/data.json
-- TICKET-079 : Mode Noël (décembre)
+- TICKET-085 : ghost carte SD (avant toute intervention hardware risquée)
 
 ## Notes Coco (Copilot Pro)
 - PHP n'est pas installé sur Windows → pas de `php -l` en local, toujours valider sur le Pi
@@ -264,3 +278,11 @@ Objectif : **zéro surprise, zéro magie, zéro casse**.
 - `chart.min.js` : Coco a écrit un stub 6KB au lieu du vrai Chart.js (200KB) → toujours vérifier la taille
 - `battery_stats.json` créé avec permissions `rw-------` → `www-data` ne peut pas lire → fix dans `battery_common.py`
 - I2C errno 121 au redémarrage du service : erreur transitoire, se résout seule en quelques secondes
+
+**Session 8/9 — tracking et batterie :**
+- Dashboard batterie : axe X Chart.js doit être `type: 'linear'` + `callback: ms => fmtTime(ms)`, pas `type: 'time'`
+- Trous de données batterie : insérer `{x: prevMs+1, y: null}` si gap > 2h + `spanGaps: false`
+- INA219 errno 121 persistant (8min+) : ajouter `reinit_ina219()` dans le catch, pas seulement un log
+- `play_tracker.py` : MPD renvoie des chemins absolus (`/home/thomas/hechicero/podcasts/...`) → utiliser `Path.relative_to(PROJECT_ROOT)` avant de parser
+- `idle player mixer` : les changements de volume sont des events `mixer`, pas `player` — écouter les deux
+- Auto-next bug : quand `openRadioPlayer` appelle `mpd clear`, le poll voit `stop` et relance le podcast → fix : `currentPodcast = null; currentIdx = -1` avant l'appel MPD

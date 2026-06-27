@@ -1,0 +1,18 @@
+[Unit]
+Description=Hechicero Play Tracker (MPD idle)
+After=mpd.service
+Requires=mpd.service
+
+[Service]
+Type=simple
+User=thomas
+WorkingDirectory=/home/thomas/hechicero/scripts
+ExecStart=/usr/bin/python3 /home/thomas/hechicero/scripts/play_tracker.py
+Restart=always
+RestartSec=15
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=play_tracker
+
+[Install]
+WantedBy=multi-user.target
