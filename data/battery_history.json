@@ -316,6 +316,13 @@
           "charging": false,
           "mpd_mode": "webradio",
           "screen": true
+        },
+        {
+          "t": "2026-06-27T22:49:46",
+          "level": 61,
+          "charging": false,
+          "mpd_mode": "webradio",
+          "screen": true
         }
       ],
       "discharge_start": "2026-06-27T22:46:01",
