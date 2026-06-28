@@ -1,7 +1,7 @@
 # Backlog Hechicero
 
 > Convention : `TICKET-### — [type] — Titre — (prio) — owner`
-> Dernière mise à jour : 2026-06-27 (session 8/9)
+> Dernière mise à jour : 2026-06-28 (session 11)
 
 ---
 
@@ -63,20 +63,16 @@
       - ⚠️ Dossier audio sur disque créé avec cet ID → ne pas renommer sans migration manuelle
       - À corriger lors d'une maintenance : renommer dossier + mettre à jour `podcasts.json`
 
-- [ ] TICKET-086 — backend — Déduplication tracking JS vs play_tracker
-      - `play_tracker.py` (serveur, MPD idle) est désormais la source de vérité
-      - Le tracking JS dans `lecteur/index.html` (`startTracking`, `startRadioTracking`) crée des doublons pour les podcasts
-      - À faire : supprimer les appels JS `startTracking` / `startRadioTracking` / `endTracking` une fois play_tracker validé en prod
-
 - [ ] TICKET-087 — feature/parental — Limiteur d'exposition sonore
       - `play_events.volume_pct` (moyenne MPD par session) est enregistré depuis session 9
       - Dashboard : afficher volume moyen par jour / par podcast
       - Config : seuil max volume dans `config.json` + avertissement si dépassé (IHM enfant)
 
-- [ ] TICKET-061 — content — Saison 2 Professeur Caillou introuvable
-      - RSS actuel : 10 épisodes, saison 2 absente
-      - Épisodes saison 2 (mai 2025) : L'or, lithium, silicium, néodyme, cuivre, indium
-      - Piste : chercher manuellement les URLs directes via kidcasts.fr ou radiofrance.fr
+- [ ] TICKET-088 — bug/backend — `play_tracker.py` n'écrivait pas `listened_s` à la fermeture
+      - MPD retourne `elapsed=0` quand l'état passe à "stop" → `listened_s` était systématiquement 0
+      - Fix session 11 : `db_close_session` utilise `ts_end - ts_start` comme fallback si `listened_s == 0`
+      - Fix historique déjà appliqué en DB : 55 rows mises à jour avec `ts_end - ts_start`
+      - ✅ `scripts/play_tracker.py` corrigé
 
 - [ ] TICKET-048 — backend — Script de vérification d'intégrité audio/images/data.json
       - Détecter : fichiers manquants, orphelins, M4A déguisés en .mp3, taille 0
@@ -180,6 +176,11 @@
       - ✅ `scripts/battery_watchdog.py`, sauvegarde session, shutdown ordonné
 - [x] TICKET-084 — backend — Modèle d'estimation d'autonomie (affinement progressif)
       - ✅ Ratios calculés après chaque cycle, `model_confidence` affiché
+- [x] TICKET-086 — backend — Déduplication tracking JS vs play_tracker
+      - ✅ Session 11 : 54 lignes de tracking JS supprimées de `web/lecteur/index.html`
+      - ✅ `play_tracker.py` (serveur, MPD idle) est désormais seule source de vérité
+- [x] TICKET-061 — content — Saison 2 Professeur Caillou
+      - ✅ Session 11 : 13 épisodes S2 déjà présents dans `data.json` — rien à faire
 
 ---
 
