@@ -38,10 +38,11 @@ Objectifs :
 - 4 trous de montage aux coins (vis M3)
 
 ### 🔹 Enceintes passives
-- 2 HP démontés de leur châssis d'origine
-- membrane ~65 mm de diamètre chacun
-- intégrés dans le boîtier (gauche et droite de l'écran)
-- alimentés par le HiFiBerry Amp4
+- 2 drivers extraits de leur châssis plastique d'origine
+- membrane ∅38mm, frame ∅50mm, profondeur 35mm
+- montage individuel dans la façade : driver gauche / driver droit (stéréo)
+- câblage : sortie L Amp4 → driver gauche, sortie R Amp4 → driver droit
+- connexion via bornier à vis du HiFiBerry Amp4
 
 ### 🔹 Boîtier — Grundig Concert Boy 206 (1966)
 - carcasse radio vintage récupérée
@@ -152,32 +153,62 @@ Les broches RUN sont situées sur un connecteur 2 broches dédié.
 Radio portable vintage dont les entrailles sont remplacées par l’électronique Hechicero.
 La carcasse d’origine (vinyle noir, bandeau chrome, poignée métal) est conservée intégralement.
 
+### 🔹 Décisions façade (2026-06-28)
+
+**Ce qu’on conserve :**
+- Bande vinyle/simili-cuir gauche avec logo GRUNDIG : ~50 mm de large (à mesurer précisément avant découpe)
+- Bandes chromées haut et bas (CH = 33 mm)
+- Poignée métal chromée centrale
+
+**Ce qu’on remplace :**
+- Zone centrale : grille HP d’origine + panneau tuner → nouveau panneau contreplaqué bouleau 4 mm
+- Panneau bois de X=50 mm jusqu’au montant droit (~303 mm de large, 144 mm de haut)
+
 ### 🔹 Layout façade avant
 ```
-┌──────┬──────────────────────────┬──────┐
-│  HP  │                          │  HP  │
-│ ∅65  │     Écran 7" tactile     │ ∅65  │
-│  mm  │       1024 × 600         │  mm  │
-└──────┴──────────────────────────┴──────┘
-              poignée métal
+┌────────┬──────┬──────────────────────┬──────┐  ← bandeau chrome
+│        │      │                      │      │
+│ vinyle │ HP ∅ │   Écran 7" tactile   │ HP ∅ │
+│ GRUNDIG│  50  │   1024 × 600         │  50  │
+│ ~50mm  │  mm  │   (centré panneau)   │  mm  │
+│        │      │                      │      │
+└────────┴──────┴──────────────────────┴──────┘  ← bandeau chrome
 ```
 
-### 🔹 Façades (remplacement)
+Positions dans le modèle OpenSCAD (X depuis bord gauche, estimées) :
+- Bande vinyle : 0 → 50 mm
+- HP gauche centre : ~83 mm
+- Écran gauche : ~117 mm (centré dans panneau ~303 mm)
+- HP droit centre : ~320 mm
+
+### 🔹 Panneau bois (nouveau)
 - **Matériau** : contreplaqué bouleau 4 mm
 - **Découpe** : laser (service en ligne — Snijlab, Sculpteo, LaserBoost)
 - **Finition** : teinte ébène ou noyer + tissu acoustique noir tendu (mousse 3 mm intercalée)
 - **Fixation** : vis M3 tête fraisée, noyées sous le tissu — inserts laiton M3 dans le bois
+- ⚠️ **Gabarit 1:1 à valider en carton avant commande laser**
 
-### 🔹 Boutons du dessus (conservés)
-Les boutons d’origine du Concert Boy sont recâblés sur les GPIO du Pi 5 :
-- bouton RUN (démarrage)
-- volume +/–
-- lecture/pause
+### 🔹 Tranche du dessus — nouveaux boutons
+
+La bande chromée du dessus conserve ses trous d’origine et reçoit des boutons neufs vissés par dessous.
+
+**Trous existants :**
+- 1 petit trou (∅ à mesurer, probablement 6 mm) — vis ou voyant d’origine
+- 1 fente rectangulaire (~25 × 8 mm) — interrupteur d’origine
+- ~10 trous ronds ∅ 16 mm — anciens potentiomètres
+
+**Boutons installés / à installer :**
+- Bouton RUN (démarrage Pi 5) : **déjà installé** — bouton-poussoir momentané 16 mm chrome, fils rouge + bleu
+- À ajouter : volume +, volume –, lecture/pause, piste suivante, piste précédente (5 boutons)
+- Les trous non utilisés peuvent rester vides ou être obturés par des bouchons ∅ 16 mm
+
+**Type de bouton retenu :** bouton-poussoir momentané anti-vandale 16 mm, corps métallique chromé, tête plate, filetage M16, montage par dessous avec écrou. Ex. : "16mm metal momentary push button switch chrome flat" (Amazon/AliExpress, ~1-3 €/pièce).
 
 ### 🔹 Procédure de validation avant fabrication
-1. Maquette carton du fichier de découpe → emboîtage dans la carcasse
-2. Pose de tous les composants en vrac (sans colle) → vérification câbles et ventilation
-3. Photo de l’intérieur câblé avant fermeture définitive
+1. Mesurer la largeur exacte de la bande vinyle gauche (VINYL_W)
+2. Gabarit carton du fichier de découpe → emboîtage dans la carcasse
+3. Pose de tous les composants en vrac (sans colle) → vérification câbles et ventilation
+4. Photo de l’intérieur câblé avant fermeture définitive
 
 ---
 
