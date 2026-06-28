@@ -1,7 +1,0 @@
-{
-  "shutdown_reason": "battery_critical",
-  "shutdown_at": "2026-06-26T21:59:36",
-  "battery_level": 8,
-  "mpd_file": null,
-  "mpd_elapsed": 0.0
-}

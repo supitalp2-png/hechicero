@@ -1,186 +1,204 @@
 {
-  "podcasts": [
-    {
-      "id": "professeurcaillou",
-      "label": "Les aventures du Professeur Caillou",
-      "rss": "https://radio-france-rss.aerion.workers.dev/rss/9cfc0cf4-6d0d-4ffa-a327-0c099c366d3c",
-      "enabled": true,
-      "language": "fr",
-      "image": "images/professeurcaillou.jpg",
-      "max_episodes": 999
-    },
-    {
-      "id": "olma",
-      "label": "Olma",
-      "rss": "https://radio-france-rss.aerion.workers.dev/rss/68b56044-9907-4e6f-b5d9-30e5a6ee7b46",
-      "enabled": true,
-      "language": "fr",
-      "image": "images/olma.jpg",
-      "max_episodes": 999
-    },
-    {
-      "id": "alloolma",
-      "label": "Allô Olma ? Ici Thomas Pesquet",
-      "rss": "https://radio-france-rss.aerion.workers.dev/rss/e5e3cc3d-7bd7-43e0-bb4d-af4b318dcdaa",
-      "enabled": true,
-      "language": "fr",
-      "image": "images/alloolma.jpg",
-      "max_episodes": 999
-    },
-    {
-      "id": "bestioles",
-      "label": "Bestioles",
-      "rss": "https://radio-france-rss.aerion.workers.dev/rss/a80ecbd5-df3d-4c9d-bee7-4e3d9efc1974",
-      "enabled": true,
-      "language": "fr",
-      "image": "images/bestioles.jpg",
-      "max_episodes": 999
-    },
-    {
-      "id": "bestiolesocean",
-      "label": "Les Bestioles sous l'océan",
-      "rss": "https://radio-france-rss.aerion.workers.dev/rss/57350baa-fdc5-476a-b185-09864e1d7c4f",
-      "enabled": true,
-      "language": "fr",
-      "image": "images/bestiolesocean.jpg",
-      "max_episodes": 999
-    },
-    {
-      "id": "bestiolesossiles",
-      "label": "Les Bestioles fossiles",
-      "rss": "https://radio-france-rss.aerion.workers.dev/rss/2ff2ffeb-baa9-4c56-bedb-6f9b754739cb",
-      "enabled": true,
-      "language": "fr",
-      "image": "images/bestiolesfossiles.jpg",
-      "max_episodes": 999
-    },
-    {
-      "id": "bestiolesolympiques",
-      "label": "Les Bestioles olympiques",
-      "rss": "https://radio-france-rss.aerion.workers.dev/rss/b765d620-09bf-4c7e-9366-6ab55131345f",
-      "enabled": true,
-      "language": "fr",
-      "image": "images/bestiolesolympiques.jpg",
-      "max_episodes": 999
-    },
-    {
-      "id": "craneo",
-      "label": "Cráneo : Ciencia para niños",
-      "rss": "https://anchor.fm/s/e6f41280/podcast/rss",
-      "enabled": true,
-      "language": "es",
-      "image": "images/craneo.jpg",
-      "max_episodes": 999
-    },
-    {
-      "id": "camaleon",
-      "label": "Camaleón : Animales para niños",
-      "rss": "https://anchor.fm/s/f001a2fc/podcast/rss",
-      "enabled": true,
-      "language": "es",
-      "image": "images/camaleon.jpg",
-      "max_episodes": 999
-    },
-    {
-      "id": "buenasnocherscraneo",
-      "label": "Buenas noches, Cráneo",
-      "rss": "https://anchor.fm/s/ec60d2d0/podcast/rss",
-      "enabled": true,
-      "language": "es",
-      "image": "images/buenasnocherscraneo.jpg",
-      "max_episodes": 999
-    },
-    {
-      "id": "lesodysseesduchateaudeversailles",
-      "label": "Les Odyssées du château de Versailles",
-      "rss": "https://radio-france-rss.aerion.workers.dev/rss/ee378b44-024d-48cd-a626-0f374f23f750",
-      "enabled": true,
-      "language": "fr",
-      "image": "images/lesodysseesduchateaudeversailles.jpg",
-      "max_episodes": 999
-    },
-    {
-      "id": "lesodysseessymphoniqueslaviedemozart",
-      "label": "Les Odyssées symphoniques : La vie de Mozart",
-      "rss": "https://radio-france-rss.aerion.workers.dev/rss/0c34c400-320e-47d9-85c7-fbfa29350803",
-      "enabled": true,
-      "language": "fr",
-      "image": "images/lesodysseessymphoniqueslaviedemozart.jpg",
-      "max_episodes": 999
-    },
-    {
-      "id": "lesodyssees",
-      "label": "Les Odyssées",
-      "rss": "https://radio-france-rss.aerion.workers.dev/rss/c361798b-d6e3-4282-ba0a-ebb051b9e424",
-      "enabled": true,
-      "language": "fr",
-      "image": "images/lesodyssees.jpg",
-      "max_episodes": 999
-    },
-    {
-      "id": "lesodysseesdalexandredumas",
-      "label": "Les Odyssées d'Alexandre Dumas",
-      "rss": "https://radio-france-rss.aerion.workers.dev/rss/ec5f0138-89f3-4beb-abc6-2e0e4799feb1",
-      "enabled": true,
-      "language": "fr",
-      "image": "images/lesodysseesdalexandredumas.jpg",
-      "max_episodes": 999
-    },
-    {
-      "id": "lesodysseesdesmuseesdorsayetdelorangerie",
-      "label": "Les Odyssées des musées d'Orsay et de l'Orangerie",
-      "rss": "https://radio-france-rss.aerion.workers.dev/rss/074d0e1f-8a9d-4fe9-b234-a75f0b18d92a",
-      "enabled": true,
-      "language": "fr",
-      "image": "images/lesodysseesdesmuseesdorsayetdelorangerie.jpg",
-      "max_episodes": 999
-    },
-    {
-      "id": "lesodysseesdejulesverne",
-      "label": "Les Odyssées de Jules Verne",
-      "rss": "https://radio-france-rss.aerion.workers.dev/rss/3058456e-c0cf-4d1d-8d39-e1149da2a5d6",
-      "enabled": true,
-      "language": "fr",
-      "image": "images/lesodysseesdejulesverne.jpg",
-      "max_episodes": 999
-    },
-    {
-      "id": "lesodysseesdulouvre",
-      "label": "Les Odyssées du Louvre",
-      "rss": "https://radio-france-rss.aerion.workers.dev/rss/d9e95861-3dec-4a86-90ec-b6cc688fe6de",
-      "enabled": true,
-      "language": "fr",
-      "image": "images/lesodysseesdulouvre.jpg",
-      "max_episodes": 999
-    },
-    {
-      "id": "lesodysseesaucoeurdelasecondeguerremondi",
-      "label": "Les Odyssées au cœur de la Seconde Guerre mondiale",
-      "rss": "https://radio-france-rss.aerion.workers.dev/rss/ba7f4a0d-161e-471d-9404-2bc6a9c7cf60",
-      "enabled": true,
-      "language": "fr",
-      "image": "images/lesodysseesaucoeurdelasecondeguerremondi.jpg",
-      "max_episodes": 999
-    }
-  ],
-  "radios": [
-    {
-      "id": "franceinter",
-      "name": "Mon Petit France Inter",
-      "desc": "Généraliste · Radio France",
-      "lang": "fr",
-      "url": "https://icecast.radiofrance.fr/monpetitfranceinter-midfi.mp3",
-      "image": "images/radio/franceinter.jpg",
-      "image_url": "https://upload.wikimedia.org/wikipedia/fr/thumb/8/8a/France_Inter_logo_2021.svg/1200px-France_Inter_logo_2021.svg.png"
-    },
-    {
-      "id": "radionacional",
-      "name": "Radio Nacional",
-      "desc": "Colombia",
-      "lang": "es",
-      "url": "https://www.radionacional.co/stream",
-      "image": "images/radio/radionacional.jpg",
-      "image_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/5/5e/Radio_Nacional_de_Colombia.svg/1200px-Radio_Nacional_de_Colombia.svg.png"
-    }
-  ]
+    "podcasts": [
+        {
+            "id": "professeurcaillou",
+            "label": "Les aventures du Professeur Caillou",
+            "rss": "https://radio-france-rss.aerion.workers.dev/rss/9cfc0cf4-6d0d-4ffa-a327-0c099c366d3c",
+            "enabled": true,
+            "language": "fr",
+            "image": "images/professeurcaillou.jpg",
+            "max_episodes": 999
+        },
+        {
+            "id": "olma",
+            "label": "Olma",
+            "rss": "https://radio-france-rss.aerion.workers.dev/rss/68b56044-9907-4e6f-b5d9-30e5a6ee7b46",
+            "enabled": true,
+            "language": "fr",
+            "image": "images/olma.jpg",
+            "max_episodes": 999
+        },
+        {
+            "id": "alloolma",
+            "label": "Allô Olma ? Ici Thomas Pesquet",
+            "rss": "https://radio-france-rss.aerion.workers.dev/rss/e5e3cc3d-7bd7-43e0-bb4d-af4b318dcdaa",
+            "enabled": true,
+            "language": "fr",
+            "image": "images/alloolma.jpg",
+            "max_episodes": 999
+        },
+        {
+            "id": "bestioles",
+            "label": "Bestioles",
+            "rss": "https://radio-france-rss.aerion.workers.dev/rss/a80ecbd5-df3d-4c9d-bee7-4e3d9efc1974",
+            "enabled": true,
+            "language": "fr",
+            "image": "images/bestioles.jpg",
+            "max_episodes": 999
+        },
+        {
+            "id": "bestiolesocean",
+            "label": "Les Bestioles sous l'océan",
+            "rss": "https://radio-france-rss.aerion.workers.dev/rss/57350baa-fdc5-476a-b185-09864e1d7c4f",
+            "enabled": true,
+            "language": "fr",
+            "image": "images/bestiolesocean.jpg",
+            "max_episodes": 999
+        },
+        {
+            "id": "bestiolesossiles",
+            "label": "Les Bestioles fossiles",
+            "rss": "https://radio-france-rss.aerion.workers.dev/rss/2ff2ffeb-baa9-4c56-bedb-6f9b754739cb",
+            "enabled": true,
+            "language": "fr",
+            "image": "images/bestiolesfossiles.jpg",
+            "max_episodes": 999
+        },
+        {
+            "id": "bestiolesolympiques",
+            "label": "Les Bestioles olympiques",
+            "rss": "https://radio-france-rss.aerion.workers.dev/rss/b765d620-09bf-4c7e-9366-6ab55131345f",
+            "enabled": true,
+            "language": "fr",
+            "image": "images/bestiolesolympiques.jpg",
+            "max_episodes": 999
+        },
+        {
+            "id": "craneo",
+            "label": "Cráneo : Ciencia para niños",
+            "rss": "https://anchor.fm/s/e6f41280/podcast/rss",
+            "enabled": true,
+            "language": "es",
+            "image": "images/craneo.jpg",
+            "max_episodes": 999
+        },
+        {
+            "id": "camaleon",
+            "label": "Camaleón : Animales para niños",
+            "rss": "https://anchor.fm/s/f001a2fc/podcast/rss",
+            "enabled": true,
+            "language": "es",
+            "image": "images/camaleon.jpg",
+            "max_episodes": 999
+        },
+        {
+            "id": "buenasnocherscraneo",
+            "label": "Buenas noches, Cráneo",
+            "rss": "https://anchor.fm/s/ec60d2d0/podcast/rss",
+            "enabled": true,
+            "language": "es",
+            "image": "images/buenasnocherscraneo.jpg",
+            "max_episodes": 999
+        },
+        {
+            "id": "lesodysseesduchateaudeversailles",
+            "label": "Les Odyssées du château de Versailles",
+            "rss": "https://radio-france-rss.aerion.workers.dev/rss/ee378b44-024d-48cd-a626-0f374f23f750",
+            "enabled": true,
+            "language": "fr",
+            "image": "images/lesodysseesduchateaudeversailles.jpg",
+            "max_episodes": 999
+        },
+        {
+            "id": "lesodysseessymphoniqueslaviedemozart",
+            "label": "Les Odyssées symphoniques : La vie de Mozart",
+            "rss": "https://radio-france-rss.aerion.workers.dev/rss/0c34c400-320e-47d9-85c7-fbfa29350803",
+            "enabled": true,
+            "language": "fr",
+            "image": "images/lesodysseessymphoniqueslaviedemozart.jpg",
+            "max_episodes": 999
+        },
+        {
+            "id": "lesodyssees",
+            "label": "Les Odyssées",
+            "rss": "https://radio-france-rss.aerion.workers.dev/rss/c361798b-d6e3-4282-ba0a-ebb051b9e424",
+            "enabled": true,
+            "language": "fr",
+            "image": "images/lesodyssees.jpg",
+            "max_episodes": 999
+        },
+        {
+            "id": "lesodysseesdalexandredumas",
+            "label": "Les Odyssées d'Alexandre Dumas",
+            "rss": "https://radio-france-rss.aerion.workers.dev/rss/ec5f0138-89f3-4beb-abc6-2e0e4799feb1",
+            "enabled": true,
+            "language": "fr",
+            "image": "images/lesodysseesdalexandredumas.jpg",
+            "max_episodes": 999
+        },
+        {
+            "id": "lesodysseesdesmuseesdorsayetdelorangerie",
+            "label": "Les Odyssées des musées d'Orsay et de l'Orangerie",
+            "rss": "https://radio-france-rss.aerion.workers.dev/rss/074d0e1f-8a9d-4fe9-b234-a75f0b18d92a",
+            "enabled": true,
+            "language": "fr",
+            "image": "images/lesodysseesdesmuseesdorsayetdelorangerie.jpg",
+            "max_episodes": 999
+        },
+        {
+            "id": "lesodysseesdejulesverne",
+            "label": "Les Odyssées de Jules Verne",
+            "rss": "https://radio-france-rss.aerion.workers.dev/rss/3058456e-c0cf-4d1d-8d39-e1149da2a5d6",
+            "enabled": true,
+            "language": "fr",
+            "image": "images/lesodysseesdejulesverne.jpg",
+            "max_episodes": 999
+        },
+        {
+            "id": "lesodysseesdulouvre",
+            "label": "Les Odyssées du Louvre",
+            "rss": "https://radio-france-rss.aerion.workers.dev/rss/d9e95861-3dec-4a86-90ec-b6cc688fe6de",
+            "enabled": true,
+            "language": "fr",
+            "image": "images/lesodysseesdulouvre.jpg",
+            "max_episodes": 999
+        },
+        {
+            "id": "lesodysseesaucoeurdelasecondeguerremondi",
+            "label": "Les Odyssées au cœur de la Seconde Guerre mondiale",
+            "rss": "https://radio-france-rss.aerion.workers.dev/rss/ba7f4a0d-161e-471d-9404-2bc6a9c7cf60",
+            "enabled": true,
+            "language": "fr",
+            "image": "images/lesodysseesaucoeurdelasecondeguerremondi.jpg",
+            "max_episodes": 999
+        },
+        {
+            "id": "tumbleenespanol",
+            "label": "Tumble en Español",
+            "rss": "https://feeds.megaphone.fm/ARML4583684969",
+            "enabled": true,
+            "language": "es",
+            "image": "images/tumbleenespanol.jpg",
+            "max_episodes": 999
+        },
+        {
+            "id": "habiaunavez",
+            "label": "Había una vez",
+            "rss": "https://feeds.acast.com/public/shows/6446e30da189ca00112be9de",
+            "enabled": true,
+            "language": "es",
+            "image": "images/habiaunavez.jpg",
+            "max_episodes": 999
+        }
+    ],
+    "radios": [
+        {
+            "id": "franceinter",
+            "name": "Mon Petit France Inter",
+            "desc": "Généraliste · Radio France",
+            "lang": "fr",
+            "url": "https://icecast.radiofrance.fr/monpetitfranceinter-midfi.mp3",
+            "image": "images/radio/franceinter.jpg",
+            "image_url": "https://upload.wikimedia.org/wikipedia/fr/thumb/8/8a/France_Inter_logo_2021.svg/1200px-France_Inter_logo_2021.svg.png"
+        },
+        {
+            "id": "radionacional",
+            "name": "Radio Nacional",
+            "desc": "Colombia",
+            "lang": "es",
+            "url": "https://www.radionacional.co/stream",
+            "image": "images/radio/radionacional.jpg",
+            "image_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/5/5e/Radio_Nacional_de_Colombia.svg/1200px-Radio_Nacional_de_Colombia.svg.png"
+        }
+    ]
 }

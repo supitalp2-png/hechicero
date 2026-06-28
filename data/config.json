@@ -2,6 +2,6 @@
   "battery_check_interval_seconds": 60,
   "charge_threshold_ma": 50,
   "warn_threshold_percent": 20,
-  "shutdown_threshold_percent": 8,
+  "shutdown_threshold_percent": 15,
   "grace_seconds_before_shutdown": 60
 }

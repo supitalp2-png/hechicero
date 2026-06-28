@@ -25,9 +25,16 @@ private/
 # --- Briefs Copilot/Claude (usage ponctuel, non versionné) ---
 prompts/
 
-# --- Données runtime batterie ---
+# --- Données runtime batterie et tracking ---
 data/battery_stats.json
 data/battery_history.json
 data/last_session.json
 data/tracking.db
-data/tracking.db
+data/tracking.db-shm
+data/tracking.db-wal
+
+# --- Photos originales (haute résolution, hors repo) ---
+Photos/
+
+# --- Fichiers temporaires ---
+web/lecteur/index.html.bak
