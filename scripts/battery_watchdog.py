@@ -86,12 +86,28 @@ def perform_shutdown_sequence(battery_level: int | None, simulate: bool = False)
     return payload
 
 
-def read_level(sensor: Any, config: dict[str, Any]) -> tuple[int | None, bool]:
+def read_level(sensor: Any, config: dict[str, Any]) -> tuple[int | None, bool, Any]:
+    """
+    Lit le niveau batterie. Retourne (level, charging, sensor).
+    En cas d'errno 121 (INA219 I2C timeout), tente une ré-initialisation et retourne (None, False, nouveau_sensor).
+    Toute autre exception retourne (None, False, sensor) sans planter le watchdog.
+    """
     try:
         snapshot = read_sensor_snapshot(sensor, config)
-    except Exception:
-        return None, False
-    return int(snapshot["level"]), bool(snapshot["charging"])
+        return int(snapshot["level"]), bool(snapshot["charging"]), sensor
+    except OSError as e:
+        if e.errno == 121:
+            LOGGER.warning("INA219 errno 121 — tentative de ré-initialisation")
+            try:
+                sensor = init_ina219(int(config.get("ina219_addr", 0x43)))
+            except Exception:
+                LOGGER.exception("Ré-initialisation INA219 échouée")
+        else:
+            LOGGER.warning("Erreur lecture INA219 : %s", e)
+        return None, False, sensor
+    except Exception as e:
+        LOGGER.warning("Erreur lecture INA219 : %s", e)
+        return None, False, sensor
 
 
 def main() -> int:
@@ -115,18 +131,7 @@ def main() -> int:
         LOGGER.info("Battery watchdog started")
         while True:
             triggered = gpio_monitor.triggered()
-            try:
-                level, charging = read_level(sensor, config)
-            except OSError as e:
-                if e.errno == 121:
-                    LOGGER.warning("INA219 errno 121 — tentative de ré-initialisation")
-                    try:
-                        sensor = init_ina219(int(config.get("ina219_addr", 0x43)))
-                    except Exception:
-                        LOGGER.exception("Ré-initialisation INA219 échouée")
-                    time.sleep(poll_seconds)
-                    continue
-                raise
+            level, charging, sensor = read_level(sensor, config)
             if triggered:
                 LOGGER.warning("Critical battery GPIO triggered")
                 perform_shutdown_sequence(level, simulate=False)

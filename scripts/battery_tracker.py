@@ -12,7 +12,6 @@ from typing import Any
 from battery_common import (
     DATA_DIR,
     PROJECT_ROOT,
-    WEB_DIR,
     atomic_write_json,
     init_ina219,
     load_config,
@@ -25,8 +24,7 @@ from battery_common import (
 
 
 HISTORY_PATH = DATA_DIR / "battery_history.json"
-STATS_PATH = DATA_DIR / "battery_stats.json"
-STATUS_PATH = WEB_DIR / "status.json"
+STATS_PATH   = DATA_DIR / "battery_stats.json"
 LEVEL_DELTA_THRESHOLD = 2
 ESTIMATE_WINDOW = 10
 
@@ -370,9 +368,8 @@ def main() -> int:
     startup_delay = int(config.get("battery_startup_delay_seconds", 30))
     LOGGER.info("Battery tracker starting from %s — attente %ss stabilisation INA219", PROJECT_ROOT, startup_delay)
     time.sleep(startup_delay)
-    # DEBUG LOG — À SUPPRIMER APRÈS TESTS
-    _alerted_30 = False
-    _alerted_10 = False
+    _alerted_30 = False  # garde-fous pour ne pas répéter l'alerte 30 min dans le même cycle
+    _alerted_10 = False  # idem pour 10 min
     while True:
         try:
             sample, stats, recorded = collect_once(sensor, config, simulate=simulate)
