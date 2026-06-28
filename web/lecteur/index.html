@@ -906,8 +906,6 @@ let selectedLang   = 'fr';
 let pollTimer      = null;
 let currentScreen  = 'home';
 let lastMpdState   = null;
-let trackingId        = null;
-let trackingPollCount = 0;
 let lastElapsed       = 0;
 let parentalCfg       = null;
 let parentalTimer     = null;
@@ -926,52 +924,6 @@ function getDisplayItems(podcast) {
   return [...raw].reverse();
 }
 
-async function startRadioTracking(st) {
-  await endTracking();
-  trackingPollCount = 0;
-  try {
-    const params = new URLSearchParams({
-      action: 'start',
-      podcast_id: st.id,
-      langue: (st.lang || st.langue || 'fr').toLowerCase(),
-      is_radio: '1',
-      station_name: st.name,
-      duration_s: '0',
-    });
-    const r = await fetch('/tracking.php?' + params);
-    const d = await r.json();
-    if (d.id) trackingId = d.id;
-  } catch (_) {}
-}
-
-// ch = objet épisode (pas l'index) pour éviter les problèmes de mapping
-async function startTracking(podcast, ch, duration_s) {
-  await endTracking();
-  trackingPollCount = 0;
-  try {
-    if (!ch) return;
-    const params = new URLSearchParams({
-      action: 'start',
-      podcast_id: podcast.id,
-      episode_id: ch.id || ch.titre || 'unknown',
-      langue: (podcast.langue || podcast.lang || podcast.language || 'fr').toLowerCase(),
-      is_radio: '0',
-      duration_s: String(duration_s || ch.duree || 0),
-    });
-    const r = await fetch('/tracking.php?' + params);
-    const d = await r.json();
-    if (d.id) trackingId = d.id;
-  } catch (_) {}
-}
-
-async function endTracking() {
-  if (!trackingId) return;
-  const id = trackingId;
-  trackingId = null;
-  try {
-    await fetch(`/tracking.php?action=end&id=${id}&listened_s=${Math.round(lastElapsed)}`);
-  } catch (_) {}
-}
 
 async function loadData() {
   try {
@@ -1082,10 +1034,8 @@ function applyParentalRestrictions() {
 
   // Si la langue active est maintenant bloquée → retour accueil immédiat
   if (selectedLang === 'fr' && !frAllowed) {
-    endTracking();
     show('home');
   } else if (selectedLang === 'es' && !esAllowed) {
-    endTracking();
     show('home');
   }
 }
@@ -1129,8 +1079,6 @@ async function refreshStatus() {
     lastMpdState = state;
 
     const playing = state === 'play';
-    if (playing && trackingId && (++trackingPollCount % 20 === 0)) {
-      fetch(`/tracking.php?action=progress&id=${trackingId}&listened_s=${Math.round(elapsed)}`).catch(() => {});
     }
     el('btn-pp').textContent       = playing ? '⏸' : '▶';
     el('ov-icon').textContent      = playing ? '⏸' : '▶';
@@ -1251,7 +1199,6 @@ function openRadioPlayer(st) {
   currentPodcast = null;   // empêche l'auto-next pendant le clear MPD (TICKET-072 symétrique)
   currentIdx = -1;
   sendRadio('play', { url: st.url });
-  startRadioTracking(st);
   // Station image (with fallback handled via onerror in HTML)
   const img = el('rp-art');
   img.style.display = 'block';
@@ -1364,7 +1311,6 @@ async function playTrack(idx) {
   el('ep-num-badge').textContent = epNum;
 
   await sendRadio('playfile', { path: ch.audio });
-  startTracking(currentPodcast, ch, ch.duree || 0);
 
   // Restore saved position if same episode
   try {
@@ -1430,9 +1376,9 @@ el('btn-es').addEventListener('click', async () => {
 
 el('back-home').addEventListener('click', () => show('home'));
 el('back-pods-radio').addEventListener('click', () => show('podcasts'));
-el('back-pods-ch').addEventListener('click', () => { endTracking(); show('podcasts'); });
-el('back-ch').addEventListener('click', () => { endTracking(); show('chapters'); });
-el('back-radio-catalog').addEventListener('click', () => { endTracking(); show('radio-catalog'); });
+el('back-pods-ch').addEventListener('click', () => { show('podcasts'); });
+el('back-ch').addEventListener('click', () => { show('chapters'); });
+el('back-radio-catalog').addEventListener('click', () => { show('radio-catalog'); });
 el('rp-btn-pp').addEventListener('click', async () => { await sendRadio('pause'); refreshStatus(); });
 el('rp-vd').addEventListener('click', async () => { await sendRadio('voldown'); refreshStatus(); });
 el('rp-vu').addEventListener('click', async () => { if (currentVolume < 100) { await sendRadio('volup'); refreshStatus(); } });
