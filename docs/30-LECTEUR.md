@@ -35,8 +35,7 @@ Contenu :
 - `data.json` : catalogue local (radios + podcasts), généré par le backend
 - `images/` : jaquettes podcasts (`{id}.jpg`) et radios (`radio/{id}.jpg`)
 
-> `app.js` est présent dans le dépôt mais est du code mort (TICKET-040 — à supprimer).
-> `style.css` n’existe plus, les styles sont intégrés dans `index.html`.
+> `app.js` et `style.css` sont du code mort — les styles et la logique sont intégrés dans `index.html` (TICKET-040 ✅). Fichiers à supprimer (TICKET-090).
 
 ### 3.2 Rôle des fichiers
 - **index.html** : contient toute la logique — chargement de `data.json`, rendu des 5 écrans, événements tactiles, commandes MPD
@@ -46,13 +45,17 @@ Contenu :
 Format de `config.json` :
 ```json
 {
-  "speakers_max": 80,
-  "headphones_max": 60,
+  "volume": {
+    "speakers_max": 80,
+    "headphones_max": 60
+  },
   "chime_enabled": true,
   "chime_volume": 15,
   "sleep_enabled": true,
   "sleep_delay": 300,
-  "sleep_mode": "dim"
+  "sleep_mode": "retro_clock",
+  "screen_off_enabled": true,
+  "screen_off_delay": 600
 }
 ```
 
@@ -200,7 +203,7 @@ Le lecteur doit fonctionner **sans lag** sur un Raspberry Pi 5.
 - Jaquettes podcasts dans `web/lecteur/images/{id}.jpg` (accessible Apache) (TICKET-049 ✅)
 - Images épisodes dans liste épisodes avec fallback jaquette podcast (TICKET-054 ✅)
 - Grille 2 colonnes pour podcasts et épisodes (TICKET-053 ✅)
-- Barre de statut : heure + batterie (fallback `status.json`) + indicateur charge (TICKET-052 ✅)
+- Barre de statut : heure + batterie (`/index.php?action=battery_data` → `battery_stats.json`) + indicateur charge (TICKET-052 ✅)
 - Reprise automatique de la position de lecture via `localStorage` (TICKET-043 ✅)
 - Barre de progression + scrubbing tactile (TICKET-042 ✅)
 - Appui sur la jaquette player = pause/lecture via overlay (TICKET-041 ✅)
@@ -209,7 +212,12 @@ Le lecteur doit fonctionner **sans lag** sur un Raspberry Pi 5.
 - Volume logiciel MPD depuis l'IHM enfant (TICKET-034 ✅)
 - Webradio en premier dans la grille (TICKET-060 ✅)
 - Enchainement automatique épisodes : détection transition `play → stop` via `lastMpdState` (TICKET-069 ✅)
-- Tracking SQLite : `tracking.php` + `startTracking()` / `endTracking()` / progress toutes les 60 s (TICKET-055 ✅)
+- Tracking lecture côté serveur via `play_tracker.py` (MPD idle) — source de vérité unique (TICKET-086 ✅)
+- Bug mini-lecteur radio corrigé (TICKET-072 ✅)
+- Contrôle parental : grille horaire + verrou langue (TICKET-071 ✅)
+- Durées épisodes via ffprobe (TICKET-059 ✅)
+- Extinction écran automatique : `hechicero-idle.service` + `idle_screen.sh` (session 10 ✅)
+- Alertes batterie 30 min / 10 min, popup branchement (TICKET-082 ✅)
 
 ### Architecture technique
 - `index.html` : fichier unique (HTML + CSS + JS)
@@ -217,20 +225,16 @@ Le lecteur doit fonctionner **sans lag** sur un Raspberry Pi 5.
 - Dark mode, accent cyan `#00c8ff`, accent radio ambre `#c8a050`
 - Cover podcasts : `web/lecteur/images/{id}.jpg` (chemin relatif dans `data.json`)
 - Audio épisodes : chemin filesystem MPD (`/home/thomas/hechicero/podcasts/{id}/audio/*.mp3`)
-- Variables tracking : `trackingId`, `trackingPollCount`, `lastElapsed`, `lastMpdState`
+- Batterie : `/index.php?action=battery_data` (primaire) → fallback `../status.json` (lecture seule, fichier statique)
 
 ### Non implémenté (tickets ouverts)
-- Bug mini-lecteur : affiche la radio au lieu du podcast en cours (TICKET-072)
-- Contrôle parental : grille horaire + verrou langue (TICKET-071)
-- Durées des épisodes via ffprobe (TICKET-059)
 - Son de confirmation / retour visuel au choix (TICKET-023)
 - Contenu ES complet dans `data.json` (TICKET-004)
-- `app.js` : code mort à supprimer (TICKET-040)
+- Nettoyage fichiers morts : `app.js`, `style.css`, `lecture.html`, `*.bak` (TICKET-090)
 
 ---
 
 ## 13. Évolutions prévues
-- Durées épisodes via `ffprobe` (TICKET-059)
 - Script d'intégrité audio/images/data.json (TICKET-048)
 - Carrousel pour les jaquettes (TICKET-047)
 - Favoris (TICKET-046)
@@ -238,6 +242,7 @@ Le lecteur doit fonctionner **sans lag** sur un Raspberry Pi 5.
 - Son de confirmation au lancement (TICKET-023)
 - Support des boutons physiques (GPIO)
 - Série easter egg "Décisions Prises" (TICKET-058)
+- Limiteur exposition sonore (TICKET-087)
 
 ---
 

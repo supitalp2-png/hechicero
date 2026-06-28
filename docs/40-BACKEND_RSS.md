@@ -20,19 +20,26 @@ Il fonctionne **hors réseau**, sauf pour la récupération des flux RSS.
 Le backend est composé de scripts Python situés dans :
 `~/hechicero/scripts/`
 
-Structure recommandée :
+Structure réelle :
 ```
 scripts/
-├── get_status.py          # monitoring batterie
+├── battery_common.py      # helpers partagés (INA219, MPD, écriture atomique)
+├── battery_tracker.py     # collecte batterie, cycles, estimations
+├── battery_watchdog.py    # arrêt propre sur seuil critique
+├── play_tracker.py        # suivi lecture MPD (event-driven, idle player mixer)
+├── idle_screen.sh         # extinction écran (swayidle + wlopm)
 └── rss_ingest/
-      ├── ingest.py        # orchestrateur principal
-      ├── parser.py        # parsing RSS (feedparser)
-      ├── downloader.py    # téléchargement audio + images
-      ├── writer.py        # génération data.json
-      ├── progress.py      # suivi temps réel (→ /tmp/hechicero_progress.json)
-      ├── utils.py         # log, atomic_write_json
-      └── models.py        # dataclasses Episode, PodcastConfig, PodcastMeta
+      ├── ingest.py              # orchestrateur principal
+      ├── parser.py              # parsing RSS (feedparser)
+      ├── downloader.py          # téléchargement audio + images
+      ├── writer.py              # génération data.json
+      ├── check_integrity.py     # vérification intégrité audio/images/data.json
+      ├── progress.py            # suivi temps réel (→ /tmp/hechicero_progress.json)
+      ├── utils.py               # log, atomic_write_json
+      └── models.py              # dataclasses Episode, PodcastConfig, PodcastMeta
 ```
+
+> `get_status.py` — ancien moniteur batterie, **désactivé session 11**. Ne plus utiliser.
 
 Chaque fichier a un rôle clair et isolé.
 

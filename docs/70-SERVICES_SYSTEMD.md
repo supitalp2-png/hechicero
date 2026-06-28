@@ -17,12 +17,13 @@ Objectif : garantir un système **robuste**, **prévisible**, **auto‑récupér
 | Service | Fichier | Rôle | Actif |
 |---|---|---|---|
 | `battery_tracker.service` | `scripts/battery_tracker.service` | Collecte batterie, cycles, estimations | ✅ |
+| `battery_watchdog.service` | `scripts/battery_watchdog.service` | Arrêt propre sur batterie critique | ✅ |
 | `play_tracker.service` | `scripts/play_tracker.service` | Suivi de lecture MPD (event-driven, idle player mixer) | ✅ |
+| `hechicero-idle.service` | `~/.config/systemd/user/` | Extinction écran après inactivité (swayidle + wlopm) | ✅ (user) |
 | RSS cron 3h | `crontab -l` | Ingestion podcasts | ✅ |
 | `hechicero-kiosk.service` | `~/.config/systemd/user/` | Relancer Chromium (optionnel) | selon config |
-| `battery_watchdog.service` | `scripts/battery_watchdog.service` | Arrêt propre sur batterie critique | ✅ |
 
-> `hechicero-monitor.service` (ancien service batterie basé sur `get_status.py`) est remplacé par `battery_tracker.service`.
+> `hechicero-monitor.service` (ancien service batterie basé sur `get_status.py`) — **désactivé session 11**. Remplacé par `battery_tracker.service`. Ne pas réactiver.
 
 ---
 
@@ -305,17 +306,17 @@ Attendu :
 
 ### 🔹 Test 2 : crash volontaire
 ```
-pkill -f get_status.py
+pkill -f battery_tracker.py
 ```
 Attendu :
-- redémarrage automatique  
+- redémarrage automatique de `battery_tracker`  
 
 ### 🔹 Test 3 : ingestion manuelle
-```
-systemctl start hechicero-rss.service
+```bash
+python3 ~/hechicero/scripts/rss_ingest/ingest.py
 ```
 Attendu :
-- mise à jour des podcasts  
+- mise à jour des podcasts (voir logs `/tmp/hechicero_ingest.log`)  
 
 ---
 

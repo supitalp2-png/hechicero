@@ -1,6 +1,6 @@
 # Power Management — Projet Hechicero
 
-> Dernière mise à jour : 2026-06-26 (session 7)
+> Dernière mise à jour : 2026-06-28 (session 11)
 > Spec complète : `docs/80-ALIMENTATION.md`
 
 Ce document décrit la gestion de l’alimentation et de la batterie du système Hechicero.
@@ -22,8 +22,10 @@ Ce document décrit la gestion de l’alimentation et de la batterie du système
 | Script | Rôle | Service systemd |
 |---|---|---|
 | `scripts/battery_common.py` | Helpers partagés (INA219, MPD, écriture atomique) | — |
-| `scripts/battery_tracker.py` | Collecte des données, détection cycles, estimations | `battery_tracker.service` |
-| `scripts/battery_watchdog.py` | Surveillance seuil critique, arrêt propre | à activer manuellement |
+| `scripts/battery_tracker.py` | Collecte des données, détection cycles, estimations | `battery_tracker.service` ✅ |
+| `scripts/battery_watchdog.py` | Surveillance seuil critique, arrêt propre | `battery_watchdog.service` ✅ |
+
+> `scripts/get_status.py` + `hechicero-monitor.service` — **supprimés de la rotation session 11**. Ne plus utiliser.
 
 ---
 
@@ -137,10 +139,10 @@ Ajouter un **bouton RUN externe** pour un usage normal.
 - le HAT coupe physiquement l’alimentation  
 - le Pi s’éteint brutalement si aucun shutdown n’a été anticipé  
 
-### 🔹 Rôle du script `get_status.py`
-- détecter la tension critique  
-- créer `data/shutdown_pending`  
-- signaler l’état “critical” dans `status.json`  
+### 🔹 Rôle du script `battery_watchdog.py`
+- détecter le seuil critique (polling + signal GPIO HAT)  
+- sauvegarder la session MPD dans `data/last_session.json`  
+- déclencher `shutdown -h now`  
 
 ### 🔹 Rôle de l’IHM enfant
 - afficher un message “Batterie faible”  

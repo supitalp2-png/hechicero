@@ -68,7 +68,7 @@
       - Dashboard : afficher volume moyen par jour / par podcast
       - Config : seuil max volume dans `config.json` + avertissement si dépassé (IHM enfant)
 
-- [ ] TICKET-088 — bug/backend — `play_tracker.py` n'écrivait pas `listened_s` à la fermeture
+- [x] TICKET-088 — bug/backend — `play_tracker.py` n'écrivait pas `listened_s` à la fermeture
       - MPD retourne `elapsed=0` quand l'état passe à "stop" → `listened_s` était systématiquement 0
       - Fix session 11 : `db_close_session` utilise `ts_end - ts_start` comme fallback si `listened_s == 0`
       - Fix historique déjà appliqué en DB : 55 rows mises à jour avec `ts_end - ts_start`
@@ -83,6 +83,16 @@
 - [ ] TICKET-057 — UX/infra — Démarrage rapide de l'IHM enfant
       - Chromium met plusieurs secondes à démarrer après le boot
       - Piste : optimiser les flags Chromium, splash screen système
+
+- [ ] TICKET-089 — bug/backend — `battery_watchdog.py` : errno 121 code mort
+      - `read_level()` avale toutes les exceptions via `except Exception` → le `except OSError errno 121` dans `main()` n'est jamais atteint
+      - Fix : déplacer la réinitialisation INA219 à l'intérieur de `read_level()`
+
+- [ ] TICKET-090 — infra — Nettoyage fichiers morts dans le repo
+      - `web/lecteur/app.js`, `web/lecteur/style.css`, `web/lecteur/lecture.html`
+      - `web/lecteur/index.html.bak`, `web/lecteur/test-chime.html`
+      - `scripts/get_status.py`, `scripts/get_status.py.bak`, `scripts/lecture_bat.py.old`
+      - `scripts/hechicero-monitor.service`
 
 ---
 

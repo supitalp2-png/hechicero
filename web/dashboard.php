@@ -338,7 +338,13 @@ $currentPage = basename($_SERVER['PHP_SELF'] ?? 'dashboard.php');
     }
 
     function formatMinutes(minutes) {
-      return `${Number(minutes || 0).toFixed(1)} min`;
+      const m = Number(minutes || 0);
+      if (m >= 60) {
+        const h = Math.floor(m / 60);
+        const rem = Math.round(m % 60);
+        return rem > 0 ? `${h}h${String(rem).padStart(2,'0')}` : `${h}h`;
+      }
+      return `${m.toFixed(0)} min`;
     }
 
     function formatSeconds(seconds) {
