@@ -92,9 +92,11 @@ def db_close_session(conn: sqlite3.Connection, sid: int, ts_end: int, listened_s
     row = conn.execute("SELECT ts_start, duration_s FROM play_events WHERE id=?", (sid,)).fetchone()
     duration_s = float(row["duration_s"] or 0) if row else 0.0
     # MPD retourne elapsed=0 quand l'état est "stop" → la position est perdue.
-    # Fallback : ts_end - ts_start donne une approximation conservative fiable.
+    # Fallback : ts_end - ts_start, capé à duration_s pour éviter les valeurs aberrantes
+    # (ex : session jamais fermée proprement → ts_end - ts_start >> durée réelle).
     if listened_s == 0 and row:
-        listened_s = float(ts_end - row["ts_start"])
+        elapsed = float(ts_end - row["ts_start"])
+        listened_s = min(elapsed, duration_s) if duration_s > 0 else elapsed
     completed = 1 if duration_s > 0 and listened_s >= 0.9 * duration_s else 0
     conn.execute(
         "UPDATE play_events SET ts_end=?, listened_s=?, completed=?, volume_pct=? WHERE id=?",

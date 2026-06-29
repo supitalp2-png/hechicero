@@ -27,6 +27,7 @@ HISTORY_PATH = DATA_DIR / "battery_history.json"
 STATS_PATH   = DATA_DIR / "battery_stats.json"
 LEVEL_DELTA_THRESHOLD = 2
 ESTIMATE_WINDOW = 10
+SHUTDOWN_LEVEL_PCT = 7  # doit correspondre à DEFAULT_CRITICAL_LEVEL dans battery_watchdog
 
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -176,7 +177,7 @@ def compute_consumption_by_mode(history: dict[str, Any]) -> dict[str, float | No
     return result
 
 
-def compute_estimates(history: dict[str, Any], stats: dict[str, Any], window: int = ESTIMATE_WINDOW) -> dict[str, Any]:
+def compute_estimates(history: dict[str, Any], stats: dict[str, Any], window: int = ESTIMATE_WINDOW, shutdown_pct: int = SHUTDOWN_LEVEL_PCT) -> dict[str, Any]:
     complete_cycles = [
         cycle for cycle in history.get("cycles", [])
         if cycle.get("discharge_end") and cycle.get("duration_minutes") is not None
@@ -185,7 +186,7 @@ def compute_estimates(history: dict[str, Any], stats: dict[str, Any], window: in
 
     discharge_ratios = []
     charge_ratios = []
-    for cycle in recent:
+    for i, cycle in enumerate(recent):
         level_start = cycle.get("level_start")
         level_end = cycle.get("level_end")
         duration = cycle.get("duration_minutes")
@@ -195,12 +196,21 @@ def compute_estimates(history: dict[str, Any], stats: dict[str, Any], window: in
                 discharge_ratios.append(duration / consumed)
 
         charge_duration = cycle.get("charge_duration_minutes")
-        if isinstance(level_end, (int, float)) and isinstance(charge_duration, (int, float)):
-            recovered = 100 - level_end
+        # Le niveau atteint après la recharge = level_start du cycle suivant
+        # (évite de supposer que la batterie revient à 100%, elle peut plafonner à ~65%)
+        level_after_charge = recent[i + 1].get("level_start") if i + 1 < len(recent) else None
+        if (
+            isinstance(level_end, (int, float))
+            and isinstance(charge_duration, (int, float))
+            and isinstance(level_after_charge, (int, float))
+        ):
+            recovered = level_after_charge - level_end
             if recovered > 0:
                 charge_ratios.append(charge_duration / recovered)
 
     current_level = float(stats.get("current_level") or 0)
+    # Autonomie : niveau utilisable = niveau actuel - seuil d'arrêt d'urgence
+    usable_level = max(0.0, current_level - shutdown_pct)
     ratio_discharge = sum(discharge_ratios) / len(discharge_ratios) if discharge_ratios else None
     ratio_charge = sum(charge_ratios) / len(charge_ratios) if charge_ratios else None
     cycles_recorded = len(complete_cycles)
@@ -211,7 +221,7 @@ def compute_estimates(history: dict[str, Any], stats: dict[str, Any], window: in
     else:
         confidence = "low"
 
-    stats["estimated_autonomy_minutes"] = int(round(current_level * ratio_discharge)) if ratio_discharge else None
+    stats["estimated_autonomy_minutes"] = int(round(usable_level * ratio_discharge)) if ratio_discharge else None
     stats["estimated_charge_time_minutes"] = int(round((100 - current_level) * ratio_charge)) if ratio_charge else None
     stats["cycles_recorded"] = cycles_recorded
     stats["model_confidence"] = confidence

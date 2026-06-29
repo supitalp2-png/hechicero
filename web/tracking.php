@@ -99,7 +99,7 @@ try {
                     COUNT(*) AS nb_ecoutes,
                     ROUND(SUM(listened_s) / 60.0, 1) AS minutes_totales,
                     ROUND(AVG(CASE WHEN duration_s > 0
-                        THEN listened_s * 100.0 / duration_s ELSE NULL END), 0) AS pct_completion
+                        THEN MIN(listened_s * 100.0 / duration_s, 100.0) ELSE NULL END), 0) AS pct_completion
              FROM play_events
              WHERE ts_start >= ? AND is_radio = 0
              GROUP BY podcast_id

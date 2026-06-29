@@ -1,6 +1,6 @@
 #!/bin/bash
 # idle_screen.sh — Extinction écran selon config.json
-# Relit la config toutes les 30s et relance swayidle si elle change.
+# Relit la config toutes les 30s et relance swayidle si elle change ou s'il est mort.
 
 CONFIG="/home/thomas/hechicero/web/lecteur/config.json"
 
@@ -32,7 +32,14 @@ except Exception:
 while true; do
     CURRENT_CONFIG=$(read_config)
 
-    if [ "$CURRENT_CONFIG" != "$LAST_CONFIG" ]; then
+    # Détecter si swayidle est mort (crash ou échec de connexion Wayland au démarrage)
+    SWAYIDLE_DEAD=0
+    if [ -n "$SWAYIDLE_PID" ] && ! kill -0 "$SWAYIDLE_PID" 2>/dev/null; then
+        SWAYIDLE_DEAD=1
+        SWAYIDLE_PID=""
+    fi
+
+    if [ "$CURRENT_CONFIG" != "$LAST_CONFIG" ] || [ "$SWAYIDLE_DEAD" = "1" ]; then
         [ -n "$SWAYIDLE_PID" ] && kill "$SWAYIDLE_PID" 2>/dev/null
         wait "$SWAYIDLE_PID" 2>/dev/null
         SWAYIDLE_PID=""
