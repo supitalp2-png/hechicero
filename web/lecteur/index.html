@@ -835,9 +835,11 @@ function applyBatteryStats(stats) {
   const pct = stats.current_level ?? stats.percent ?? stats.battery_percent ?? null;
   if (pct === null || pct === undefined) return;
   const charging = Boolean(stats.charging ?? (stats.status === 'charging'));
-  const rawAutonomy = window.__debugBatteryMinutes ?? stats.estimated_autonomy_minutes;
+  const rawAutonomy = window.__debugBatteryMinutes
+    ?? stats.estimated_autonomy_minutes_live
+    ?? stats.estimated_autonomy_minutes;
   const autonomyMinutes = Number(rawAutonomy);
-  const chargeMinutes = Number(stats.estimated_charge_time_minutes);
+  const chargeMinutes = Number(stats.estimated_charge_time_minutes_live ?? stats.estimated_charge_time_minutes);
   const displayMinutes = charging ? chargeMinutes : autonomyMinutes;
 
   updateBatteryDisplay(pct, charging, displayMinutes);
