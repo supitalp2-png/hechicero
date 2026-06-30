@@ -266,3 +266,109 @@ Ces règles ne doivent **jamais** être violées :
 - Le bouton RUN est critique pour l’usage enfant  
 
 ---
+
+## 12. Tranche supérieure — Connectique et commandes
+
+### 🔹 Vue d’ensemble
+Bande chromée aluminium (longueur ~337mm, tôle ~2-3mm) — conservée et réutilisée.
+
+**Trous existants :**
+- 1 petit trou ∅6mm → LED témoin alimentation
+- 1 fente rectangulaire 25×8mm → switch général batterie
+- ~10 trous ronds ∅16mm → boutons et connecteurs
+
+### 🔹 Boutons-poussoirs (trous ∅16mm)
+
+| Fonction | Composant | Statut |
+|---|---|---|
+| RUN (démarrage Pi 5) | Momentané chromé M16, fils rouge+bleu → GPIO | ✅ installé |
+| Volume + | Gebildet 16mm 5A inox tête haute bornes à vis | commandé |
+| Volume – | idem | commandé |
+| Lecture / Pause | idem | commandé |
+| Piste suivante | idem | commandé |
+| Piste précédente | idem | commandé |
+| Trous restants (~4) | Bouchons flush chromés ∅16mm vissés par l’intérieur | à trouver |
+
+**Interface GPIO** : non tranchée. Options : GPIO direct / MCP23017 I²C (préféré, évite conflit HiFiBerry) / Pico USB HID → voir TICKET-091.
+
+### 🔹 Alimentation — USB-C
+
+- **Connecteur** : XMSJSIY USB-C panel mount C→C, fileté chromé, câble 1m → commandé
+- Filetage à mesurer à réception (proche M22×1.5, ∅~28mm)
+- **Foret étagé** : TOOLMAYS ∅4-32mm M35 AlTiN → commandé (agrandissement trous ∅16 → ~28mm)
+- Courant max à vérifier à réception (cible ≥3A Pi 5 + Amp4) → voir TICKET-095
+
+### 🔹 USB-A clavier de secours
+
+- Prise USB-A femelle panel mount métal chromé ∅16-19mm → à chercher (voir TICKET-092)
+
+### 🔹 Sortie casque + détection
+
+**Composants retenus :**
+- **Jack** : XMSJSIY TRS 3,5mm panel mount ∅22mm fileté chromé, câble 50cm → commandé  
+  (trou ∅16mm agrandi à 22mm avec foret étagé)
+- **DAC USB** : UGREEN USB→Jack 3.5mm TRRS, classe USB Audio, zéro driver → commandé  
+  Fixé en permanence à l’intérieur du boîtier.
+
+**Détection insertion casque — circuit LM393 :**  
+Le DAC USB étant branché en permanence, udev ne génère aucun événement lors de l’insertion du casque dans le jack. La détection passe par un comparateur d’impédance.
+
+Principe : la charge du casque (16–32Ω) fait chuter la tension sur la sortie audio du DAC. Le LM393 compare cette tension à une Vref et bascule un GPIO.
+
+```
+DAC sortie L ──┬── R1 (1kΩ) ──── IN+ (LM393 pin 3)
+               │
+              R2 (100Ω) ── GND
+Vref (1.65V) ─────────────── IN- (LM393 pin 2)
+OUT (LM393 pin 1) ── R3 pull-up 10kΩ → 3.3V ── GPIO Pi 5
+```
+
+Composants : LM393 DIP-8 ×10 (HUABAN) + résistances 1kΩ/100Ω/10kΩ + plaque pastillée (kit PCB Kubii) → commandés.  
+⚠️ Schéma définitif à produire une fois le LM393 en main.
+
+### 🔹 Fente rectangulaire 25×8mm — switch général batterie
+
+**Décision actée** : interrupteur général coupant l’alimentation batterie (≥5A continu / ~10A pic démarrage).
+
+La fente d’origine est trop étroite pour un rocker switch standard (corps ≥13mm). Deux options non tranchées :
+1. Agrandir la fente à ~25×13mm → rocker switch 10A standard
+2. Utiliser un trou ∅16mm existant → toggle switch fileté M16 haute puissance chromé
+
+→ voir TICKET-094.
+
+### 🔹 Petit trou ∅6mm — LED témoin alimentation
+
+- LED métal 5-6mm panel mount chromée pré-câblée, rouge ou blanche
+- Câblage : résistance série 220Ω (5V) ou 100Ω (3.3V) sur rail Pi
+- → à commander, voir TICKET-093
+
+### 🔹 Tissu acoustique façade — méthode de montage
+
+- **Tissu** : Diarypiece maille respirante noire 140×50cm — validé
+- **Colle** : 3M Spray Mount 77/90, deux passes (support + envers tissu)
+- Renfort optionnel : cordon néoprène/contact sur le pourtour (zones de tension aux coins)
+
+Séquence (vis cachées sous tissu) :
+1. Visser le panneau bois, têtes affleurantes
+2. Coller la mousse fine par-dessus
+3. Coller/tendre le tissu par-dessus la mousse
+
+### 🔹 Récapitulatif achats — tranche supérieure
+
+| Composant | Référence | Statut |
+|---|---|---|
+| Boutons M16 ×5 | Gebildet 16mm 5A inox | commandé |
+| USB-C alimentation | XMSJSIY panel mount fileté | commandé |
+| USB-A clavier secours | — | à chercher |
+| Jack casque | XMSJSIY TRS ∅22mm | commandé |
+| DAC USB | UGREEN USB→Jack TRRS | commandé |
+| LM393 ×10 | HUABAN DIP-8 | commandé |
+| Foret étagé | TOOLMAYS ∅4-32mm M35 AlTiN | commandé |
+| Kit PCB + résistances | Kubii | commandé |
+| Visserie M3 + entretoises | Vis M3 + YIXISI laiton | commandé |
+| LED témoin alim | — | à chercher |
+| Switch général batterie | — | à trouver |
+| Tissu acoustique | Diarypiece 140×50cm | validé |
+| Colle textile | 3M Spray Mount 77/90 | recommandée |
+
+---

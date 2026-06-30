@@ -1,7 +1,7 @@
 # Backlog Hechicero
 
 > Convention : `TICKET-### — [type] — Titre — (prio) — owner`
-> Dernière mise à jour : 2026-06-28 (session 11)
+> Dernière mise à jour : 2026-06-30 (session 12)
 
 ---
 
@@ -24,19 +24,15 @@
       - `shutdown -h now` → redémarrage transparent pour l'enfant
       - Dépend de TICKET-080
 
-- [ ] TICKET-038 — hardware — Bouton physique RUN pour démarrage du Raspberry Pi 5
-      - Problème : le Pi 5 ne démarre pas automatiquement avec le Waveshare UPS HAT (D)
-      - Objectif : ajouter un bouton externe relié aux broches RUN
-      - Priorité : Haute (bloquant pour usage enfant)
-
 - [ ] TICKET-031 — hardware/feature — Sortie casque avec bascule automatique haut-parleurs
       - Contrainte : HiFiBerry Amp4 conservé (pas de sortie casque native)
-      - Solution validée :
-          • Dongle USB audio (ex: UGREEN ~8€) → sortie casque
-          • Jack 3.5mm commuté PJ-392 panel-mount
-          • Résistor pull-up 10kΩ entre contact switch du jack et GPIO 3.3V
-          • Script Python GPIO : détecte insertion → bascule MPD entre HiFiBerry et USB
-          • MPD configuré avec 2 audio_output : HiFiBerry (ALSA hw:0) + USB (ALSA hw:1)
+      - Solution retenue (2026-06-30) :
+          • DAC USB : UGREEN USB→Jack TRRS, fixé en permanence (zéro driver) → commandé
+          • Jack : XMSJSIY TRS 3.5mm panel mount ∅22mm chromé → commandé
+          • Détection casque : circuit LM393 (comparateur impédance) → voir §12 de 80-hardware.md
+          • GPIO Pi 5 lit la sortie LM393 → bascule MPD entre HiFiBerry (HP) et DAC USB (casque)
+          • MPD : 2 audio_output — HiFiBerry (ALSA hw:0) + DAC USB (ALSA hw:1)
+      - ⚠️ Schéma LM393 définitif à produire une fois composants reçus
 
 - [ ] TICKET-058 — feature/UX — Série podcast "Décisions Prises" + easter egg
       - Easter egg : série cachée, déclencheur = 3 taps sur "Hechicero" à l'écran d'accueil
@@ -45,6 +41,33 @@
       - Hints jamais pendant la lecture, one-shot, disparus après découverte
       - 7 épisodes planifiés — scripts en cours dans `docs/55-PODCAST_SERIE_DECISIONS.md`
       - Production : voix papa + voix IA (Descript/ElevenLabs)
+
+---
+
+# 🔧 Hardware — En attente réception
+
+- [ ] TICKET-091 — hardware — Choisir méthode interface GPIO boutons-poussoirs
+      - Options : (1) GPIO direct Pi 5, (2) MCP23017 I²C (préféré, évite conflit HiFiBerry), (3) Pico USB HID
+      - Décider avant câblage des 5 boutons Gebildet
+      - Impacte : config MPD, scripts Python GPIO
+
+- [ ] TICKET-092 — hardware — Trouver prise USB-A panel mount clavier de secours
+      - Cible : femelle USB-A, corps métal chromé, montage ∅16-19mm
+      - Usage : accès clavier physique de maintenance sans ouvrir le boîtier
+
+- [ ] TICKET-093 — hardware — Trouver LED témoin alimentation ∅6mm
+      - Cible : LED métal panel mount 5-6mm chromée pré-câblée, rouge ou blanche
+      - Câblage : résistance série 220Ω (5V) ou 100Ω (3.3V) depuis rail Pi
+
+- [ ] TICKET-094 — hardware — Trancher format switch général batterie (fente 25×8mm)
+      - Option A : agrandir fente à ~25×13mm → rocker switch 10A standard
+      - Option B : utiliser trou ∅16mm existant → toggle switch fileté M16 haute puissance chromé
+      - Contrainte : ≥5A continu / ~10A pic démarrage
+
+- [ ] TICKET-095 — hardware — Vérifier courant max USB-C à réception
+      - Composant : XMSJSIY panel mount USB-C
+      - Cible minimale : ≥3A (Pi 5 + HiFiBerry Amp4)
+      - Si insuffisant : chercher alternative
 
 ---
 
@@ -136,7 +159,9 @@
 - [x] TICKET-034 — web — Activation du volume logiciel MPD
 - [x] TICKET-035 — docs — Mise à jour des documents essentiels
 - [x] TICKET-036 — web — Mode "grands boutons" optimisé tactile
-- [x] TICKET-038 — (voir priorité haute)
+- [x] TICKET-038 — hardware — Bouton physique RUN pour démarrage du Raspberry Pi 5
+      - ✅ Installé : bouton momentané chromé M16, fils rouge+bleu → broches RUN Pi 5
+      - Logé dans un trou ∅16mm de la tranche supérieure chromée
 - [x] TICKET-039 — web — Démarrage automatique du lecteur (mode kiosque)
 - [x] TICKET-040 — web — `app.js` supprimé (code mort)
 - [x] TICKET-041 — UX — Appui sur image = pause/lecture
