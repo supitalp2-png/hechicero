@@ -84,9 +84,32 @@ def load_config() -> dict[str, Any]:
     return merged
 
 
+# Table de décharge LiPo 1S standard (courbe réelle, vs linéaire 3.0–4.2V)
+# La formule linéaire surestimait le niveau (~+20 pts autour de 3.7V).
+# Source : courbe typique LiPo polymère / Li-Ion 18650, 25°C, décharge lente.
+_LIPO_TABLE = [
+    (4.20, 100), (4.15, 95), (4.11, 90), (4.08, 85),
+    (4.02, 80),  (3.98, 75), (3.95, 70), (3.91, 65),
+    (3.87, 60),  (3.83, 55), (3.79, 50), (3.75, 45),
+    (3.71, 40),  (3.67, 35), (3.63, 30), (3.59, 25),
+    (3.55, 20),  (3.49, 15), (3.44, 10), (3.35,  5),
+    (3.00,   0),
+]
+
+
 def percent_from_voltage(voltage_v: float) -> int:
-    pct = int(round((voltage_v - 3.0) / 1.2 * 100))
-    return max(0, min(100, pct))
+    """Convertit la tension LiPo 1S en pourcentage de capacité (courbe non-linéaire)."""
+    if voltage_v >= _LIPO_TABLE[0][0]:
+        return 100
+    if voltage_v <= _LIPO_TABLE[-1][0]:
+        return 0
+    for i in range(len(_LIPO_TABLE) - 1):
+        v_hi, pct_hi = _LIPO_TABLE[i]
+        v_lo, pct_lo = _LIPO_TABLE[i + 1]
+        if v_lo <= voltage_v <= v_hi:
+            t = (voltage_v - v_lo) / (v_hi - v_lo)
+            return max(0, min(100, int(round(pct_lo + t * (pct_hi - pct_lo)))))
+    return 0
 
 
 def init_ina219(addr: int) -> Any | None:

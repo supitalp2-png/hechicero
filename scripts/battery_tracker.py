@@ -177,7 +177,7 @@ def compute_consumption_by_mode(history: dict[str, Any]) -> dict[str, float | No
     return result
 
 
-def compute_estimates(history: dict[str, Any], stats: dict[str, Any], window: int = ESTIMATE_WINDOW, shutdown_pct: int = SHUTDOWN_LEVEL_PCT) -> dict[str, Any]:
+def compute_estimates(history: dict[str, Any], stats: dict[str, Any], window: int = ESTIMATE_WINDOW, shutdown_pct: int = SHUTDOWN_LEVEL_PCT, capacity_mah: int = 0) -> dict[str, Any]:
     complete_cycles = [
         cycle for cycle in history.get("cycles", [])
         if cycle.get("discharge_end") and cycle.get("duration_minutes") is not None
@@ -221,8 +221,32 @@ def compute_estimates(history: dict[str, Any], stats: dict[str, Any], window: in
     else:
         confidence = "low"
 
+    # Estimations historiques (ratio cycles passés)
     stats["estimated_autonomy_minutes"] = int(round(usable_level * ratio_discharge)) if ratio_discharge else None
     stats["estimated_charge_time_minutes"] = int(round((100 - current_level) * ratio_charge)) if ratio_charge else None
+
+    # Estimation courant réel (INA219 live) — plus fiable si battery_capacity_mah est configuré
+    current_ma = float(stats.get("current_ma") or 0)
+    charging = bool(stats.get("charging"))
+    if capacity_mah > 0:
+        if not charging and current_ma < -50:
+            # Décharge : courant mesurable et > seuil de bruit
+            discharge_ma = abs(current_ma)
+            remaining_mah = capacity_mah * usable_level / 100.0
+            stats["estimated_autonomy_minutes_live"] = int(round(remaining_mah / discharge_ma * 60))
+        else:
+            stats.pop("estimated_autonomy_minutes_live", None)
+
+        if charging and current_ma > 100:
+            # Charge CC : extrapolation + facteur 1.4 pour estimer la phase CV
+            remaining_to_charge_mah = capacity_mah * (100 - current_level) / 100.0
+            stats["estimated_charge_time_minutes_live"] = int(round(remaining_to_charge_mah / current_ma * 60 * 1.4))
+        else:
+            stats.pop("estimated_charge_time_minutes_live", None)
+    else:
+        stats.pop("estimated_autonomy_minutes_live", None)
+        stats.pop("estimated_charge_time_minutes_live", None)
+
     stats["cycles_recorded"] = cycles_recorded
     stats["model_confidence"] = confidence
     stats["consumption_by_mode"] = compute_consumption_by_mode(history)
@@ -313,7 +337,6 @@ def update_history_and_stats(sample: dict[str, Any], *, compute_only: bool = Fal
     else:
         stats.setdefault("current_state_since", sample["timestamp"])
 
-    compute_estimates(history, stats)
     return history, stats, record_point
 
 
@@ -322,9 +345,18 @@ def write_outputs(history: dict[str, Any], stats: dict[str, Any]) -> None:
     atomic_write_json(STATS_PATH, stats)
 
 
+def _shutdown_pct_from_config(config: dict[str, Any]) -> int:
+    return int(config.get("critical_level_percent", config.get("shutdown_threshold_percent", SHUTDOWN_LEVEL_PCT)))
+
+
 def collect_once(sensor: Any, config: dict[str, Any], simulate: bool = False, compute_only: bool = False) -> tuple[dict[str, Any], dict[str, Any], bool]:
     sample = build_sample(sensor, config, simulate=simulate)
     history, stats, recorded = update_history_and_stats(sample, compute_only=compute_only)
+    compute_estimates(
+        history, stats,
+        shutdown_pct=_shutdown_pct_from_config(config),
+        capacity_mah=int(config.get("battery_capacity_mah", 0)),
+    )
     write_outputs(history, stats)
     return sample, stats, recorded
 
@@ -359,10 +391,16 @@ def main() -> int:
                 "last_updated": sample["timestamp"],
             }
         )
-        compute_estimates(history, stats)
+        compute_estimates(
+            history, stats,
+            shutdown_pct=_shutdown_pct_from_config(config),
+            capacity_mah=int(config.get("battery_capacity_mah", 0)),
+        )
         atomic_write_json(STATS_PATH, stats)
         print(f"estimated_autonomy_minutes={stats.get('estimated_autonomy_minutes')}")
+        print(f"estimated_autonomy_minutes_live={stats.get('estimated_autonomy_minutes_live')}")
         print(f"estimated_charge_time_minutes={stats.get('estimated_charge_time_minutes')}")
+        print(f"estimated_charge_time_minutes_live={stats.get('estimated_charge_time_minutes_live')}")
         return 0
 
     if args.test:

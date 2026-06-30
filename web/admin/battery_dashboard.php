@@ -132,10 +132,20 @@ $currentPage = basename($_SERVER['PHP_SELF'] ?? 'battery_dashboard.php');
         <div class="ha-stat-value"><?php echo isset($stats['current_level']) ? (int)$stats['current_level'] . '%' : '—'; ?></div>
         <div class="ha-stat-note">Mode MPD: <?php echo htmlspecialchars($stats['current_mpd_mode'] ?? '—'); ?></div>
       </div>
+      <?php
+        $autoLive  = $stats['estimated_autonomy_minutes_live']  ?? null;
+        $autoRatio = $stats['estimated_autonomy_minutes']        ?? null;
+        $chrgLive  = $stats['estimated_charge_time_minutes_live'] ?? null;
+        $chrgRatio = $stats['estimated_charge_time_minutes']      ?? null;
+        $autoVal   = $autoLive  ?? $autoRatio;
+        $chrgVal   = $chrgLive  ?? $chrgRatio;
+        $autoNote  = $autoLive  !== null ? '(courant réel)' : ($autoRatio !== null ? '(moyenne cycles)' : '');
+        $chrgNote  = $chrgLive  !== null ? '(courant réel)' : ($chrgRatio !== null ? '(moyenne cycles)' : '');
+      ?>
       <div class="ha-panel">
         <div class="ha-stat-label">Autonomie estimée</div>
-        <div class="ha-stat-value"><?php echo htmlspecialchars(fmt_minutes($stats['estimated_autonomy_minutes'] ?? null)); ?></div>
-        <div class="ha-stat-note">Recharge estimée: <?php echo htmlspecialchars(fmt_minutes($stats['estimated_charge_time_minutes'] ?? null)); ?></div>
+        <div class="ha-stat-value"><?php echo htmlspecialchars(fmt_minutes($autoVal)); ?></div>
+        <div class="ha-stat-note"><?php echo $autoNote; ?> · Recharge: <?php echo htmlspecialchars(fmt_minutes($chrgVal)); ?> <?php echo $chrgNote; ?></div>
       </div>
       <div class="ha-panel">
         <div class="ha-stat-label">Fiabilité</div>
@@ -224,8 +234,8 @@ $currentPage = basename($_SERVER['PHP_SELF'] ?? 'battery_dashboard.php');
       <section class="ha-panel">
         <h2>Estimations</h2>
         <div class="metric-list">
-          <div class="metric-row"><span>Autonomie estimée</span><strong><?php echo htmlspecialchars(fmt_minutes($stats['estimated_autonomy_minutes'] ?? null)); ?></strong></div>
-          <div class="metric-row"><span>Temps de recharge estimé</span><strong><?php echo htmlspecialchars(fmt_minutes($stats['estimated_charge_time_minutes'] ?? null)); ?></strong></div>
+          <div class="metric-row"><span>Autonomie estimée <?php echo $autoNote; ?></span><strong><?php echo htmlspecialchars(fmt_minutes($autoVal)); ?></strong></div>
+          <div class="metric-row"><span>Temps de recharge <?php echo $chrgNote; ?></span><strong><?php echo htmlspecialchars(fmt_minutes($chrgVal)); ?></strong></div>
           <div class="metric-row"><span>Cycles enregistrés</span><strong><?php echo (int)($stats['cycles_recorded'] ?? 0); ?></strong></div>
           <?php foreach (['webradio' => 'Webradio', 'podcast' => 'Podcast', 'idle' => 'Veille'] as $mode => $label):
               $value = $consumption[$mode] ?? null;
