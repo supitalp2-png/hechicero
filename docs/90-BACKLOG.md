@@ -117,7 +117,9 @@
 - [ ] TICKET-046 — UX — Favoris (cœur) accessibles rapidement
 - [ ] TICKET-047 — UX — Défilement automatique (carrousel) arrêtable par l'enfant
 - [ ] TICKET-056 — R&D — Exploration client lourd natif (PyQt5/Kivy) — décision projet 2.0
-- [ ] TICKET-008 — infra — Endpoint `/health` (monitoring externe)
+- [x] TICKET-008 — infra — Endpoint `/health` (monitoring externe)
+      - ✅ Session 12 : `web/health.php` — JSON avec MPD, batterie, disque, ingest, uptime
+      - HTTP 200 si tout OK, 503 si dégradé — batterie stale si > 5 min sans mise à jour
 - [ ] TICKET-010 — infra — Rotation logs
 - [ ] TICKET-011 — sec — Durcir unités systemd (`ProtectSystem`, `NoNewPrivileges`)
 - [ ] TICKET-017 — monitoring — Export Prometheus (métriques batterie/écoute)
