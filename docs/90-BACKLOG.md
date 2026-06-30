@@ -91,10 +91,10 @@
       - Fix DB session 12 : 10 lignes corrompues nettoyées (`listened_s` capé à `duration_s`)
       - ✅ `scripts/play_tracker.py` corrigé
 
-- [ ] TICKET-048 — backend — Script de vérification d'intégrité audio/images/data.json
-      - Détecter : fichiers manquants, orphelins, M4A déguisés en .mp3, taille 0
-      - Sortie lisible : [OK] / [WARN] / [ERR] par podcast et par type de problème
-      - Script standalone : `scripts/rss_ingest/check_integrity.py`
+- [x] TICKET-048 — backend — Script de vérification d'intégrité audio/images/data.json
+      - ✅ `scripts/rss_ingest/check_integrity.py` : déjà implémenté (découvert session 12)
+      - Détecte : fichiers manquants, orphelins, M4A déguisés, taille 0, divergences meta/data.json, covers absentes
+      - `--podcast <id>` pour cibler un podcast ; exit code 0/1/2 (OK/WARN/ERR)
 
 
 - [ ] TICKET-057 — UX/infra — Démarrage rapide de l'IHM enfant
