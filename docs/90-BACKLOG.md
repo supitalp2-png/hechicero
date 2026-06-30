@@ -1,7 +1,7 @@
 # Backlog Hechicero
 
 > Convention : `TICKET-### — [type] — Titre — (prio) — owner`
-> Dernière mise à jour : 2026-06-30 (session 12)
+> Dernière mise à jour : 2026-06-30 (session 12 — batterie + bugs)
 
 ---
 
@@ -16,13 +16,6 @@
           4. Stocker l'image sur disque externe
           5. Relancer l'ingestion RSS pour re-télécharger MP3 et jackets
       - À définir : fréquence (avant chaque sprint hardware minimum)
-
-- [ ] TICKET-083 — infra/sécurité — Arrêt propre sur batterie critique
-      - Surveiller le seuil critique via GPIO HAT UPS D (signal avant coupure) + polling niveau
-      - Sauvegarder contexte : position MPD (podcast + timestamp), écran actif, langue
-      - Arrêter proprement MPD, Apache, scripts monitoring, sync filesystem
-      - `shutdown -h now` → redémarrage transparent pour l'enfant
-      - Dépend de TICKET-080
 
 - [ ] TICKET-031 — hardware/feature — Sortie casque avec bascule automatique haut-parleurs
       - Contrainte : HiFiBerry Amp4 conservé (pas de sortie casque native)
@@ -94,7 +87,8 @@
 - [x] TICKET-088 — bug/backend — `play_tracker.py` n'écrivait pas `listened_s` à la fermeture
       - MPD retourne `elapsed=0` quand l'état passe à "stop" → `listened_s` était systématiquement 0
       - Fix session 11 : `db_close_session` utilise `ts_end - ts_start` comme fallback si `listened_s == 0`
-      - Fix historique déjà appliqué en DB : 55 rows mises à jour avec `ts_end - ts_start`
+      - Fix session 12 : fallback capé à `duration_s` (évite `listened_s >> duration_s` si session laissée ouverte)
+      - Fix DB session 12 : 10 lignes corrompues nettoyées (`listened_s` capé à `duration_s`)
       - ✅ `scripts/play_tracker.py` corrigé
 
 - [ ] TICKET-048 — backend — Script de vérification d'intégrité audio/images/data.json
@@ -107,15 +101,12 @@
       - Chromium met plusieurs secondes à démarrer après le boot
       - Piste : optimiser les flags Chromium, splash screen système
 
-- [ ] TICKET-089 — bug/backend — `battery_watchdog.py` : errno 121 code mort
-      - `read_level()` avale toutes les exceptions via `except Exception` → le `except OSError errno 121` dans `main()` n'est jamais atteint
-      - Fix : déplacer la réinitialisation INA219 à l'intérieur de `read_level()`
+- [x] TICKET-089 — bug/backend — `battery_watchdog.py` : errno 121 code mort
+      - Fix session 12 : réinitialisation INA219 déplacée à l'intérieur de `read_level()`
+      - ✅ `scripts/battery_watchdog.py` corrigé
 
-- [ ] TICKET-090 — infra — Nettoyage fichiers morts dans le repo
-      - `web/lecteur/app.js`, `web/lecteur/style.css`, `web/lecteur/lecture.html`
-      - `web/lecteur/index.html.bak`, `web/lecteur/test-chime.html`
-      - `scripts/get_status.py`, `scripts/get_status.py.bak`, `scripts/lecture_bat.py.old`
-      - `scripts/hechicero-monitor.service`
+- [x] TICKET-090 — infra — Nettoyage fichiers morts dans le repo
+      - ✅ Session 12 : fichiers morts supprimés via `git rm`
 
 ---
 
@@ -216,6 +207,20 @@
       - ✅ `play_tracker.py` (serveur, MPD idle) est désormais seule source de vérité
 - [x] TICKET-061 — content — Saison 2 Professeur Caillou
       - ✅ Session 11 : 13 épisodes S2 déjà présents dans `data.json` — rien à faire
+- [x] TICKET-088 — bug/tracking — `listened_s` corrompu → épisodes à 56071% de complétion
+      - ✅ Session 12 : fallback `ts_end - ts_start` non borné → valeur cap à `min(elapsed, duration_s)`
+      - ✅ Cap SQL dans `tracking.php` : `MIN(listened_s * 100.0 / duration_s, 100.0)`
+      - ✅ Nettoyage DB : `UPDATE play_events SET listened_s=duration_s WHERE listened_s>duration_s`
+- [x] TICKET-089 — bug/UX — Écran ne s'éteint pas malgré l'option activée en admin
+      - ✅ Session 12 : `swayidle` mourait au boot (Wayland pas prêt), PID mort jamais relancé
+      - ✅ `idle_screen.sh` : détection process mort via `kill -0 $PID`, relance automatique
+- [x] TICKET-090 — bug/batterie — 51 micro-cycles factices + autonomie 12h (réelle 1.5–3h)
+      - ✅ Session 12 : `charge_threshold_ma` 50 → 300 mA (élimine oscillations phase CV)
+      - ✅ Formule linéaire → courbe LiPo interpolée (`battery_common.py`)
+      - ✅ Filtre cycles valides : `consumed ≥ 3%` ET `duration ≥ 5 min` ET pas `invalid`
+      - ✅ Estimation live basée sur `current_ma` INA219 + `battery_capacity_mah = 6600` mAh
+      - ✅ Dashboard alimentation : n'affiche que les cycles valides, "Activité 24h" remplace cycle en cours
+      - ✅ `battery_history.json` réinitialisé (51 cycles invalides effacés)
 
 ---
 
