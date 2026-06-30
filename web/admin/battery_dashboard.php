@@ -44,16 +44,28 @@ function cycle_points(array $cycle, bool $charging): array {
 $history = read_json(BATTERY_HISTORY_JSON);
 $stats = read_json(BATTERY_STATS_JSON);
 $cycles = $history['cycles'] ?? [];
-$currentCycle = $cycles ? $cycles[count($cycles) - 1] : [];
-$pagedCycles = array_reverse($cycles);
+
+// Filtre les cycles valides : décharge réelle ≥ 3% et durée ≥ 5 min
+function is_valid_cycle(array $c): bool {
+    $consumed = ($c['level_start'] ?? 0) - ($c['level_end'] ?? 0);
+    $duration = $c['duration_minutes'] ?? 0;
+    return !($c['invalid'] ?? false) && $consumed >= 3 && $duration >= 5 && isset($c['discharge_end']);
+}
+$validCycles = array_values(array_filter($cycles, 'is_valid_cycle'));
+$totalCycles = count($cycles);
+$validCount  = count($validCycles);
+
+// Pagination sur cycles valides
+$pagedCycles = array_reverse($validCycles);
 $page = max(1, (int)($_GET['page'] ?? 1));
 $perPage = 10;
-$pageCount = max(1, (int)ceil(max(1, count($pagedCycles)) / $perPage));
+$pageCount = max(1, (int)ceil(max(1, $validCount) / $perPage));
 $page = min($page, $pageCount);
 $rows = array_slice($pagedCycles, ($page - 1) * $perPage, $perPage);
 
+// Courbes de décharge / recharge — cycles valides uniquement
 $dischargeCurves = [];
-foreach (array_slice(array_reverse($cycles), 0, 5) as $index => $cycle) {
+foreach (array_slice(array_reverse($validCycles), 0, 5) as $index => $cycle) {
     $points = cycle_points($cycle, false);
     if (!$points) continue;
     $dischargeCurves[] = [
@@ -63,7 +75,7 @@ foreach (array_slice(array_reverse($cycles), 0, 5) as $index => $cycle) {
 }
 
 $chargeCurves = [];
-foreach (array_slice(array_reverse($cycles), 0, 5) as $index => $cycle) {
+foreach (array_slice(array_reverse($validCycles), 0, 5) as $index => $cycle) {
     $points = cycle_points($cycle, true);
     if (!$points) continue;
     $chargeCurves[] = [
@@ -72,7 +84,20 @@ foreach (array_slice(array_reverse($cycles), 0, 5) as $index => $cycle) {
     ];
 }
 
-$currentCyclePoints = array_map(fn($p) => ['t' => $p['t'] ?? '', 'level' => $p['level'] ?? null], $currentCycle['datapoints'] ?? []);
+// Activité 24h : tous les datapoints des dernières 24h (toutes phases)
+$cutoff24h = time() - 86400;
+$recentPoints = [];
+foreach (array_reverse($cycles) as $cycle) {
+    foreach ($cycle['datapoints'] ?? [] as $pt) {
+        $ts = strtotime($pt['t'] ?? '');
+        if ($ts && $ts >= $cutoff24h) {
+            $recentPoints[] = ['t' => $pt['t'], 'level' => $pt['level'] ?? null, 'charging' => $pt['charging'] ?? false];
+        }
+    }
+}
+usort($recentPoints, fn($a, $b) => strcmp($a['t'], $b['t']));
+$recentPoints = array_values($recentPoints);
+
 $consumption = $stats['consumption_by_mode'] ?? [];
 $currentPage = basename($_SERVER['PHP_SELF'] ?? 'battery_dashboard.php');
 ?><!doctype html>
@@ -130,7 +155,11 @@ $currentPage = basename($_SERVER['PHP_SELF'] ?? 'battery_dashboard.php');
       <div class="ha-panel">
         <div class="ha-stat-label">Niveau</div>
         <div class="ha-stat-value"><?php echo isset($stats['current_level']) ? (int)$stats['current_level'] . '%' : '—'; ?></div>
-        <div class="ha-stat-note">Mode MPD: <?php echo htmlspecialchars($stats['current_mpd_mode'] ?? '—'); ?></div>
+        <div class="ha-stat-note">
+          <?php echo number_format((float)($stats['voltage_v'] ?? 0), 2, '.', '') . ' V'; ?>
+          · <?php echo number_format(abs((float)($stats['current_ma'] ?? 0)), 0) . ' mA'; ?>
+          · <?php echo number_format((float)($stats['power_w'] ?? 0), 1, '.', '') . ' W'; ?>
+        </div>
       </div>
       <?php
         $autoLive  = $stats['estimated_autonomy_minutes_live']  ?? null;
@@ -148,20 +177,20 @@ $currentPage = basename($_SERVER['PHP_SELF'] ?? 'battery_dashboard.php');
         <div class="ha-stat-note"><?php echo $autoNote; ?> · Recharge: <?php echo htmlspecialchars(fmt_minutes($chrgVal)); ?> <?php echo $chrgNote; ?></div>
       </div>
       <div class="ha-panel">
-        <div class="ha-stat-label">Fiabilité</div>
+        <div class="ha-stat-label">Fiabilité modèle</div>
         <div class="ha-stat-value confidence <?php echo htmlspecialchars($stats['model_confidence'] ?? 'low'); ?>"><?php echo htmlspecialchars($stats['model_confidence'] ?? 'low'); ?></div>
-        <div class="ha-stat-note"><?php echo (int)($stats['cycles_recorded'] ?? 0); ?> cycles complets</div>
+        <div class="ha-stat-note"><?php echo $validCount; ?> cycles valides / <?php echo $totalCycles; ?> total</div>
       </div>
     </div>
 
     <div class="ha-grid ha-cols-2" style="margin-bottom:18px;">
       <section class="ha-panel">
-        <h2>Cycle en cours</h2>
+        <h2>Activité des dernières 24h</h2>
         <div class="ha-chart">
-          <?php if ($currentCyclePoints): ?>
+          <?php if ($recentPoints): ?>
             <canvas id="current-cycle-chart"></canvas>
           <?php else: ?>
-            <div class="ha-empty">Aucun point à afficher pour le cycle en cours.</div>
+            <div class="ha-empty">Aucun relevé dans les dernières 24h.</div>
           <?php endif; ?>
         </div>
       </section>
@@ -175,7 +204,12 @@ $currentPage = basename($_SERVER['PHP_SELF'] ?? 'battery_dashboard.php');
 
     <div class="ha-grid ha-cols-2" style="margin-bottom:18px;">
       <section class="ha-panel">
-        <h2>Historique des cycles</h2>
+        <h2>Historique des cycles valides</h2>
+        <?php if ($totalCycles > $validCount): ?>
+          <div class="ha-stat-note" style="margin-bottom:10px;color:var(--muted);">
+            <?php echo $totalCycles - $validCount; ?> micro-cycles filtrés (phase CV / bruit mesure)
+          </div>
+        <?php endif; ?>
         <?php if ($rows): ?>
           <table class="ha-table">
             <thead>
@@ -183,18 +217,19 @@ $currentPage = basename($_SERVER['PHP_SELF'] ?? 'battery_dashboard.php');
                 <th>Date</th>
                 <th>Durée</th>
                 <th>Niveaux</th>
+                <th>Décharge</th>
                 <th>Mode</th>
-                <th>Autonomie réelle</th>
               </tr>
             </thead>
             <tbody>
             <?php foreach ($rows as $cycle): ?>
+              <?php $consumed = ($cycle['level_start'] ?? 0) - ($cycle['level_end'] ?? 0); ?>
               <tr>
-                <td><?php echo htmlspecialchars(substr((string)($cycle['discharge_start'] ?? $cycle['charge_start'] ?? '—'), 0, 16)); ?></td>
+                <td><?php echo htmlspecialchars(substr((string)($cycle['discharge_start'] ?? '—'), 0, 16)); ?></td>
                 <td><?php echo htmlspecialchars(fmt_minutes($cycle['duration_minutes'] ?? null)); ?></td>
-                <td><?php echo htmlspecialchars(($cycle['level_start'] ?? '—') . ' → ' . ($cycle['level_end'] ?? '—')); ?></td>
+                <td><?php echo htmlspecialchars(($cycle['level_start'] ?? '—') . '% → ' . ($cycle['level_end'] ?? '—') . '%'); ?></td>
+                <td><?php echo $consumed > 0 ? '-' . $consumed . '%' : '—'; ?></td>
                 <td><?php echo htmlspecialchars($cycle['dominant_mode'] ?? '—'); ?></td>
-                <td><?php echo htmlspecialchars(fmt_minutes($cycle['duration_minutes'] ?? null)); ?></td>
               </tr>
             <?php endforeach; ?>
             </tbody>
@@ -205,7 +240,7 @@ $currentPage = basename($_SERVER['PHP_SELF'] ?? 'battery_dashboard.php');
             <?php if ($page < $pageCount): ?><a class="ha-btn" href="?page=<?php echo $page + 1; ?>">Suivant</a><?php endif; ?>
           </div>
         <?php else: ?>
-          <div class="ha-empty">Aucun cycle enregistré.</div>
+          <div class="ha-empty">Aucun cycle valide — les cycles apparaîtront après une vraie décharge (≥ 3% sur ≥ 5 min).</div>
         <?php endif; ?>
       </section>
       <section class="ha-panel">
@@ -257,7 +292,7 @@ $currentPage = basename($_SERVER['PHP_SELF'] ?? 'battery_dashboard.php');
 
   <script src="/js/chart.min.js"></script>
   <script>
-    const currentCyclePoints = <?php echo json_encode($currentCyclePoints, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
+    const recentPoints = <?php echo json_encode($recentPoints, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
     const dischargeCurves = <?php echo json_encode($dischargeCurves, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
     const chargeCurves = <?php echo json_encode($chargeCurves, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
     const consumption = <?php echo json_encode($consumption, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
@@ -399,7 +434,7 @@ $currentPage = basename($_SERVER['PHP_SELF'] ?? 'battery_dashboard.php');
       });
     }
 
-    createLineChart('current-cycle-chart', currentCyclePoints.length ? [{ label: 'Cycle en cours', points: currentCyclePoints }] : [], ['#f0be4f']);
+    createLineChart('current-cycle-chart', recentPoints.length ? [{ label: 'Niveau batterie 24h', points: recentPoints }] : [], ['#f0be4f']);
     createRelativeChart('discharge-chart', dischargeCurves, ['#4a9eff', '#f0be4f', '#3dba6a', '#d97706', '#8b5cf6']);
     createRelativeChart('charge-chart', chargeCurves, ['#3dba6a', '#86efac', '#f0be4f', '#38bdf8', '#fb7185']);
   </script>

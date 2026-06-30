@@ -27,7 +27,9 @@ HISTORY_PATH = DATA_DIR / "battery_history.json"
 STATS_PATH   = DATA_DIR / "battery_stats.json"
 LEVEL_DELTA_THRESHOLD = 2
 ESTIMATE_WINDOW = 10
-SHUTDOWN_LEVEL_PCT = 7  # doit correspondre à DEFAULT_CRITICAL_LEVEL dans battery_watchdog
+SHUTDOWN_LEVEL_PCT = 7    # doit correspondre à DEFAULT_CRITICAL_LEVEL dans battery_watchdog
+MIN_CYCLE_DEPTH_PCT = 3   # décharge minimum pour qu'un cycle soit valide (évite les micro-cycles CV)
+MIN_CYCLE_DURATION_MIN = 5  # durée minimum en minutes
 
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -118,6 +120,11 @@ def close_discharge(cycle: dict[str, Any], sample: dict[str, Any]) -> None:
     cycle["duration_minutes"] = minutes_between(cycle.get("discharge_start"), cycle.get("discharge_end"))
     cycle["dominant_mode"] = dominant_mode_for_cycle(cycle)
     cycle["charge_start"] = sample["timestamp"]
+    # Invalider les micro-cycles : phase CV en fin de charge ou bruit de mesure
+    consumed = (cycle.get("level_start") or 0) - cycle["level_end"]
+    duration = cycle.get("duration_minutes") or 0
+    if consumed < MIN_CYCLE_DEPTH_PCT or duration < MIN_CYCLE_DURATION_MIN:
+        cycle["invalid"] = True
 
 
 def close_charge(cycle: dict[str, Any], sample: dict[str, Any]) -> None:
@@ -180,7 +187,10 @@ def compute_consumption_by_mode(history: dict[str, Any]) -> dict[str, float | No
 def compute_estimates(history: dict[str, Any], stats: dict[str, Any], window: int = ESTIMATE_WINDOW, shutdown_pct: int = SHUTDOWN_LEVEL_PCT, capacity_mah: int = 0) -> dict[str, Any]:
     complete_cycles = [
         cycle for cycle in history.get("cycles", [])
-        if cycle.get("discharge_end") and cycle.get("duration_minutes") is not None
+        if cycle.get("discharge_end")
+        and cycle.get("duration_minutes") is not None
+        and not cycle.get("invalid", False)
+        and ((cycle.get("level_start") or 0) - (cycle.get("level_end") or 0)) >= MIN_CYCLE_DEPTH_PCT
     ]
     recent = complete_cycles[-window:]
 
