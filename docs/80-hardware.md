@@ -183,11 +183,13 @@ Positions dans le modèle OpenSCAD (X depuis bord gauche, estimées) :
 - HP droit centre : ~320 mm
 
 ### 🔹 Panneau bois (nouveau)
-- **Matériau** : contreplaqué bouleau 4 mm
-- **Découpe** : laser (service en ligne — Snijlab, Sculpteo, LaserBoost)
-- **Finition** : teinte ébène ou noyer + tissu acoustique noir tendu (mousse 3 mm intercalée)
+- **Matériau** : MDF 3 mm FSC (choix final — surface lisse idéale pour tissu acoustique)
+- **Découpe** : Snijlab (Rotterdam) — commande passée le 2026-06-30, livraison estimée 08-07-2026
+  - Référence X371513 — "HP visibles.dxf" (cercles ∅44mm membrane) × 1
+  - Référence X371514 — "HP invisibles.dxf" (chassis carré 49×49mm) × 1
+  - Total : €43.99 TTC (frais DPD inclus)
+- **Finition** : tissu acoustique noir tendu (Diarypiece 140×50cm + 3M Spray Mount 77/90)
 - **Fixation** : vis M3 tête fraisée, noyées sous le tissu — inserts laiton M3 dans le bois
-- ⚠️ **Gabarit 1:1 à valider en carton avant commande laser**
 
 ### 🔹 Tranche du dessus — nouveaux boutons
 
@@ -217,7 +219,7 @@ Gabarit papier 1:1 imprimé et testé dans la carcasse :
 1. ✅ Mesurer la largeur exacte de la bande vinyle gauche (VINYL_W = 25mm)
 2. ✅ Gabarit papier 1:1 → emboîtage dans la carcasse validé
 3. ✅ Test fonctionnel avec composants réels
-4. Commande découpe laser (Snijlab / Sculpteo / LaserBoost)
+4. ✅ Commande découpe laser — Snijlab 2026-06-30 (livraison 08-07-2026)
 5. Photo de l’intérieur câblé avant fermeture définitive
 
 ---
