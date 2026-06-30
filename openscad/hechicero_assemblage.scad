@@ -77,10 +77,13 @@ EC_EP  = 10;    // épaisseur
 EC_AL  = 155;   // zone active largeur
 EC_AH  = 87;    // zone active hauteur
 
-// --- Haut-parleurs (mesurés sur photos) ---
-HP_MEM_D   = 38;   // diamètre membrane
-HP_FRAME_D = 50;   // diamètre frame (ce qui repose sur la façade)
-HP_PROF    = 35;   // profondeur du driver
+// --- Haut-parleurs (mesurés sur photos + gabarit 2026-06-30) ---
+HP_MEM_D      = 38;   // diamètre membrane
+HP_FRAME_D    = 50;   // diamètre frame / découpe dans le panneau bois
+HP_PROF       = 35;   // profondeur du driver
+HP_CHASSIS_SQ = 50;   // chassis CARRÉ (côté) — repose sur la façade, 4 trous de fixation
+HP_CHASSIS_EP = 5;    // épaisseur du chassis carré
+HP_VIS_OFF    = 5;    // offset des trous de vis depuis le bord du chassis
 
 // --- Raspberry Pi 5 (85×56mm officiel) ---
 PI_L  = 85;
@@ -239,24 +242,32 @@ module ecran() {
 }
 
 module hp_driver(cx) {
-    translate([cx, EP + HP_PROF, HP_Z])
-    rotate([-90, 0, 0]) {
-        // Frame
-        color([0.20, 0.18, 0.15])
-        difference() {
-            cylinder(d = HP_FRAME_D, h = 5);
-            translate([0, 0, -1]) cylinder(d = HP_MEM_D + 4, h = 7);
-        }
-        // Corps / aimant
-        color([0.15, 0.14, 0.12])
-        translate([0, 0, -HP_PROF + 5])
-            cylinder(d = HP_MEM_D + 6, h = HP_PROF - 5);
-        // Membrane
-        color([0.22, 0.20, 0.17])
-        translate([0, 0, 3]) {
-            cylinder(d = HP_MEM_D, h = 4);
-            // Dust cap
-            translate([0, 0, 4]) sphere(d = 14);
+    // Chassis CARRÉ (constaté sur gabarit 2026-06-30)
+    // Le chassis repose sur le panneau bois, la découpe est circulaire ∅46mm
+    translate([cx, EP, HP_Z]) {
+        rotate([-90, 0, 0]) {
+            // Chassis carré plastique
+            color([0.20, 0.18, 0.15])
+            difference() {
+                translate([-HP_CHASSIS_SQ/2, -HP_CHASSIS_SQ/2, 0])
+                    cube([HP_CHASSIS_SQ, HP_CHASSIS_SQ, HP_CHASSIS_EP]);
+                // Découpe centrale pour le driver
+                translate([0, 0, -1]) cylinder(d = HP_FRAME_D - 2, h = HP_CHASSIS_EP + 2);
+            }
+            // 4 trous de vis aux coins du chassis
+            color([0.55, 0.55, 0.55])
+            for (sx = [-1, 1]) for (sy = [-1, 1])
+                translate([sx * (HP_CHASSIS_SQ/2 - HP_VIS_OFF),
+                           sy * (HP_CHASSIS_SQ/2 - HP_VIS_OFF), -1])
+                    cylinder(d = 3.2, h = HP_CHASSIS_EP + 2);
+            // Corps / aimant
+            color([0.15, 0.14, 0.12])
+            translate([0, 0, HP_CHASSIS_EP])
+                cylinder(d = HP_MEM_D + 6, h = HP_PROF - HP_CHASSIS_EP);
+            // Membrane
+            color([0.22, 0.20, 0.17])
+            translate([0, 0, HP_CHASSIS_EP - 2])
+                cylinder(d = HP_MEM_D, h = 3);
         }
     }
 }

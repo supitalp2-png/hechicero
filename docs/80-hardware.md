@@ -38,8 +38,9 @@ Objectifs :
 - 4 trous de montage aux coins (vis M3)
 
 ### 🔹 Enceintes passives
-- 2 drivers extraits de leur châssis plastique d'origine
-- membrane ∅38mm, frame ∅50mm, profondeur 35mm
+- 2 drivers avec chassis carré plastique (~50×50mm, 4 trous de fixation aux coins)
+- membrane ∅38mm, frame ∅50mm (découpe panneau bois ∅46mm), profondeur 35mm
+- chassis posé sur le panneau bois, vissé par 4 vis aux coins
 - montage individuel dans la façade : driver gauche / driver droit (stéréo)
 - câblage : sortie L Amp4 → driver gauche, sortie R Amp4 → driver droit
 - connexion via bornier à vis du HiFiBerry Amp4
@@ -204,11 +205,20 @@ La bande chromée du dessus conserve ses trous d’origine et reçoit des bouton
 
 **Type de bouton retenu :** bouton-poussoir momentané anti-vandale 16 mm, corps métallique chromé, tête plate, filetage M16, montage par dessous avec écrou. Ex. : "16mm metal momentary push button switch chrome flat" (Amazon/AliExpress, ~1-3 €/pièce).
 
+### 🔹 Validation gabarit (2026-06-30) ✅
+
+Gabarit papier 1:1 imprimé et testé dans la carcasse :
+- Emboîtement correct dans les bandes chromées haut/bas
+- Positions HP et écran validées physiquement
+- Test fonctionnel : Pi 5 + écran + HP → IHM opérationnelle (Mon Petit France Inter en lecture)
+- **Gabarit validé → prêt pour commande découpe laser**
+
 ### 🔹 Procédure de validation avant fabrication
-1. Mesurer la largeur exacte de la bande vinyle gauche (VINYL_W)
-2. Gabarit carton du fichier de découpe → emboîtage dans la carcasse
-3. Pose de tous les composants en vrac (sans colle) → vérification câbles et ventilation
-4. Photo de l’intérieur câblé avant fermeture définitive
+1. ✅ Mesurer la largeur exacte de la bande vinyle gauche (VINYL_W = 25mm)
+2. ✅ Gabarit papier 1:1 → emboîtage dans la carcasse validé
+3. ✅ Test fonctionnel avec composants réels
+4. Commande découpe laser (Snijlab / Sculpteo / LaserBoost)
+5. Photo de l’intérieur câblé avant fermeture définitive
 
 ---
 
