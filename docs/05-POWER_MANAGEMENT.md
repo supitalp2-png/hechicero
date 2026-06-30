@@ -115,22 +115,15 @@ cat data/last_session.json
 
 ---
 
-## 10. Démarrage automatique et bouton physique
-### Problème actuel
-Lorsque le Waveshare UPS HAT (D) est alimenté, le Raspberry Pi 5 **ne démarre pas automatiquement**.
-Il reste éteint tant que le bouton physique du Raspberry Pi n’est pas pressé.
+## 10. Démarrage — bouton physique RUN
 
-### Hypothèse
-Le Pi 5 nécessite un front logique sur la ligne RUN pour démarrer.
-Le HAT ne génère pas ce signal.
+### Comportement
+Le Pi 5 ne démarre pas automatiquement quand le Waveshare UPS HAT (D) est alimenté — il attend un front logique sur la ligne RUN.
 
-### Objectif
-Ajouter un **bouton RUN externe** pour un usage normal.
+### Solution installée ✅
+Bouton-poussoir momentané 16mm chromé, câblé sur les broches RUN du Pi 5 (fils rouge + bleu), logé dans un trou ∅16mm de la tranche supérieure chromée du boîtier.
 
-### Pistes techniques
-- bouton poussoir sur broches RUN  
-- transistor pour simuler l’appui  
-- vérifier si le HAT expose une broche ON/OFF  
+Appui court → démarrage. Appui court quand allumé → reset.
 
 ---
 

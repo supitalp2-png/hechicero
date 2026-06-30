@@ -140,13 +140,16 @@ mpc play
 ## 7. Installation du backend (RSS + batterie)
 
 ### 7.1 Monitoring batterie
-Le script `scripts/get_status.py` :
-- lit INA219  
-- calcule l’état batterie  
-- écrit `web/status.json` (écriture atomique)  
+> ⚠️ `scripts/get_status.py` et `hechicero-monitor.service` sont **supprimés** (session 11). Ne pas utiliser.
+
+Scripts actifs :
+- `scripts/battery_tracker.py` — collecte données, estimations → `battery_tracker.service`
+- `scripts/battery_watchdog.py` — surveillance seuil critique, arrêt propre → `battery_watchdog.service`
+
+Voir `docs/05-POWER_MANAGEMENT.md` pour le détail complet.
 
 ### 7.2 Service systemd batterie
-Fichier : `/etc/systemd/system/hechicero-battery.service`
+Fichier : `/etc/systemd/system/battery_tracker.service`
 
 Activer :
 ```

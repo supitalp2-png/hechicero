@@ -153,12 +153,11 @@ Effets :
 ---
 
 ## 8. Gestion des langues
-Le champ `lang` permet :
-- de filtrer les contenus  
-- de préparer une future IHM multilingue  
-- de séparer les contenus FR / ES / EN  
+Le champ `language` (podcasts) / `lang` (radios) permet de filtrer les contenus par langue.
 
-Aucun comportement automatique n’est encore implémenté côté lecteur.
+✅ Le filtrage est **actif dans le lecteur** : drapeaux FR/🇨🇴 sur l’écran d’accueil — le lecteur filtre les contenus via le champ `langue` dans `data.json`.
+
+Valeurs recommandées : `fr`, `es`, `en`.
 
 ---
 

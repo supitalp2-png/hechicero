@@ -159,20 +159,17 @@ Un timer déclenchera l’ingestion périodique.
 ## 9. Comportement du Raspberry Pi 5 au boot
 ### 🔹 Problème
 Le Raspberry Pi 5 **ne démarre pas automatiquement** lorsque le Waveshare UPS HAT (D) est alimenté.
-Il attend un signal logique équivalent à l’appui sur le bouton POWER.
+Il attend un signal logique sur la ligne RUN.
 
-### 🔹 Conséquence
-Un **bouton RUN externe** est nécessaire pour un usage normal.
-
-### 🔹 Choix technique
-- utiliser les broches RUN du Pi 5  
-- ajouter un bouton poussoir externe  
-- possibilité d’ajouter un transistor pour simuler l’appui  
+### 🔹 Solution retenue ✅
+Bouton-poussoir momentané 16mm chromé câblé sur les broches RUN du Pi 5, logé dans la tranche supérieure du boîtier Concert Boy 206. Installé et fonctionnel.
 
 ### 🔹 Justification
 - indispensable pour un usage enfant  
 - contourne la limitation matérielle du Pi 5  
-- compatible avec le HAT  
+- bouton intégré de façon invisible dans le design du boîtier  
+
+→ Détails hardware : `docs/80-hardware.md` §12
 
 ---
 

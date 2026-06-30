@@ -210,7 +210,7 @@ Objectif : **zéro surprise, zéro magie, zéro casse**.
 
 ---
 
-# 10. État du projet au 2026-06-27 (session 10)
+# 10. État du projet au 2026-06-30 (session 12)
 
 ## Ce qui est fait et validé
 - 18+ podcasts FR + podcasts ES ingérés, pipeline RSS complet et robuste
@@ -243,6 +243,16 @@ Objectif : **zéro surprise, zéro magie, zéro casse**.
 - Durées épisodes via ffprobe (TICKET-059 ✅, 365 épisodes corrigés)
 - Contrôle parental (TICKET-071 ✅) : grille horaire + verrou langue
 - Tracking SQLite (`data/tracking.db`, table `play_events`), dashboard analytics complet
+- **Session 11 — stabilisation tracking + nettoyage :**
+  - TICKET-086 ✅ : 54 lignes tracking JS supprimées de `index.html` — `play_tracker.py` seule source de vérité
+  - TICKET-088 ✅ : `play_tracker.py` — `listened_s` utilisait `elapsed=0` à l'arrêt → fix : fallback `ts_end - ts_start`
+  - TICKET-061 ✅ : Saison 2 Professeur Caillou déjà présente dans `data.json` (13 épisodes)
+  - `scripts/get_status.py` + `hechicero-monitor.service` supprimés définitivement
+- **Session 12 — hardware boîtier :**
+  - TICKET-038 ✅ : bouton RUN momentané 16mm chromé, câblé broches RUN Pi 5, installé dans trou ∅16mm tranche supérieure
+  - Boîtier Concert Boy 206 : gabarit papier façade validé 1:1 ✅
+  - Décisions hardware tranche supérieure documentées dans `docs/80-hardware.md` §12 (TICKET-091→095)
+  - Modélisation 3D Onshape démarrée (façade bois + découpes HP + écran)
 
 ## Source de vérité — rappel critique
 - `data/podcasts.json` → config podcasts ET radios (écrit par l'admin PHP)
@@ -256,14 +266,16 @@ Objectif : **zéro surprise, zéro magie, zéro casse**.
 - `data/tracking.db` → SQLite, table `play_events` (gitignorée)
 
 ## Tickets ouverts prioritaires
-- TICKET-086 : déduplication tracking JS vs play_tracker (supprimer appels JS une fois play_tracker validé)
-- TICKET-087 : limiteur d'exposition sonore (`volume_pct` déjà enregistré, UI + config à faire)
-- TICKET-061 : Saison 2 Professeur Caillou (URL directe à trouver)
-- TICKET-058 : easter egg “Décisions Prises” (mécanisme 3 taps + création épisodes)
-- TICKET-038 : bouton RUN physique Pi (hardware)
-- TICKET-031 : sortie casque (hardware)
-- TICKET-048 : script d'intégrité audio/images/data.json
 - TICKET-085 : ghost carte SD (avant toute intervention hardware risquée)
+- TICKET-031 : sortie casque — DAC USB UGREEN + jack XMSJSIY + circuit LM393 GPIO (voir `docs/80-hardware.md` §12)
+- TICKET-058 : easter egg “Décisions Prises” (mécanisme 3 taps + création épisodes)
+- TICKET-087 : limiteur d'exposition sonore (`volume_pct` déjà enregistré, UI + config à faire)
+- TICKET-091 : choisir interface GPIO boutons (MCP23017 préféré)
+- TICKET-092 : trouver prise USB-A panel mount ∅16-19mm chromée
+- TICKET-093 : trouver LED témoin ∅5-6mm chromée panel mount
+- TICKET-094 : trancher format switch batterie (fente 25×8mm → rocker ou trou ∅16mm → toggle M16)
+- TICKET-095 : vérifier courant max USB-C XMSJSIY (≥3A requis)
+- TICKET-048 : script d'intégrité audio/images/data.json
 
 ## Notes Coco (Copilot Pro)
 - PHP n'est pas installé sur Windows → pas de `php -l` en local, toujours valider sur le Pi
@@ -299,3 +311,15 @@ Objectif : **zéro surprise, zéro magie, zéro casse**.
 - `play_tracker.py` : MPD renvoie des chemins absolus (`/home/thomas/hechicero/podcasts/...`) → utiliser `Path.relative_to(PROJECT_ROOT)` avant de parser
 - `idle player mixer` : les changements de volume sont des events `mixer`, pas `player` — écouter les deux
 - Auto-next bug : quand `openRadioPlayer` appelle `mpd clear`, le poll voit `stop` et relance le podcast → fix : `currentPodcast = null; currentIdx = -1` avant l'appel MPD
+
+**Session 11 — stabilisation :**
+- TICKET-088 : `play_tracker.py` — MPD retourne `elapsed=0` quand état passe à "stop" → `listened_s` était 0 systématiquement → fix : `ts_end - ts_start` comme fallback
+- Tracking JS supprimé de `index.html` : `play_tracker.py` est désormais seule source de vérité (plus de doublons)
+- `get_status.py` et `hechicero-monitor.service` définitivement supprimés — ne pas les recréer
+- Samba + git : ne jamais faire `git add / commit / push` depuis Windows (Q:\) — les index.lock corrompent le repo → toujours git sur le Pi en SSH
+
+**Session 12 — hardware boîtier :**
+- Chassis HP : les HP ont un chassis carré ~50×50mm (pas rond) avec 4 trous de vis aux coins — toujours modéliser en `cube()` pas `cylinder()`
+- Bande vinyle gauche : `VINYL_W = 25mm` (pas 337mm qui est la largeur utile de la façade)
+- commit_photos.sh : les originaux restent dans `Photos/` sur le Pi (jamais dans git), les copies redimensionnées vont dans `docs/photos/` — nommage `sousrep_fichier.jpg`
+- Git sur Pi seulement : `git add / commit / push` uniquement en SSH sur le Pi — jamais via Samba
