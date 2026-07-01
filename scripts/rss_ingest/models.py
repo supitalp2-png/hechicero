@@ -21,6 +21,7 @@ class PodcastConfig:
     language: str
     image: str
     max_episodes: int
+    source_type: str = "rss"
 
 @dataclass
 class PodcastMeta:
@@ -28,4 +29,3 @@ class PodcastMeta:
     label: str
     language: str
     cover_image: Optional[str]
-    episodes: List[Episode]

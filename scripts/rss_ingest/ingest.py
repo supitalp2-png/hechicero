@@ -1,6 +1,7 @@
 import json
 import os
 import sys
+import argparse
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from pathlib import Path
@@ -13,20 +14,30 @@ import progress
 
 CONFIG_PATH = Path("/home/thomas/hechicero/data/podcasts.json")
 
-def load_config():
+def load_config(podcast_id=None):
     with open(CONFIG_PATH) as f:
         raw = json.load(f)
-    return [PodcastConfig(**p) for p in raw["podcasts"] if p["enabled"]]
+    configs = [PodcastConfig(**p) for p in raw["podcasts"] if p["enabled"]]
+    if podcast_id:
+        configs = [cfg for cfg in configs if cfg.id == podcast_id]
+    return configs
 
-def ingest():
+def ingest(podcast_id=None):
     log("=== Démarrage synchronisation ===")
-    configs = load_config()
+    configs = load_config(podcast_id)
+    if podcast_id and not configs:
+        raise ValueError(f"Podcast introuvable ou désactivé: {podcast_id}")
+
     progress.start(len(configs))
     all_meta = []
 
     for cfg in configs:
         log(f"Podcast : {cfg.label} ({cfg.id})")
-        episodes = parse_rss(cfg)
+        if cfg.source_type == "html_radionacional":
+            from scraper_radionacional import scrape_radionacional
+            episodes = scrape_radionacional(cfg)
+        else:
+            episodes = parse_rss(cfg)
         episodes = episodes[:cfg.max_episodes]
         progress.start_podcast(cfg.id, cfg.label, len(episodes))
 
@@ -57,21 +68,4 @@ def ingest():
         meta = PodcastMeta(
             id=cfg.id,
             label=cfg.label,
-            language=cfg.language,
-            cover_image=cover_local,
-            episodes=downloaded
-        )
-        write_meta(cfg.id, meta)
-        all_meta.append(meta)
-        progress.podcast_done()
-
-    update_data_json(all_meta)
-    progress.finish()
-    log("=== Synchronisation terminée ===")
-
-if __name__ == "__main__":
-    try:
-        ingest()
-    except Exception as e:
-        log(f"ERREUR FATALE : {e}")
-        progress.fatal_error(str(e)[:300])
+    
