@@ -1615,8 +1615,10 @@ function resetSleepTimer() {
 }
 
 // Toute interaction RÉELLE réinitialise le timer
-// ⚠ pointermove exclut : sur Pi kiosk, le curseur fantôme génère des events en permanence
-['pointerdown', 'touchstart', 'click', 'keydown'].forEach(evt =>
+// ⚠ pointermove exclu : curseur fantôme sur Pi kiosk
+// ⚠ touchstart/pointerdown exclus : écran CTP génère des touchstart fantômes sans touchend
+//    → jamais de click synthétisé → 'click' filtre naturellement les faux events
+['click', 'keydown'].forEach(evt =>
   document.addEventListener(evt, wakeUp, { capture: true, passive: false })
 );
 
