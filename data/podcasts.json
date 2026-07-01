@@ -179,6 +179,16 @@
             "language": "es",
             "image": "images/habiaunavez.jpg",
             "max_episodes": 999
+        },
+        {
+            "id": "profentucasa",
+            "label": "Profe en tu casa",
+            "rss": "https://www.radionacional.co/podcast/profe-en-tu-casa",
+            "enabled": true,
+            "language": "es",
+            "image": "images/profentucasa.jpg",
+            "max_episodes": 999,
+            "source_type": "html_radionacional"
         }
     ],
     "radios": [

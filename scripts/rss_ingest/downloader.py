@@ -15,6 +15,11 @@ CHUNK_SIZE = 256 * 1024  # 256 KB — évite de charger l'entier MP3 en RAM
 SSL_NO_VERIFY_HOSTS = {"proxycast.radiofrance.fr", "radio-france-rss.aerion.workers.dev"}
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
+# Certains hébergeurs S3 exigent un Referer valide pour servir les assets.
+REFERER_MAP = {
+    "radionacional-v3.s3.amazonaws.com": "https://www.radionacional.co/",
+}
+
 
 def is_m4a_container(path: Path) -> bool:
     """Détecte si le fichier est un conteneur M4A/MP4 (malgré l'extension .mp3).
@@ -73,11 +78,15 @@ def download_file(url: str, dest: Path) -> Path | None:
     tmp = dest.with_suffix(".tmp")
 
     from urllib.parse import urlparse
-    verify_ssl = urlparse(url).hostname not in SSL_NO_VERIFY_HOSTS
+    hostname = urlparse(url).hostname
+    verify_ssl = hostname not in SSL_NO_VERIFY_HOSTS
+    headers = {}
+    if hostname in REFERER_MAP:
+        headers["Referer"] = REFERER_MAP[hostname]
 
     for attempt in range(3):
         try:
-            with requests.get(url, timeout=30, stream=True, verify=verify_ssl) as r:
+            with requests.get(url, timeout=30, stream=True, verify=verify_ssl, headers=headers) as r:
                 r.raise_for_status()
                 with open(tmp, "wb") as f:
                     for chunk in r.iter_content(chunk_size=CHUNK_SIZE):

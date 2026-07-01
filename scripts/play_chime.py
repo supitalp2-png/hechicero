@@ -5,24 +5,31 @@ Appelé par kiosk.sh au démarrage du Pi.
 """
 import json, wave, numpy as np, subprocess, os, tempfile, sys
 
-CONFIG_PATH = '/home/thomas/hechicero/web/lecteur/config.json'
-CHIME_PATH  = '/home/thomas/hechicero/sounds/chime.wav'
-MPD_SOCKET  = '/run/mpd/socket'
+CONFIG_PATH  = '/home/thomas/hechicero/web/lecteur/config.json'
+SOUNDS_DIR   = '/home/thomas/hechicero/sounds'
+MPD_SOCKET   = '/run/mpd/socket'
+
+VALID_SOUNDS = {'chime.wav', 'boot_orgue.wav', 'boot_orgue_v3b.wav'}
 
 # Lire config.json
 chime_enabled = True
 chime_volume  = 8
+chime_sound   = 'chime.wav'
 try:
     with open(CONFIG_PATH) as f:
         cfg = json.load(f)
     chime_enabled = cfg.get('chime_enabled', True)
     chime_volume  = cfg.get('chime_volume', 8)
+    sound_file    = cfg.get('chime_sound', 'chime.wav')
+    if sound_file in VALID_SOUNDS:
+        chime_sound = sound_file
 except Exception as e:
     print(f"[play_chime] config.json illisible : {e}", file=sys.stderr)
 
 if not chime_enabled:
     sys.exit(0)
 
+CHIME_PATH = os.path.join(SOUNDS_DIR, chime_sound)
 if not os.path.exists(CHIME_PATH):
     print(f"[play_chime] Fichier introuvable : {CHIME_PATH}", file=sys.stderr)
     sys.exit(1)

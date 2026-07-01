@@ -22,6 +22,40 @@ def load_config(podcast_id=None):
         configs = [cfg for cfg in configs if cfg.id == podcast_id]
     return configs
 
+def load_all_configs():
+    with open(CONFIG_PATH) as f:
+        raw = json.load(f)
+    return [PodcastConfig(**p) for p in raw["podcasts"] if p["enabled"]]
+
+def build_all_meta_from_disk(configs_all, freshly_processed):
+    """Reconstruit la liste complète des PodcastMeta en lisant les meta.json existants
+    pour les podcasts non traités dans cette session."""
+    from models import Episode
+    processed_ids = {m.id for m in freshly_processed}
+    all_meta = list(freshly_processed)
+
+    for cfg in configs_all:
+        if cfg.id in processed_ids:
+            continue
+        meta_path = Path(f"/home/thomas/hechicero/podcasts/{cfg.id}/meta.json")
+        if not meta_path.exists():
+            continue
+        try:
+            with open(meta_path) as f:
+                raw = json.load(f)
+            episodes = [Episode(**e) for e in raw.get("episodes", [])]
+            all_meta.append(PodcastMeta(
+                id=raw["id"],
+                label=raw["label"],
+                language=raw["language"],
+                cover_image=None,
+                episodes=episodes,
+            ))
+        except Exception as e:
+            log(f"WARNING: impossible de charger {meta_path}: {e}")
+
+    return all_meta
+
 def ingest(podcast_id=None):
     log("=== Démarrage synchronisation ===")
     configs = load_config(podcast_id)
@@ -68,4 +102,32 @@ def ingest(podcast_id=None):
         meta = PodcastMeta(
             id=cfg.id,
             label=cfg.label,
-    
+            language=cfg.language,
+            cover_image=cover_local,
+            episodes=downloaded
+        )
+        write_meta(cfg.id, meta)
+        all_meta.append(meta)
+        progress.podcast_done()
+
+    # En mode --podcast, reconstruire data.json avec TOUS les podcasts (pas seulement celui traité)
+    if podcast_id:
+        all_meta = build_all_meta_from_disk(load_all_configs(), all_meta)
+
+    update_data_json(all_meta)
+    progress.finish()
+    log("=== Synchronisation terminée ===")
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="Synchronisation des podcasts")
+    parser.add_argument("--podcast", help="ID du podcast a synchroniser", default=None)
+    return parser.parse_args()
+
+if __name__ == "__main__":
+    try:
+        args = parse_args()
+        ingest(args.podcast)
+    except Exception as e:
+        log(f"ERREUR FATALE : {e}")
+        progress.fatal_error(str(e)[:300])

@@ -351,6 +351,7 @@ if (isset($_GET['action'])) {
         // Son de démarrage
         if (isset($_GET['chime_enabled'])) $cfg['chime_enabled'] = (bool)(int)$_GET['chime_enabled'];
         if (isset($_GET['chime_volume']))  $cfg['chime_volume']  = max(0, min(100, (int)$_GET['chime_volume']));
+        if (isset($_GET['chime_sound']))   $cfg['chime_sound']   = in_array($_GET['chime_sound'], ['chime.wav','boot_orgue.wav','boot_orgue_v3b.wav']) ? $_GET['chime_sound'] : 'chime.wav';
         // Écran de veille
         if (isset($_GET['sleep_enabled'])) $cfg['sleep_enabled'] = (bool)(int)$_GET['sleep_enabled'];
         if (isset($_GET['sleep_delay']))   $cfg['sleep_delay']   = max(10, min(300, (int)$_GET['sleep_delay']));
@@ -824,7 +825,15 @@ input:checked + .slider:before { transform:translateX(20px); }
                oninput="document.getElementById('val-chime').textContent=this.value+'%'">
         <span class="vol-val" id="val-chime">15%</span>
       </div>
-      <p style="font-size:11px;color:var(--muted);margin-top:10px">Accord doux joué au démarrage du lecteur.</p>
+      <div class="vol-row" style="margin-top:10px">
+        <span class="vol-lbl">Son</span>
+        <select id="chime-sound" style="flex:1;padding:4px 8px;border-radius:6px;border:1px solid var(--border,#ccc);font-size:13px">
+          <option value="chime.wav">Accord classique</option>
+          <option value="boot_orgue.wav">Orgue magique</option>
+          <option value="boot_orgue_v3b.wav">Orgue grave</option>
+        </select>
+      </div>
+      <p style="font-size:11px;color:var(--muted);margin-top:10px">Son joué au démarrage du lecteur.</p>
     </div>
 
     <!-- Écran de veille -->
@@ -1088,6 +1097,7 @@ async function loadConfig() {
   document.getElementById('chime-enabled').checked      = ce;
   document.getElementById('chime-volume').value         = cv;
   document.getElementById('val-chime').textContent      = cv + '%';
+  document.getElementById('chime-sound').value          = c.chime_sound ?? 'chime.wav';
   // Écran de veille (lire depuis config.json — admin avancée)
   document.getElementById('sleep-enabled').checked      = !!(c.sleep_enabled ?? true);
   document.getElementById('sleep-delay').value          = String(c.sleep_delay ?? 15);
@@ -1105,6 +1115,7 @@ async function saveConfig() {
     headphones_max: document.getElementById('vol-headphones').value,
     chime_enabled:  document.getElementById('chime-enabled').checked ? 1 : 0,
     chime_volume:   document.getElementById('chime-volume').value,
+    chime_sound:    document.getElementById('chime-sound').value,
     sleep_enabled:       document.getElementById('sleep-enabled').checked ? 1 : 0,
     sleep_delay:         document.getElementById('sleep-delay').value,
     sleep_mode:          (document.querySelector('input[name="sleep-mode"]:checked') || {value:'retro'}).value,

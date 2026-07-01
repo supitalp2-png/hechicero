@@ -29,3 +29,4 @@ class PodcastMeta:
     label: str
     language: str
     cover_image: Optional[str]
+    episodes: List[Episode]

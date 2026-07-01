@@ -203,6 +203,7 @@ if (isset($_GET['action'])) {
             // son de démarrage
             'chime_enabled'    => (bool)($c['chime_enabled'] ?? true),
             'chime_volume'     => (int)($c['chime_volume']   ?? 15),
+            'chime_sound'      => $c['chime_sound']          ?? 'chime.wav',
         ]);
         exit;
     }
@@ -217,7 +218,7 @@ if (isset($_GET['action'])) {
 
         $cfg = read_json_radio(CONFIG_PATH);
         $input = json_decode(file_get_contents('php://input'), true) ?? [];
-        $allowed = ['sleep_enabled', 'sleep_delay', 'sleep_mode', 'chime_enabled', 'chime_volume'];
+        $allowed = ['sleep_enabled', 'sleep_delay', 'sleep_mode', 'chime_enabled', 'chime_volume', 'chime_sound'];
         foreach ($allowed as $k) {
             if (array_key_exists($k, $input)) {
                 $cfg[$k] = $input[$k];
