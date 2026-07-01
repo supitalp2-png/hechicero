@@ -7,6 +7,11 @@ import time
 
 CHUNK_SIZE = 256 * 1024  # 256 KB — évite de charger l'entier MP3 en RAM
 
+# User-Agent requis par certains hébergeurs (ex: acast/sphinx) qui bloquent les requêtes nues
+DEFAULT_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (compatible; Hechicero-Podcast-Player/1.0; +https://github.com/hechicero)"
+}
+
 # proxycast.radiofrance.fr présente une chaîne SSL incomplète non validée par Python.
 # On désactive la vérification uniquement pour ce domaine.
 # proxycast.radiofrance.fr présente une chaîne SSL incomplète.
@@ -80,7 +85,7 @@ def download_file(url: str, dest: Path) -> Path | None:
     from urllib.parse import urlparse
     hostname = urlparse(url).hostname
     verify_ssl = hostname not in SSL_NO_VERIFY_HOSTS
-    headers = {}
+    headers = dict(DEFAULT_HEADERS)
     if hostname in REFERER_MAP:
         headers["Referer"] = REFERER_MAP[hostname]
 
