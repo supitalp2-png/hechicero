@@ -1,6 +1,13 @@
 #!/bin/bash
 # idle_screen.sh — Extinction écran selon config.json
 # Relit la config toutes les 30s et relance swayidle si elle change ou s'il est mort.
+#
+# Utilise screen_dpms.sh (wlr-randr) au lieu de wlopm.
+# wlopm échoue sur Pi 5 + labwc : zwlr_output_power_management_v1 non supporté.
+# sysfs DRM dpms : lecture seule même en root sur Pi 5.
+# Solution : wlr-randr --off / --on via zwlr_output_management_v1 (pas de sudo requis).
+
+DPMS_SCRIPT="/home/thomas/hechicero/scripts/screen_dpms.sh"
 
 CONFIG="/home/thomas/hechicero/web/lecteur/config.json"
 
@@ -50,8 +57,8 @@ while true; do
 
         if [ "$ENABLED" = "1" ] && [ "$DELAY" -gt 0 ]; then
             swayidle -w \
-                timeout "$DELAY"  'wlopm --off \*' \
-                resume            'wlopm --on \*' &
+                timeout "$DELAY"  "$DPMS_SCRIPT off" \
+                resume            "$DPMS_SCRIPT on" &
             SWAYIDLE_PID=$!
         fi
     fi
