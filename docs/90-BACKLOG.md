@@ -19,13 +19,21 @@
 
 - [ ] TICKET-031 — hardware/feature — Sortie casque avec bascule automatique haut-parleurs
       - Contrainte : HiFiBerry Amp4 conservé (pas de sortie casque native)
-      - Solution retenue (2026-06-30) :
-          • DAC USB : UGREEN USB→Jack TRRS, fixé en permanence (zéro driver) → commandé
-          • Jack : XMSJSIY TRS 3.5mm panel mount ∅22mm chromé → commandé
-          • Détection casque : circuit LM393 (comparateur impédance) → voir §12 de 80-hardware.md
-          • GPIO Pi 5 lit la sortie LM393 → bascule MPD entre HiFiBerry (HP) et DAC USB (casque)
-          • MPD : 2 audio_output — HiFiBerry (ALSA hw:0) + DAC USB (ALSA hw:1)
-      - ⚠️ Schéma LM393 définitif à produire une fois composants reçus
+      - Solution retenue :
+          • DAC USB : KT USB Audio (card 3 ALSA) — branché, fonctionnel ✅
+          • Jack : XMSJSIY TRS 3.5mm panel mount ∅22mm chromé → à monter dans le boîtier
+          • MPD : 2 sorties configurées — `My ALSA Device` hw:2,0 + `Casque USB` hw:3,0 ✅
+      - ✅ Implémenté session 14 (partiel) — bascule manuelle depuis l'IHM enfant :
+          • Bouton pill dans la statusbar (toujours visible sur tous les écrans)
+          • Volume mémorisé par mode (HP / casque) en localStorage
+          • Séquence bascule : volume d'abord, sortie ensuite (évite pic sonore)
+          • `radio.php` : get_output / set_output (MPD enableoutput/disableoutput)
+          • `currentVolumeMax()` : VOLUME_MAX_SPEAKERS ou VOLUME_MAX_HEADPHONES selon mode
+      - ⏳ Reste à faire :
+          • Monter le jack dans le boîtier + câbler DAC USB
+          • Câbler le circuit LM393 sur GPIO → voir §12 de 80-hardware.md
+          • Remplacer le bouton manuel par détection GPIO automatique
+          • Le code IHM (volumes mémorisés, séquence bascule) est définitif et sera conservé
 
 - [ ] TICKET-058 — feature/UX — Série podcast "Décisions Prises" + easter egg
       - Easter egg : série cachée, déclencheur = 3 taps sur "Hechicero" à l'écran d'accueil

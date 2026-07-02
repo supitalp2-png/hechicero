@@ -218,6 +218,21 @@ Le lecteur doit fonctionner **sans lag** sur un Raspberry Pi 5.
 - Durées épisodes via ffprobe (TICKET-059 ✅)
 - Extinction écran automatique : `hechicero-idle.service` + `idle_screen.sh` (session 10 ✅)
 - Alertes batterie 30 min / 10 min, popup branchement (TICKET-082 ✅)
+- Radios et podcasts mis à jour en temps réel sans redémarrage kiosque (TICKET-100 ✅)
+  - PHP : add/edit/delete radio → `sync_radios_to_data_json()` met `data.json` à jour immédiatement
+  - PHP : delete_podcast → retrait immédiat de `data.json`
+  - PHP : add_podcast → ingest ciblé `--podcast <id>` déclenché en background
+  - Lecteur : `openRadioCatalog()` et `goToPodcasts()` rechargent `data.json` à chaque visite
+  - Lecteur : `setInterval` 5 min pour config/parental (veille, contrôle parental)
+- Bascule sortie audio HP/Casque — TICKET-031 partiel ✅
+  - DAC USB KT USB Audio branché sur card 3 ALSA (HiFiBerry = card 2)
+  - MPD configuré avec 2 sorties : `My ALSA Device` (hw:2,0) + `Casque USB` (hw:3,0)
+  - Bouton pill dans la statusbar (icône haut-parleur / casque SVG, surligné cyan en mode casque)
+  - `radio.php` : actions `get_output` / `set_output` (enableoutput/disableoutput MPD 0-indexed)
+  - Volume mémorisé par mode (localStorage `hechicero_vol_hp` / `hechicero_vol_casque`, IHM 0–100%)
+  - `currentVolumeMax()` retourne `VOLUME_MAX_SPEAKERS` ou `VOLUME_MAX_HEADPHONES` selon `audioMode`
+  - Séquence bascule : volume réglé AVANT la bascule MPD (évite le pic sonore)
+  - ⚠️ Temporaire : bascule manuelle depuis l'IHM — sera remplacée par détection GPIO LM393
 
 ### Architecture technique
 - `index.html` : fichier unique (HTML + CSS + JS)
