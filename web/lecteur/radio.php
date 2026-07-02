@@ -235,6 +235,28 @@ if (isset($_GET['action'])) {
         $secs   = (int)$_GET['time'];
         mpd_command('seekid ' . $songid . ' ' . $secs);
     }
+
+    // ⚠️ TEMPORAIRE — bascule manuelle HP/casque en attendant le câblage LM393 (TICKET-031)
+    // output 0 = HiFiBerry (haut-parleurs), output 1 = KT USB Audio (casque)
+    if ($action === 'get_output') {
+        header('Content-Type: application/json; charset=utf-8');
+        $raw  = mpd_command('outputs');
+        // outputid 1 activé → mode casque ; sinon → mode hp
+        $mode = preg_match('/outputid: 1\s+outputname:[^\n]+\s+outputenabled: 1/s', $raw) ? 'casque' : 'hp';
+        echo json_encode(['mode' => $mode]);
+        exit;
+    }
+
+    if ($action === 'set_output' && isset($_GET['mode'])) {
+        header('Content-Type: application/json; charset=utf-8');
+        if ($_GET['mode'] === 'casque') {
+            mpd_batch(['enableoutput 1', 'disableoutput 0']);
+        } else {
+            mpd_batch(['enableoutput 0', 'disableoutput 1']);
+        }
+        echo json_encode(['ok' => true, 'mode' => $_GET['mode']]);
+        exit;
+    }
 }
 ?>
 <!DOCTYPE html>

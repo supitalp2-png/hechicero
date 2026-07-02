@@ -498,6 +498,20 @@
       display: flex; align-items: center; justify-content: center;
       flex-shrink: 0;
     }
+    /* ⚠️ TEMPORAIRE — bascule HP/casque avant câblage LM393 (TICKET-031) */
+    #mini-btn-output {
+      height: 24px; padding: 0 10px; border-radius: 12px;
+      background: var(--surface); border: 1px solid var(--border);
+      color: var(--muted);
+      display: flex; align-items: center;
+      transition: background 0.25s, border-color 0.25s, color 0.25s;
+    }
+    #mini-btn-output svg { width: 16px; height: 16px; }
+    #mini-btn-output.casque-actif {
+      background: color-mix(in srgb, var(--accent) 14%, transparent);
+      border-color: var(--accent);
+      color: var(--accent);
+    }
   </style>
 </head>
 <body>
@@ -505,6 +519,18 @@
 <!-- STATUS BAR -->
 <div id="statusbar">
   <span id="sb-time" style="font-variant-numeric:tabular-nums">--:--</span>
+  <!-- ⚠️ TEMPORAIRE — bascule HP/casque avant câblage LM393 (TICKET-031) -->
+  <button id="mini-btn-output" title="Haut-parleurs actifs">
+    <svg id="ico-hp" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+      <path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
+    </svg>
+    <svg id="ico-casque" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="hidden">
+      <path d="M3 18v-6a9 9 0 0 1 18 0v6"/>
+      <path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3z"/>
+      <path d="M3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/>
+    </svg>
+  </button>
   <span id="bat-display"></span>
 </div>
 
@@ -894,11 +920,14 @@ let VOLUME_MAX_SPEAKERS   = 40; // chargé depuis config.json
 let VOLUME_MAX_HEADPHONES = 60; // TICKET-031 (GPIO casque)
 let currentVolume = 0; // toujours en valeur IHM 0-100%
 
+function currentVolumeMax() {
+  return audioMode === 'casque' ? VOLUME_MAX_HEADPHONES : VOLUME_MAX_SPEAKERS;
+}
 function ihmToMpd(ihmPct) {
-  return Math.round(ihmPct * VOLUME_MAX_SPEAKERS / 100);
+  return Math.round(ihmPct * currentVolumeMax() / 100);
 }
 function mpdToIhm(mpdPct) {
-  return Math.min(100, Math.round(mpdPct * 100 / VOLUME_MAX_SPEAKERS));
+  return Math.min(100, Math.round(mpdPct * 100 / currentVolumeMax()));
 }
 let currentDuration = 0;
 let DATA           = null;
@@ -1341,6 +1370,54 @@ function stopPoll() {
   if (parentalTimer) { clearInterval(parentalTimer); parentalTimer = null; }
 }
 
+// ── Sortie audio HP / Casque ──────────────────────────────
+// ⚠️ TEMPORAIRE — bascule manuelle en attendant le câblage LM393 (TICKET-031)
+let audioMode = 'hp'; // 'hp' | 'casque'
+
+// Dernier volume IHM (0-100%) par mode — persisté en localStorage
+const volumeMemory = {
+  hp:     parseInt(localStorage.getItem('hechicero_vol_hp')     ?? '70', 10),
+  casque: parseInt(localStorage.getItem('hechicero_vol_casque') ?? '70', 10),
+};
+
+function updateOutputBtn() {
+  const btn = el('mini-btn-output');
+  if (!btn) return;
+  if (audioMode === 'casque') {
+    btn.classList.add('casque-actif');
+    el('ico-hp').classList.add('hidden');
+    el('ico-casque').classList.remove('hidden');
+    btn.title = 'Casque actif — tap pour revenir aux haut-parleurs';
+  } else {
+    btn.classList.remove('casque-actif');
+    el('ico-hp').classList.remove('hidden');
+    el('ico-casque').classList.add('hidden');
+    btn.title = 'Haut-parleurs actifs — tap pour le casque';
+  }
+}
+
+async function toggleOutput(e) {
+  e.stopPropagation();
+  // Mémoriser le volume du mode qu'on quitte
+  volumeMemory[audioMode] = currentVolume;
+  localStorage.setItem('hechicero_vol_' + audioMode, currentVolume);
+  // Basculer
+  audioMode = audioMode === 'hp' ? 'casque' : 'hp';
+  updateOutputBtn();
+  // Régler le volume AVANT de basculer la sortie — évite le pic sonore
+  await setVolume(volumeMemory[audioMode]);
+  await sendRadio('set_output', { mode: audioMode });
+}
+
+async function initAudioMode() {
+  try {
+    const r = await fetch('/lecteur/radio.php?action=get_output', { cache: 'no-store' });
+    const d = await r.json();
+    audioMode = d.mode || 'hp';
+    updateOutputBtn();
+  } catch(_) {}
+}
+
 async function checkParentalTime() {
   await loadParentalConfig();
   if (!isNowAllowed()) {
@@ -1460,6 +1537,7 @@ el('mini-btn-pp').addEventListener('click', async e => {
   await sendRadio('pause');
   refreshStatus();
 });
+el('mini-btn-output').addEventListener('click', toggleOutput);
 
 el('resume-dismiss').addEventListener('click', () => {
   clearResumePrompt();
@@ -1640,6 +1718,7 @@ resetSleepTimer();
 show('home');
 loadParentalConfig();
 loadData();
+initAudioMode();
 
 // ── Rafraîchissement périodique de la config admin (toutes les 5 min)
 // Répercute sans redémarrage les changements de veille, contrôle parental et radios ajoutées.
