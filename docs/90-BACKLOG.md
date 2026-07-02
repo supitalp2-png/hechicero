@@ -1,7 +1,7 @@
 # Backlog Hechicero
 
 > Convention : `TICKET-### — [type] — Titre — (prio) — owner`
-> Dernière mise à jour : 2026-07-01 (session 13 — bugs écran, screensaver, batterie)
+> Dernière mise à jour : 2026-07-02 (session 14 — radios/podcasts temps réel)
 
 ---
 
@@ -221,6 +221,15 @@
       - Fix : `wakeUp` n'écoute plus que `click` + `keydown` (un vrai tap génère `click` après `touchend`)
       - ✅ `web/lecteur/index.html` mis à jour
       - ✅ `play_tracker.py` (serveur, MPD idle) est désormais seule source de vérité
+- [x] TICKET-100 — bug/UX — Radios et podcasts non instantanés sur le lecteur
+      - Cause : lecteur chargeait `data.json` une seule fois au boot ; radios attendaient le cron de 3h
+      - Fix PHP : `add/edit/delete_radio` → `sync_radios_to_data_json()` met `data.json` à jour immédiatement
+      - Fix PHP : `delete_podcast` → retrait immédiat de `data.json`
+      - Fix PHP : `add_podcast` → ingest ciblé `--podcast <id>` déclenché en background
+      - Fix JS : `openRadioCatalog()` et `goToPodcasts()` rechargent `data.json` à chaque visite
+      - Fix JS : `setInterval` 5 min pour config/parental (veille, contrôle parental) sans redémarrage kiosque
+      - ✅ `web/index.php` + `web/lecteur/index.html` mis à jour
+
 - [x] TICKET-061 — content — Saison 2 Professeur Caillou
       - ✅ Session 11 : 13 épisodes S2 déjà présents dans `data.json` — rien à faire
 - [x] TICKET-088 — bug/tracking — `listened_s` corrompu → épisodes à 56071% de complétion

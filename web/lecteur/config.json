@@ -1,12 +1,12 @@
 {
     "volume": {
-        "speakers_max": 52,
-        "headphones_max": 60
+        "speakers_max": 39,
+        "headphones_max": 100
     },
     "chime_enabled": true,
     "chime_volume": 18,
     "sleep_enabled": true,
-    "sleep_delay": 15,
+    "sleep_delay": 300,
     "sleep_mode": "retro_clock",
     "screen_off_enabled": true,
     "screen_off_delay": 600,

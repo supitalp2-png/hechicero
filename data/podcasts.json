@@ -202,13 +202,12 @@
             "image_url": "https://upload.wikimedia.org/wikipedia/fr/thumb/8/8a/France_Inter_logo_2021.svg/1200px-France_Inter_logo_2021.svg.png"
         },
         {
-            "id": "radionacional",
-            "name": "Radio Nacional",
-            "desc": "Colombia",
+            "id": "lamega979fm",
+            "name": "La Mega 97.9 FM",
+            "desc": "Musica Latina",
             "lang": "es",
-            "url": "https://www.radionacional.co/stream",
-            "image": "images/radio/radionacional.jpg",
-            "image_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/5/5e/Radio_Nacional_de_Colombia.svg/1200px-Radio_Nacional_de_Colombia.svg.png"
+            "url": "https://liveaudio.lamusica.com/NY_WSKQ_icy",
+            "image": "images/radio/lamega979fm.jpg"
         }
     ]
 }
