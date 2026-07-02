@@ -196,6 +196,89 @@ $currentPage = basename($_SERVER['PHP_SELF'] ?? 'dashboard.php');
       margin-bottom: 18px;
     }
 
+    /* ── Thermomètre casque ───────────────────────────────── */
+    @keyframes thermo-blink {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.12; }
+    }
+    .thermo-blink { animation: thermo-blink 0.9s ease-in-out infinite; }
+
+    .thermo-group {
+      display: flex;
+      gap: 10px;
+      flex-shrink: 0;
+      align-items: flex-end;
+    }
+    .thermo-labels {
+      position: relative;
+      height: 200px;
+      width: 38px;
+      font-size: 11px;
+      color: var(--muted);
+      text-align: right;
+      flex-shrink: 0;
+    }
+    .thermo-labels span {
+      position: absolute;
+      right: 0;
+      line-height: 1;
+      transform: translateY(50%);
+    }
+    .thermo-col {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .thermo-tube {
+      width: 30px;
+      height: 200px;
+      background: #0b1220;
+      border: 1.5px solid #334155;
+      border-radius: 15px;
+      position: relative;
+      overflow: hidden;
+    }
+    .thermo-tube-fill {
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      height: 0%;
+      background: #22c55e;
+      transition: height 1s cubic-bezier(.4,0,.2,1), background-color 0.4s;
+    }
+    .thermo-tick {
+      position: absolute;
+      left: 0; right: 0;
+      height: 1px;
+    }
+    .thermo-bulb {
+      width: 46px;
+      height: 46px;
+      border-radius: 50%;
+      background: #22c55e;
+      border: 1.5px solid #334155;
+      margin-top: -8px;
+      transition: background-color 0.4s;
+      flex-shrink: 0;
+    }
+    .hp-time {
+      font-size: clamp(28px, 4vw, 46px);
+      font-weight: 700;
+      line-height: 1.1;
+      margin-bottom: 4px;
+    }
+    .hp-badge {
+      display: inline-block;
+      padding: 5px 14px;
+      border-radius: 20px;
+      font-size: 13px;
+      font-weight: 700;
+      margin: 8px 0;
+      border: 1px solid transparent;
+      transition: background 0.4s, color 0.4s;
+    }
+    .hp-detail { color: var(--muted); font-size: 13px; }
+    /* ───────────────────────────────────────────────────── */
+
     @media (max-width: 980px) {
       .funnel-row { grid-template-columns: 1fr; }
       .funnel-pct { text-align: left; }
@@ -268,6 +351,47 @@ $currentPage = basename($_SERVER['PHP_SELF'] ?? 'dashboard.php');
         <div id="card-streak" class="card-value">…</div>
       </div>
     </div>
+
+    <section class="ha-panel" style="margin-bottom:18px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
+        <h2 style="margin:0">🎧 Casque — aujourd'hui</h2>
+        <span id="hp-updated" class="muted" style="font-size:12px"></span>
+      </div>
+      <div style="display:flex;gap:32px;align-items:flex-end;flex-wrap:wrap">
+
+        <!-- Thermomètre -->
+        <div class="thermo-group">
+          <!-- Labels graduations -->
+          <div class="thermo-labels">
+            <span style="bottom:100%;padding-bottom:4px">2h</span>
+            <span style="bottom:90%;color:#ef4444;opacity:.7">1h48</span>
+            <span style="bottom:75%;color:#f97316;opacity:.8">1h30</span>
+            <span style="bottom:50%;color:#eab308;opacity:.8">1h</span>
+            <span style="bottom:0;padding-top:4px">0</span>
+          </div>
+          <!-- Tube + bulbe -->
+          <div class="thermo-col">
+            <div class="thermo-tube">
+              <div id="thermo-tube-fill" class="thermo-tube-fill"></div>
+              <!-- Lignes seuils -->
+              <div class="thermo-tick" style="bottom:90%;background:rgba(239,68,68,.45)"></div>
+              <div class="thermo-tick" style="bottom:75%;background:rgba(249,115,22,.35)"></div>
+              <div class="thermo-tick" style="bottom:50%;background:rgba(234,179,8,.35)"></div>
+            </div>
+            <div id="thermo-bulb" class="thermo-bulb"></div>
+          </div>
+        </div>
+
+        <!-- Informations -->
+        <div>
+          <div id="hp-time" class="hp-time">—</div>
+          <div class="muted" style="font-size:14px">au casque aujourd'hui</div>
+          <div id="hp-badge" class="hp-badge">…</div>
+          <div id="hp-detail" class="hp-detail">—</div>
+        </div>
+
+      </div>
+    </section>
 
     <div class="ha-grid ha-cols-2" style="margin-bottom:18px;">
       <section class="ha-panel">
@@ -778,9 +902,71 @@ $currentPage = basename($_SERVER['PHP_SELF'] ?? 'dashboard.php');
 
     qs('period').addEventListener('change', loadStats);
 
+    // ── Thermomètre casque ────────────────────────────────
+    async function loadHeadphoneStats() {
+      try {
+        const r = await fetch('/tracking.php?action=headphone_today', { cache: 'no-store' });
+        const d = await r.json();
+        if (!d.ok) return;
+
+        const pct = Number(d.pct || 0);
+        const min = Number(d.casque_min || 0);
+
+        let color, bg, label;
+        if (pct >= 90) {
+          color = '#ef4444'; bg = 'rgba(239,68,68,.15)'; label = '⚠️ Limite atteinte !';
+        } else if (pct >= 75) {
+          color = '#f97316'; bg = 'rgba(249,115,22,.15)'; label = '🟠 Attention';
+        } else if (pct >= 50) {
+          color = '#eab308'; bg = 'rgba(234,179,8,.13)';  label = '🟡 Modéré';
+        } else {
+          color = '#22c55e'; bg = 'rgba(34,197,94,.12)';  label = '🟢 Normal';
+        }
+
+        // Thermomètre
+        const fill = qs('thermo-tube-fill');
+        const bulb = qs('thermo-bulb');
+        fill.style.height          = Math.min(100, pct) + '%';
+        fill.style.backgroundColor = color;
+        bulb.style.backgroundColor = color;
+        const blink = pct >= 90;
+        fill.classList.toggle('thermo-blink', blink);
+        bulb.classList.toggle('thermo-blink', blink);
+
+        // Temps affiché
+        const h = Math.floor(min / 60);
+        const m = Math.round(min % 60);
+        qs('hp-time').textContent = h > 0
+          ? `${h}h${String(m).padStart(2, '0')}`
+          : `${Math.round(min)} min`;
+
+        // Badge statut
+        const badge = qs('hp-badge');
+        badge.textContent      = label;
+        badge.style.background = bg;
+        badge.style.color      = color;
+        badge.style.borderColor = color + '55';
+
+        // Détail
+        const rem = Math.max(0, Math.round(120 - min));
+        qs('hp-detail').textContent = pct >= 100
+          ? 'Limite de 2h dépassée !'
+          : rem === 0 ? 'Limite atteinte' : `${rem} min restantes avant 2h`;
+
+        // Heure de rafraîchissement
+        const now = new Date();
+        qs('hp-updated').textContent = `↻ ${now.getHours()}:${String(now.getMinutes()).padStart(2,'0')}`;
+
+      } catch (e) {
+        console.warn('headphone stats:', e);
+      }
+    }
+
     (async function init() {
       await loadPodcastTitles();
+      await loadHeadphoneStats();
       await loadStats();
+      setInterval(loadHeadphoneStats, 30_000);
     }());
   </script>
 </body>

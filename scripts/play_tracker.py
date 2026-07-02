@@ -59,20 +59,24 @@ def get_db() -> sqlite3.Connection:
     """)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_ts  ON play_events(ts_start)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_pod ON play_events(podcast_id)")
-    # Migration : ajout de volume_pct si absent (base existante)
-    try:
-        conn.execute("ALTER TABLE play_events ADD COLUMN volume_pct INTEGER DEFAULT NULL")
-    except sqlite3.OperationalError:
-        pass  # colonne déjà présente
+    # Migrations : ajout de colonnes si absentes (base existante)
+    for ddl in [
+        "ALTER TABLE play_events ADD COLUMN volume_pct   INTEGER DEFAULT NULL",
+        "ALTER TABLE play_events ADD COLUMN output_mode  TEXT    DEFAULT NULL",
+    ]:
+        try:
+            conn.execute(ddl)
+        except sqlite3.OperationalError:
+            pass  # colonne déjà présente
     conn.commit()
     return conn
 
 
-def db_open_session(conn: sqlite3.Connection, meta: dict[str, Any], ts_start: int, volume_pct: int | None = None) -> int:
+def db_open_session(conn: sqlite3.Connection, meta: dict[str, Any], ts_start: int, volume_pct: int | None = None, output_mode: str | None = None) -> int:
     cur = conn.execute(
         """INSERT INTO play_events
-           (ts_start, podcast_id, episode_id, langue, is_radio, station_name, duration_s, volume_pct)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+           (ts_start, podcast_id, episode_id, langue, is_radio, station_name, duration_s, volume_pct, output_mode)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             ts_start,
             meta["podcast_id"],
@@ -82,6 +86,7 @@ def db_open_session(conn: sqlite3.Connection, meta: dict[str, Any], ts_start: in
             meta.get("station_name"),
             meta.get("duration_s", 0),
             volume_pct,
+            output_mode,
         ),
     )
     conn.commit()
@@ -316,6 +321,18 @@ class MpdClient:
         song = self._parse(self._recv())
         return status, song
 
+    def get_output_mode(self) -> str:
+        """Retourne 'casque' si la sortie USB (output 1) est active, 'hp' sinon."""
+        self._send(b"outputs\n")
+        lines = self._recv()
+        current_id: str | None = None
+        for line in lines:
+            if line.startswith("outputid: "):
+                current_id = line.split(": ", 1)[1].strip()
+            elif line == "outputenabled: 1" and current_id == "1":
+                return "casque"
+        return "hp"
+
     def wait_event(self) -> set[str]:
         """
         Envoie `idle player mixer`, attend jusqu'à HEARTBEAT_S secondes.
@@ -409,10 +426,11 @@ def run() -> None:
                 meta = identify(cur_file, duration, index)
                 if meta:
                     ts_start = int(time.time() - elapsed) if elapsed < 60 else int(time.time())
-                    open_id = db_open_session(conn, meta, ts_start, vol)
+                    mode = mpd.get_output_mode()
+                    open_id = db_open_session(conn, meta, ts_start, vol, mode)
                     open_file = cur_file
                     vol_samples = [vol] if vol is not None else []
-                    LOGGER.info("Session initiale : %s id=%d vol=%s%%", meta["podcast_id"], open_id, vol)
+                    LOGGER.info("Session initiale : %s id=%d vol=%s%% mode=%s", meta["podcast_id"], open_id, vol, mode)
 
             # ── Boucle d'événements ─────────────────────────────────────────
             while True:
@@ -474,11 +492,12 @@ def run() -> None:
                     if meta:
                         ts_start = int(time.time() - elapsed) if elapsed < 30 else now
                         vol_samples = [vol] if vol is not None else []
-                        open_id = db_open_session(conn, meta, ts_start, vol)
+                        mode = mpd.get_output_mode()
+                        open_id = db_open_session(conn, meta, ts_start, vol, mode)
                         open_file = new_file
                         LOGGER.info(
-                            "Nouvelle session : %s  id=%d  langue=%s  radio=%s  vol=%s%%",
-                            meta["podcast_id"], open_id, meta["langue"], meta.get("is_radio"), vol,
+                            "Nouvelle session : %s  id=%d  langue=%s  radio=%s  vol=%s%%  mode=%s",
+                            meta["podcast_id"], open_id, meta["langue"], meta.get("is_radio"), vol, mode,
                         )
 
                 prev_state = new_state

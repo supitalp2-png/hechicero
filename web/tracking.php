@@ -22,8 +22,9 @@ function get_db(): PDO {
         completed    INTEGER NOT NULL DEFAULT 0,
         volume_pct   INTEGER DEFAULT NULL
     )");
-    // Migration : ajout de volume_pct sur base existante
-    try { $db->exec("ALTER TABLE play_events ADD COLUMN volume_pct INTEGER DEFAULT NULL"); } catch (Exception $e) {}
+    // Migrations : ajout de colonnes sur base existante
+    try { $db->exec("ALTER TABLE play_events ADD COLUMN volume_pct  INTEGER DEFAULT NULL"); } catch (Exception $e) {}
+    try { $db->exec("ALTER TABLE play_events ADD COLUMN output_mode TEXT    DEFAULT NULL"); } catch (Exception $e) {}
     $db->exec('CREATE INDEX IF NOT EXISTS idx_ts   ON play_events(ts_start)');
     $db->exec('CREATE INDEX IF NOT EXISTS idx_lang ON play_events(langue)');
     $db->exec('CREATE INDEX IF NOT EXISTS idx_pod  ON play_events(podcast_id)');
@@ -267,6 +268,27 @@ try {
             'radio_by_day'       => $radio_by_day,
             'radio_summary'      => $radio_summary,
             'radio_top_stations' => $radio_top_stations,
+        ]);
+    } elseif ($action === 'headphone_today') {
+        // Temps casque du jour (réinitialise à minuit heure locale)
+        $stmt = $db->prepare(
+            "SELECT COALESCE(SUM(listened_s), 0) AS casque_s
+             FROM play_events
+             WHERE output_mode = 'casque'
+               AND date(ts_start, 'unixepoch', 'localtime') = date('now', 'localtime')"
+        );
+        $stmt->execute();
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        $casque_s  = (float)($row['casque_s'] ?? 0);
+        $max_s     = 7200.0; // 2h = limite du jour
+        $pct       = min(100, round($casque_s / $max_s * 100, 1));
+        $level     = $pct >= 90 ? 'danger' : ($pct >= 75 ? 'alerte' : ($pct >= 50 ? 'attention' : 'ok'));
+        echo json_encode([
+            'ok'        => true,
+            'casque_s'  => round($casque_s),
+            'casque_min'=> round($casque_s / 60, 1),
+            'pct'       => $pct,
+            'level'     => $level,
         ]);
     } else {
         echo json_encode(['ok' => false, 'error' => 'action inconnue: ' . htmlspecialchars($action)]);
