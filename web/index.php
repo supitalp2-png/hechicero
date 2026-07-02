@@ -110,6 +110,16 @@ function save_radios_r(array $radios): array {
     return ['ok'=>$ok,'msg'=>$ok?'':'Écriture échouée — vérifiez les permissions sur ' . PODCASTS_JSON];
 }
 
+// Propage la liste des radios dans data.json immédiatement (sans attendre l'ingest).
+// Les radios n'ont pas de RSS ni de téléchargement — elles doivent être instantanées sur le lecteur.
+function sync_radios_to_data_json(): void {
+    if (!file_exists(DATA_JSON)) return;
+    $radios = get_radios();
+    $data   = read_json(DATA_JSON);
+    $data['radios'] = $radios;
+    write_json_atomic(DATA_JSON, $data);
+}
+
 // Exécute curl en ligne de commande (évite la dépendance à l'extension PHP curl)
 function shell_curl(string $url, array $opts = []): array {
     if (!@shell_exec('which curl 2>/dev/null')) {
@@ -250,7 +260,16 @@ if (isset($_GET['action'])) {
         $cfg = read_json(PODCASTS_JSON);
         foreach ($cfg['podcasts'] ?? [] as $p) if ($p['id'] === $id) { echo json_encode(['ok'=>false,'msg'=>'ID déjà existant : '.$id]); exit; }
         $cfg['podcasts'][] = ['id'=>$id,'label'=>$label,'rss'=>$rss,'enabled'=>true,'language'=>$lang,'image'=>'images/'.$id.'.jpg','max_episodes'=>$max];
-        echo json_encode(['ok' => write_json_atomic(PODCASTS_JSON, $cfg), 'id' => $id]);
+        $ok = write_json_atomic(PODCASTS_JSON, $cfg);
+        // Déclenche immédiatement un ingest ciblé sur ce podcast en arrière-plan
+        if ($ok && !pid_alive(INGEST_PID)) {
+            $cmd = 'python3 ' . escapeshellarg(INGEST_SCRIPT)
+                 . ' --podcast ' . escapeshellarg($id)
+                 . ' >> ' . escapeshellarg(INGEST_LOG) . ' 2>&1 & echo $!';
+            $pid = trim((string)shell_exec($cmd));
+            if ($pid) file_put_contents(INGEST_PID, $pid);
+        }
+        echo json_encode(['ok' => $ok, 'id' => $id]);
         exit;
     }
 
@@ -272,9 +291,17 @@ if (isset($_GET['action'])) {
     }
 
     if ($a === 'delete_podcast' && isset($_GET['id'])) {
+        $del_id = $_GET['id'];
         $cfg = read_json(PODCASTS_JSON);
-        $cfg['podcasts'] = array_values(array_filter($cfg['podcasts'] ?? [], fn($p) => $p['id'] !== $_GET['id']));
-        echo json_encode(['ok' => write_json_atomic(PODCASTS_JSON, $cfg)]);
+        $cfg['podcasts'] = array_values(array_filter($cfg['podcasts'] ?? [], fn($p) => $p['id'] !== $del_id));
+        $ok = write_json_atomic(PODCASTS_JSON, $cfg);
+        // Retrait immédiat de data.json pour que le lecteur ne l'affiche plus sans attendre l'ingest
+        if ($ok && file_exists(DATA_JSON)) {
+            $data = read_json(DATA_JSON);
+            $data['podcasts'] = array_values(array_filter($data['podcasts'] ?? [], fn($p) => $p['id'] !== $del_id));
+            write_json_atomic(DATA_JSON, $data);
+        }
+        echo json_encode(['ok' => $ok]);
         exit;
     }
 
@@ -302,6 +329,7 @@ if (isset($_GET['action'])) {
         }
         $radios[] = ['id'=>$id,'name'=>$name,'desc'=>$desc,'lang'=>$lang,'url'=>$url,'image'=>$image];
         $w = save_radios_r($radios);
+        if ($w['ok']) sync_radios_to_data_json();
         echo json_encode(['ok'=>$w['ok'],'id'=>$id,'msg'=>$w['ok']?$img_msg:$w['msg']]);
         exit;
     }
@@ -330,13 +358,16 @@ if (isset($_GET['action'])) {
             break;
         }
         $w = save_radios_r($radios);
+        if ($w['ok']) sync_radios_to_data_json();
         echo json_encode(['ok'=>$w['ok'],'msg'=>$w['ok']?$img_msg:$w['msg']]);
         exit;
     }
 
     if ($a === 'delete_radio' && isset($_GET['id'])) {
         $radios = array_values(array_filter(get_radios(), fn($r) => $r['id'] !== $_GET['id']));
-        echo json_encode(['ok' => save_radios($radios)]);
+        $ok = save_radios($radios);
+        if ($ok) sync_radios_to_data_json();
+        echo json_encode(['ok' => $ok]);
         exit;
     }
 

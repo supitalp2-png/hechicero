@@ -1173,7 +1173,8 @@ function renderPodcasts() {
 // ═══════════════════════════════════════
 // SCREEN 3a — RADIO CATALOG
 // ═══════════════════════════════════════
-function openRadioCatalog() {
+async function openRadioCatalog() {
+  await loadData(); // radios gérées en temps réel par l'admin — toujours rafraîchir avant d'afficher
   const lang = selectedLang.toLowerCase();
   el('radio-title').textContent =
     lang === 'fr' ? 'Radios francophones' : 'Radios en español';
@@ -1357,7 +1358,7 @@ async function checkParentalTime() {
 // NAVIGATION
 // ═══════════════════════════════════════
 async function goToPodcasts() {
-  if (!DATA) await loadData();
+  await loadData(); // recharge à chaque visite — podcasts supprimés disparaissent sans redémarrage
   renderPodcasts();
   show('podcasts');
 }
@@ -1639,6 +1640,10 @@ resetSleepTimer();
 show('home');
 loadParentalConfig();
 loadData();
+
+// ── Rafraîchissement périodique de la config admin (toutes les 5 min)
+// Répercute sans redémarrage les changements de veille, contrôle parental et radios ajoutées.
+setInterval(() => { loadParentalConfig(); loadData(); }, 5 * 60 * 1000);
 </script>
 
 <!-- ── Écran de veille ──────────────────────────────────────────── -->
