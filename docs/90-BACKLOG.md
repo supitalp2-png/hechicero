@@ -1,7 +1,7 @@
 # Backlog Hechicero
 
 > Convention : `TICKET-### — [type] — Titre — (prio) — owner`
-> Dernière mise à jour : 2026-06-30 (session 12 — batterie + bugs)
+> Dernière mise à jour : 2026-07-01 (session 13 — bugs écran, screensaver, batterie)
 
 ---
 
@@ -84,29 +84,9 @@
       - Dashboard : afficher volume moyen par jour / par podcast
       - Config : seuil max volume dans `config.json` + avertissement si dépassé (IHM enfant)
 
-- [x] TICKET-088 — bug/backend — `play_tracker.py` n'écrivait pas `listened_s` à la fermeture
-      - MPD retourne `elapsed=0` quand l'état passe à "stop" → `listened_s` était systématiquement 0
-      - Fix session 11 : `db_close_session` utilise `ts_end - ts_start` comme fallback si `listened_s == 0`
-      - Fix session 12 : fallback capé à `duration_s` (évite `listened_s >> duration_s` si session laissée ouverte)
-      - Fix DB session 12 : 10 lignes corrompues nettoyées (`listened_s` capé à `duration_s`)
-      - ✅ `scripts/play_tracker.py` corrigé
-
-- [x] TICKET-048 — backend — Script de vérification d'intégrité audio/images/data.json
-      - ✅ `scripts/rss_ingest/check_integrity.py` : déjà implémenté (découvert session 12)
-      - Détecte : fichiers manquants, orphelins, M4A déguisés, taille 0, divergences meta/data.json, covers absentes
-      - `--podcast <id>` pour cibler un podcast ; exit code 0/1/2 (OK/WARN/ERR)
-
-
 - [ ] TICKET-057 — UX/infra — Démarrage rapide de l'IHM enfant
       - Chromium met plusieurs secondes à démarrer après le boot
       - Piste : optimiser les flags Chromium, splash screen système
-
-- [x] TICKET-089 — bug/backend — `battery_watchdog.py` : errno 121 code mort
-      - Fix session 12 : réinitialisation INA219 déplacée à l'intérieur de `read_level()`
-      - ✅ `scripts/battery_watchdog.py` corrigé
-
-- [x] TICKET-090 — infra — Nettoyage fichiers morts dans le repo
-      - ✅ Session 12 : fichiers morts supprimés via `git rm`
 
 ---
 
@@ -117,9 +97,6 @@
 - [ ] TICKET-046 — UX — Favoris (cœur) accessibles rapidement
 - [ ] TICKET-047 — UX — Défilement automatique (carrousel) arrêtable par l'enfant
 - [ ] TICKET-056 — R&D — Exploration client lourd natif (PyQt5/Kivy) — décision projet 2.0
-- [x] TICKET-008 — infra — Endpoint `/health` (monitoring externe)
-      - ✅ Session 12 : `web/health.php` — JSON avec MPD, batterie, disque, ingest, uptime
-      - HTTP 200 si tout OK, 503 si dégradé — batterie stale si > 5 min sans mise à jour
 - [ ] TICKET-010 — infra — Rotation logs
 - [ ] TICKET-011 — sec — Durcir unités systemd (`ProtectSystem`, `NoNewPrivileges`)
 - [ ] TICKET-017 — monitoring — Export Prometheus (métriques batterie/écoute)
@@ -206,6 +183,43 @@
       - ✅ Ratios calculés après chaque cycle, `model_confidence` affiché
 - [x] TICKET-086 — backend — Déduplication tracking JS vs play_tracker
       - ✅ Session 11 : 54 lignes de tracking JS supprimées de `web/lecteur/index.html`
+- [x] TICKET-088 — bug/backend — `play_tracker.py` n'écrivait pas `listened_s` à la fermeture
+      - MPD retourne `elapsed=0` quand l'état passe à "stop" → `listened_s` était systématiquement 0
+      - Fix session 11 : `db_close_session` utilise `ts_end - ts_start` comme fallback si `listened_s == 0`
+      - Fix session 12 : fallback capé à `duration_s` (évite `listened_s >> duration_s` si session laissée ouverte)
+      - Fix DB session 12 : 10 lignes corrompues nettoyées (`listened_s` capé à `duration_s`)
+      - ✅ `scripts/play_tracker.py` corrigé
+- [x] TICKET-048 — backend — Script de vérification d'intégrité audio/images/data.json
+      - ✅ `scripts/rss_ingest/check_integrity.py` : déjà implémenté (découvert session 12)
+      - Détecte : fichiers manquants, orphelins, M4A déguisés, taille 0, divergences meta/data.json, covers absentes
+      - `--podcast <id>` pour cibler un podcast ; exit code 0/1/2 (OK/WARN/ERR)
+- [x] TICKET-008 — infra — Endpoint `/health` (monitoring externe)
+      - ✅ Session 13 : `web/health.php` — JSON avec MPD, batterie, disque, ingest, uptime
+      - HTTP 200 si tout OK, 503 si dégradé — batterie stale si > 5 min sans mise à jour
+- [x] TICKET-089 — bug/backend — `battery_watchdog.py` : errno 121 code mort
+      - Fix session 12 : réinitialisation INA219 déplacée à l'intérieur de `read_level()`
+      - ✅ `scripts/battery_watchdog.py` corrigé
+- [x] TICKET-090 — infra — Nettoyage fichiers morts dans le repo
+      - ✅ Session 12 : fichiers morts supprimés via `git rm`
+- [x] TICKET-096 — bug/infra — Hechicero s'éteignait au débranchement du chargeur
+      - Cause : upower voyait la batterie INA219 à 0% (pas de driver ACPI) → HybridSleep au retrait du secteur
+      - Fix : `CriticalPowerAction=Ignore` + `AllowRiskyCriticalPowerAction=true` dans `/etc/UPower/UPower.conf`
+      - ✅ Config système hors git — à capturer dans TICKET-085 (ghost SD)
+- [x] TICKET-097 — bug/infra — Extinction écran non fonctionnelle sur Pi 5 + labwc
+      - `wlopm` échoue : `zwlr_output_power_management_v1` non supporté par HDMI-A-2
+      - sysfs DRM `/sys/class/drm/card1-HDMI-A-2/dpms` en lecture seule même en root sur Pi 5
+      - Fix : `scripts/screen_dpms.sh` utilise `wlr-randr --off/--on` (zwlr_output_management_v1)
+      - ✅ `scripts/idle_screen.sh` mis à jour — pas de sudo requis
+- [x] TICKET-099 — bug/ingest — acast 403 Forbidden : User-Agent manquant dans downloader.py
+      - sphinx.acast.com bloquait les requêtes sans User-Agent → 0 MP3 téléchargés pour habiaunavez
+      - Fix : `DEFAULT_HEADERS` avec User-Agent générique ajouté à toutes les requêtes
+      - ✅ `scripts/rss_ingest/downloader.py` corrigé — habiaunavez 296 MP3 OK
+
+- [x] TICKET-098 — bug/UX — Screensaver ne s'activait pas sur le kiosk Pi
+      - Cause : écran tactile CTP `wch.cn USB2IIC_CTP_CONTROL` génère des `touchstart` fantômes sans `touchend`
+      - Ces events réinitialisaient le timer screensaver en permanence
+      - Fix : `wakeUp` n'écoute plus que `click` + `keydown` (un vrai tap génère `click` après `touchend`)
+      - ✅ `web/lecteur/index.html` mis à jour
       - ✅ `play_tracker.py` (serveur, MPD idle) est désormais seule source de vérité
 - [x] TICKET-061 — content — Saison 2 Professeur Caillou
       - ✅ Session 11 : 13 épisodes S2 déjà présents dans `data.json` — rien à faire
