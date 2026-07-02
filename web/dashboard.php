@@ -196,88 +196,111 @@ $currentPage = basename($_SERVER['PHP_SELF'] ?? 'dashboard.php');
       margin-bottom: 18px;
     }
 
-    /* ── Thermomètre casque ───────────────────────────────── */
+    /* ── Casque dashboard ──────────────────────────────────── */
     @keyframes thermo-blink {
       0%, 100% { opacity: 1; }
-      50%       { opacity: 0.12; }
-    }
-    .thermo-blink { animation: thermo-blink 0.9s ease-in-out infinite; }
-
-    .thermo-group {
-      display: flex;
-      gap: 10px;
-      flex-shrink: 0;
-      align-items: flex-end;
-    }
-    .thermo-labels {
-      position: relative;
-      height: 200px;
-      width: 38px;
-      font-size: 11px;
-      color: var(--muted);
-      text-align: right;
-      flex-shrink: 0;
-    }
-    .thermo-labels span {
-      position: absolute;
-      right: 0;
-      line-height: 1;
-      transform: translateY(50%);
-    }
-    .thermo-col {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-    }
-    .thermo-tube {
-      width: 30px;
-      height: 200px;
-      background: #0b1220;
-      border: 1.5px solid #334155;
-      border-radius: 15px;
-      position: relative;
-      overflow: hidden;
-    }
-    .thermo-tube-fill {
-      position: absolute;
-      bottom: 0; left: 0; right: 0;
-      height: 0%;
-      background: #22c55e;
-      transition: height 1s cubic-bezier(.4,0,.2,1), background-color 0.4s;
-    }
-    .thermo-tick {
-      position: absolute;
-      left: 0; right: 0;
-      height: 1px;
-    }
-    .thermo-bulb {
-      width: 46px;
-      height: 46px;
-      border-radius: 50%;
-      background: #22c55e;
-      border: 1.5px solid #334155;
-      margin-top: -8px;
-      transition: background-color 0.4s;
-      flex-shrink: 0;
-    }
-    .hp-time {
-      font-size: clamp(28px, 4vw, 46px);
-      font-weight: 700;
-      line-height: 1.1;
-      margin-bottom: 4px;
+      50%       { opacity: 0.1; }
     }
     .hp-badge {
-      display: inline-block;
-      padding: 5px 14px;
-      border-radius: 20px;
-      font-size: 13px;
-      font-weight: 700;
-      margin: 8px 0;
+      display: inline-block; padding: 4px 13px;
+      border-radius: 20px; font-size: 13px; font-weight: 700;
       border: 1px solid transparent;
-      transition: background 0.4s, color 0.4s;
     }
-    .hp-detail { color: var(--muted); font-size: 13px; }
-    /* ───────────────────────────────────────────────────── */
+    /* Thermomètre */
+    .hp-thermo-side {
+      display: flex; gap: 6px; align-items: flex-end;
+      padding-right: 14px; flex-shrink: 0; position: relative;
+    }
+    .hp-thermo-labels {
+      position: relative; height: 200px; width: 32px;
+      font-size: 10px; color: var(--muted);
+      text-align: right; flex-shrink: 0;
+    }
+    .hp-thermo-labels span {
+      position: absolute; right: 0; line-height: 1;
+      transform: translateY(50%);
+    }
+    .hp-tube {
+      width: 26px; height: 200px;
+      background: #060d18;
+      border: 1.5px solid rgba(100,116,139,.4);
+      border-radius: 13px; position: relative; overflow: hidden;
+      box-shadow:
+        inset 0 0 14px rgba(0,0,0,.75),
+        inset 1.5px 0 0 rgba(255,255,255,.05),
+        inset -1.5px 0 0 rgba(0,0,0,.35);
+    }
+    .hp-tube-fill {
+      position: absolute; bottom: 0; left: 0; right: 0;
+      height: 0%;
+      transition: height 1.3s cubic-bezier(.22,1,.36,1), background .4s;
+    }
+    .hp-sheen {
+      position: absolute; top: 0; left: 4px; width: 5px; bottom: 0;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,.16), transparent);
+      border-radius: 3px; pointer-events: none;
+    }
+    .hp-tick {
+      position: absolute; left: 0; right: 0;
+      height: 0; border-top: 1px dashed rgba(100,116,139,.45);
+    }
+    .hp-bulb {
+      width: 48px; height: 48px; border-radius: 50%;
+      margin-top: -10px;
+      border: 1.5px solid rgba(100,116,139,.4);
+      background: #22c55e;
+      transition: background-color .4s, box-shadow .5s;
+      position: relative; overflow: hidden; flex-shrink: 0;
+    }
+    .hp-bulb-shine {
+      position: absolute;
+      width: 13px; height: 13px; top: 7px; left: 9px;
+      background: rgba(255,255,255,.28); border-radius: 50%;
+      filter: blur(2px);
+    }
+    /* Graphique barres */
+    .hp-bars-wrap {
+      position: relative; height: 200px;
+      border-bottom: 1px solid #334155;
+    }
+    .hp-bg-gradient {
+      position: absolute; inset: 0; pointer-events: none;
+      border-radius: 3px 3px 0 0;
+      background: linear-gradient(to bottom,
+        rgba(239,68,68,.09) 0%, rgba(249,115,22,.06) 10%,
+        rgba(234,179,8,.04) 28%, rgba(34,197,94,.03) 55%,
+        rgba(34,197,94,.015) 100%);
+    }
+    .hp-thr {
+      position: absolute; left: 0; right: 0;
+      height: 1px; background: rgba(239,68,68,.38);
+    }
+    .hp-thr.t75 { background: rgba(249,115,22,.3); }
+    .hp-thr.t50 { background: rgba(234,179,8,.26); }
+    .hp-bars {
+      position: absolute; inset: 0;
+      display: flex; align-items: flex-end; gap: 3px; padding: 0 2px;
+    }
+    .hp-bar {
+      flex: 1; border-radius: 3px 3px 0 0; position: relative;
+      transition: height .9s cubic-bezier(.22,1,.36,1), background-color .4s;
+    }
+    .hp-bar.today::after {
+      content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+      background: rgba(255,255,255,.3); border-radius: 3px;
+    }
+    .hp-bar[data-pct]::before {
+      content: attr(data-pct) '%';
+      position: absolute; top: -15px; left: 50%;
+      transform: translateX(-50%);
+      font-size: 8px; white-space: nowrap; opacity: .75;
+    }
+    .hp-day-labels { display: flex; gap: 3px; padding: 5px 2px 0; }
+    .hp-day-label {
+      flex: 1; text-align: center; font-size: 9px; color: #475569;
+    }
+    .hp-day-label.today { color: #e2e8f0; font-weight: 600; }
+    /* ─────────────────────────────────────────────────────── */
 
     @media (max-width: 980px) {
       .funnel-row { grid-template-columns: 1fr; }
@@ -353,43 +376,68 @@ $currentPage = basename($_SERVER['PHP_SELF'] ?? 'dashboard.php');
     </div>
 
     <section class="ha-panel" style="margin-bottom:18px">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
-        <h2 style="margin:0">🎧 Casque — aujourd'hui</h2>
-        <span id="hp-updated" class="muted" style="font-size:12px"></span>
+      <!-- En-tête -->
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">
+        <h2 style="margin:0">🎧 Fatigue auditive — casque</h2>
+        <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+          <div>
+            <span id="hp-time" style="font-size:20px;font-weight:700;line-height:1">—</span>
+            <span style="font-size:12px;color:var(--muted);margin-left:5px">aujourd'hui</span>
+          </div>
+          <span id="hp-badge" class="hp-badge">…</span>
+          <span id="hp-updated" class="muted" style="font-size:11px"></span>
+        </div>
       </div>
-      <div style="display:flex;gap:32px;align-items:flex-end;flex-wrap:wrap">
 
-        <!-- Thermomètre -->
-        <div class="thermo-group">
-          <!-- Labels graduations -->
-          <div class="thermo-labels">
-            <span style="bottom:100%;padding-bottom:4px">2h</span>
-            <span style="bottom:90%;color:#ef4444;opacity:.7">1h48</span>
-            <span style="bottom:75%;color:#f97316;opacity:.8">1h30</span>
-            <span style="bottom:50%;color:#eab308;opacity:.8">1h</span>
-            <span style="bottom:0;padding-top:4px">0</span>
+      <!-- Thermomètre (gauche) + Graphique (droite) -->
+      <div style="display:flex;gap:0;align-items:flex-start">
+
+        <!-- Thermomètre (z-index:2 = au premier plan) -->
+        <div class="hp-thermo-side" style="z-index:2">
+          <div class="hp-thermo-labels">
+            <span style="bottom:100%;padding-bottom:3px;font-size:11px;color:var(--text)">2h</span>
+            <span style="bottom:90%;color:#ef4444;opacity:.75;font-size:9px">1h48</span>
+            <span style="bottom:75%;color:#f97316;opacity:.85">1h30</span>
+            <span style="bottom:50%;color:#eab308;opacity:.85">1h</span>
+            <span style="bottom:0;padding-top:2px">0</span>
           </div>
-          <!-- Tube + bulbe -->
-          <div class="thermo-col">
-            <div class="thermo-tube">
-              <div id="thermo-tube-fill" class="thermo-tube-fill"></div>
-              <!-- Lignes seuils -->
-              <div class="thermo-tick" style="bottom:90%;background:rgba(239,68,68,.45)"></div>
-              <div class="thermo-tick" style="bottom:75%;background:rgba(249,115,22,.35)"></div>
-              <div class="thermo-tick" style="bottom:50%;background:rgba(234,179,8,.35)"></div>
+          <div style="display:flex;flex-direction:column;align-items:center">
+            <div class="hp-tube">
+              <div id="hp-tube-fill" class="hp-tube-fill">
+                <div class="hp-sheen"></div>
+              </div>
+              <div class="hp-tick" style="bottom:90%"></div>
+              <div class="hp-tick t75" style="bottom:75%"></div>
+              <div class="hp-tick t50" style="bottom:50%"></div>
             </div>
-            <div id="thermo-bulb" class="thermo-bulb"></div>
+            <div id="hp-bulb" class="hp-bulb">
+              <div class="hp-bulb-shine"></div>
+            </div>
           </div>
         </div>
 
-        <!-- Informations -->
-        <div>
-          <div id="hp-time" class="hp-time">—</div>
-          <div class="muted" style="font-size:14px">au casque aujourd'hui</div>
-          <div id="hp-badge" class="hp-badge">…</div>
-          <div id="hp-detail" class="hp-detail">—</div>
+        <!-- Graphique 14 jours (z-index:1 = en arrière-plan) -->
+        <div style="flex:1;min-width:0;position:relative;z-index:1">
+          <div class="hp-bars-wrap">
+            <div class="hp-bg-gradient"></div>
+            <div class="hp-thr"     style="bottom:90%"></div>
+            <div class="hp-thr t75" style="bottom:75%"></div>
+            <div class="hp-thr t50" style="bottom:50%"></div>
+            <div id="hp-bars" class="hp-bars">
+              <div style="color:var(--muted);font-size:12px;margin:auto">Chargement…</div>
+            </div>
+          </div>
+          <div id="hp-day-labels" class="hp-day-labels"></div>
         </div>
 
+      </div>
+
+      <!-- Légende -->
+      <div style="display:flex;gap:16px;margin-top:10px;font-size:11px;flex-wrap:wrap" class="muted">
+        <span><span style="color:#22c55e">●</span> Normal (&lt;1h)</span>
+        <span><span style="color:#eab308">●</span> Modéré (1h–1h30)</span>
+        <span><span style="color:#f97316">●</span> Attention (1h30–1h48)</span>
+        <span><span style="color:#ef4444">●</span> Limite (&gt;1h48)</span>
       </div>
     </section>
 
@@ -902,64 +950,92 @@ $currentPage = basename($_SERVER['PHP_SELF'] ?? 'dashboard.php');
 
     qs('period').addEventListener('change', loadStats);
 
-    // ── Thermomètre casque ────────────────────────────────
+    // ── Casque : graphique 14j + thermomètre ─────────────
+    function renderHeadphoneBars(days) {
+      const barsEl   = qs('hp-bars');
+      const labelsEl = qs('hp-day-labels');
+      if (!barsEl || !labelsEl) return;
+
+      const DOW = ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'];
+      barsEl.innerHTML   = '';
+      labelsEl.innerHTML = '';
+
+      const targets = [];
+      days.forEach(d => {
+        const pct   = Number(d.pct || 0);
+        const color = pct>=90?'#ef4444':pct>=75?'#f97316':pct>=50?'#eab308':'#22c55e';
+
+        const bar = document.createElement('div');
+        bar.className         = 'hp-bar' + (d.is_today ? ' today' : '');
+        bar.style.height      = '0';
+        bar.style.backgroundColor = pct > 0 ? color : '#1a2640';
+        if (pct >= 50) { bar.dataset.pct = Math.round(pct); bar.style.color = color; }
+        barsEl.appendChild(bar);
+        targets.push({ el: bar, pct });
+
+        const lbl       = document.createElement('div');
+        lbl.className   = 'hp-day-label' + (d.is_today ? ' today' : '');
+        const date      = new Date(d.jour + 'T12:00:00');
+        lbl.textContent = d.is_today ? 'auj.' : DOW[date.getDay()];
+        labelsEl.appendChild(lbl);
+      });
+
+      // Double rAF pour déclencher les transitions CSS
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        targets.forEach(({ el, pct }) => {
+          el.style.height = Math.max(pct > 0 ? 1 : 0, pct) + '%';
+        });
+      }));
+    }
+
     async function loadHeadphoneStats() {
       try {
-        const r = await fetch('/tracking.php?action=headphone_today', { cache: 'no-store' });
+        const r = await fetch('/tracking.php?action=headphone_history', { cache: 'no-store' });
         const d = await r.json();
         if (!d.ok) return;
 
-        const pct = Number(d.pct || 0);
-        const min = Number(d.casque_min || 0);
+        renderHeadphoneBars(d.days || []);
 
-        let color, bg, label;
-        if (pct >= 90) {
-          color = '#ef4444'; bg = 'rgba(239,68,68,.15)'; label = '⚠️ Limite atteinte !';
-        } else if (pct >= 75) {
-          color = '#f97316'; bg = 'rgba(249,115,22,.15)'; label = '🟠 Attention';
-        } else if (pct >= 50) {
-          color = '#eab308'; bg = 'rgba(234,179,8,.13)';  label = '🟡 Modéré';
-        } else {
-          color = '#22c55e'; bg = 'rgba(34,197,94,.12)';  label = '🟢 Normal';
+        const t     = d.today;
+        const pct   = Number(t.pct || 0);
+        const min   = Number(t.casque_min || 0);
+        const color = pct>=90?'#ef4444':pct>=75?'#f97316':pct>=50?'#eab308':'#22c55e';
+
+        const fill = qs('hp-tube-fill');
+        const bulb = qs('hp-bulb');
+        if (fill) {
+          fill.style.height     = Math.min(100, pct) + '%';
+          fill.style.background = `linear-gradient(to top, ${color}, ${color}bb)`;
+          fill.style.animation  = pct >= 90 ? 'thermo-blink 0.9s ease-in-out infinite' : '';
+        }
+        if (bulb) {
+          bulb.style.backgroundColor = color;
+          bulb.style.boxShadow = `0 0 20px 6px ${color}40, 0 0 6px 2px ${color}70`;
+          bulb.style.animation = pct >= 90 ? 'thermo-blink 0.9s ease-in-out infinite' : '';
         }
 
-        // Thermomètre
-        const fill = qs('thermo-tube-fill');
-        const bulb = qs('thermo-bulb');
-        fill.style.height          = Math.min(100, pct) + '%';
-        fill.style.backgroundColor = color;
-        bulb.style.backgroundColor = color;
-        const blink = pct >= 90;
-        fill.classList.toggle('thermo-blink', blink);
-        bulb.classList.toggle('thermo-blink', blink);
+        const h = Math.floor(min / 60), m = Math.round(min % 60);
+        qs('hp-time').textContent = min < 1 ? '0 min' : h > 0
+          ? `${h}h${String(m).padStart(2,'0')}` : `${Math.round(min)} min`;
 
-        // Temps affiché
-        const h = Math.floor(min / 60);
-        const m = Math.round(min % 60);
-        qs('hp-time').textContent = h > 0
-          ? `${h}h${String(m).padStart(2, '0')}`
-          : `${Math.round(min)} min`;
-
-        // Badge statut
+        let bg, label;
+        if (pct >= 90)      { bg='rgba(239,68,68,.15)';  label='⚠️ Limite !'; }
+        else if (pct >= 75) { bg='rgba(249,115,22,.15)'; label='🟠 Attention'; }
+        else if (pct >= 50) { bg='rgba(234,179,8,.13)';  label='🟡 Modéré'; }
+        else                { bg='rgba(34,197,94,.12)';  label='🟢 Normal'; }
         const badge = qs('hp-badge');
-        badge.textContent      = label;
-        badge.style.background = bg;
-        badge.style.color      = color;
-        badge.style.borderColor = color + '55';
+        if (badge) {
+          badge.textContent       = label;
+          badge.style.background  = bg;
+          badge.style.color       = color;
+          badge.style.borderColor = color + '55';
+        }
 
-        // Détail
-        const rem = Math.max(0, Math.round(120 - min));
-        qs('hp-detail').textContent = pct >= 100
-          ? 'Limite de 2h dépassée !'
-          : rem === 0 ? 'Limite atteinte' : `${rem} min restantes avant 2h`;
-
-        // Heure de rafraîchissement
         const now = new Date();
-        qs('hp-updated').textContent = `↻ ${now.getHours()}:${String(now.getMinutes()).padStart(2,'0')}`;
+        const upd = qs('hp-updated');
+        if (upd) upd.textContent = `↻ ${now.getHours()}:${String(now.getMinutes()).padStart(2,'0')}`;
 
-      } catch (e) {
-        console.warn('headphone stats:', e);
-      }
+      } catch (e) { console.warn('headphone stats:', e); }
     }
 
     (async function init() {

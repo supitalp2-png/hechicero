@@ -1113,6 +1113,7 @@ async function refreshStatus() {
     el('btn-pp').textContent       = playing ? '⏸' : '▶';
     el('ov-icon').textContent      = playing ? '⏸' : '▶';
     el('mini-btn-pp').textContent  = playing ? '⏸' : '▶';
+    el('rp-btn-pp').textContent    = playing ? '⏸' : '▶';
     el('art-overlay').classList.toggle('show', !playing);
 
     if (duration > 0) {
@@ -1226,11 +1227,11 @@ async function openRadioCatalog() {
 }
 
 function openRadioPlayer(st) {
+  const alreadySelected = currentStation?.url === st.url;
   currentStation = st;
   currentPodcast = null;   // empêche l'auto-next pendant le clear MPD (TICKET-072 symétrique)
   currentIdx = -1;
-  sendRadio('play', { url: st.url });
-  // Station image (with fallback handled via onerror in HTML)
+
   const img = el('rp-art');
   img.style.display = 'block';
   el('rp-art-fallback').style.display = 'none';
@@ -1238,8 +1239,16 @@ function openRadioPlayer(st) {
   img.alt = st.name;
   el('rp-name').textContent = st.name;
   el('rp-desc').textContent = st.desc;
-  el('rp-btn-pp').textContent = '⏸';
+
+  if (!alreadySelected) {
+    // Nouvelle station : état optimiste ⏸ immédiat, MPD démarre en arrière-plan
+    el('rp-btn-pp').textContent   = '⏸';
+    el('mini-btn-pp').textContent = '⏸';
+    sendRadio('play', { url: st.url }); // fire-and-forget
+  }
+  // startPoll rafraîchit l'état MPD toutes les 3s → corrige ▶/⏸ en continu
   show('radio-player');
+  startPoll();
   refreshStatus();
 }
 

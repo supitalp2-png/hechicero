@@ -1,6 +1,6 @@
 {
     "volume": {
-        "speakers_max": 39,
+        "speakers_max": 66,
         "headphones_max": 100
     },
     "chime_enabled": true,

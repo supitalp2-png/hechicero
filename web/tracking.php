@@ -280,7 +280,7 @@ try {
         $stmt->execute();
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
         $casque_s  = (float)($row['casque_s'] ?? 0);
-        $max_s     = 7200.0; // 2h = limite du jour
+        $max_s     = 7200.0;
         $pct       = min(100, round($casque_s / $max_s * 100, 1));
         $level     = $pct >= 90 ? 'danger' : ($pct >= 75 ? 'alerte' : ($pct >= 50 ? 'attention' : 'ok'));
         echo json_encode([
@@ -289,6 +289,53 @@ try {
             'casque_min'=> round($casque_s / 60, 1),
             'pct'       => $pct,
             'level'     => $level,
+        ]);
+    } elseif ($action === 'headphone_history') {
+        // 14 jours glissants de fatigue auditive casque
+        $n_days = 14;
+        $max_s  = 7200.0; // 2h = 100%
+        $today  = date('Y-m-d');
+        $since  = mktime(0, 0, 0, (int)date('m'), (int)date('d') - $n_days + 1, (int)date('Y'));
+
+        $stmt = $db->prepare(
+            "SELECT date(ts_start, 'unixepoch', 'localtime') AS jour,
+                    COALESCE(SUM(listened_s), 0)             AS casque_s
+             FROM play_events
+             WHERE output_mode = 'casque'
+               AND ts_start >= ?
+             GROUP BY jour
+             ORDER BY jour ASC"
+        );
+        $stmt->execute([$since]);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $by_day = [];
+        foreach ($rows as $r) { $by_day[$r['jour']] = (float)$r['casque_s']; }
+
+        $days = [];
+        for ($i = $n_days - 1; $i >= 0; $i--) {
+            $jour = date('Y-m-d', mktime(0, 0, 0, (int)date('m'), (int)date('d') - $i, (int)date('Y')));
+            $cs   = $by_day[$jour] ?? 0.0;
+            $pct  = min(100, round($cs / $max_s * 100, 1));
+            $days[] = [
+                'jour'     => $jour,
+                'casque_s' => round($cs),
+                'pct'      => $pct,
+                'is_today' => ($jour === $today),
+            ];
+        }
+
+        $today_s   = $by_day[$today] ?? 0.0;
+        $today_pct = min(100, round($today_s / $max_s * 100, 1));
+        echo json_encode([
+            'ok'    => true,
+            'days'  => $days,
+            'today' => [
+                'casque_s'   => round($today_s),
+                'casque_min' => round($today_s / 60, 1),
+                'pct'        => $today_pct,
+                'level'      => $today_pct >= 90 ? 'danger' : ($today_pct >= 75 ? 'alerte' : ($today_pct >= 50 ? 'attention' : 'ok')),
+            ],
         ]);
     } else {
         echo json_encode(['ok' => false, 'error' => 'action inconnue: ' . htmlspecialchars($action)]);
