@@ -110,15 +110,22 @@ git clone https://github.com/<ton_repo>/hechicero
 
 ### 6.1 Fichier `/etc/mpd.conf`
 Points essentiels :
-- utiliser la carte HiFiBerry (`hw:2,0`)
+- utiliser la carte HiFiBerry
 - activer le volume logiciel
+- ⚠️ **référencer les cartes ALSA par nom (`hw:CARD=...`), jamais par numéro (`hw:2,0`)** — l'ordre d'énumération des cartes (HiFiBerry vs DAC USB casque) n'est pas garanti stable d'un boot à l'autre ; un numéro fixe a fini par pointer vers le mauvais périphérique (bug du 2026-07-03, cf. [[project_hechicero_audio_output]])
 
-Extrait :
+Extrait (noms de cartes à vérifier avec `aplay -l` / `cat /proc/asound/cards`) :
 ```
 audio_output {
     type        "alsa"
-    name        "HiFiBerry Amp4"
-    device      "hw:2,0"
+    name        "My ALSA Device"
+    device      "hw:CARD=sndrpihifiberry,DEV=0"
+    mixer_type  "software"
+}
+audio_output {
+    type        "alsa"
+    name        "Casque USB"
+    device      "hw:CARD=Audio,DEV=0"
     mixer_type  "software"
 }
 ```

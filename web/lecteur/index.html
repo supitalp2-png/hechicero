@@ -1468,8 +1468,8 @@ el('back-pods-ch').addEventListener('click', () => { show('podcasts'); });
 el('back-ch').addEventListener('click', () => { show('chapters'); });
 el('back-radio-catalog').addEventListener('click', () => { show('radio-catalog'); });
 el('rp-btn-pp').addEventListener('click', async () => { await sendRadio('pause'); refreshStatus(); });
-el('rp-vd').addEventListener('click', async () => { await sendRadio('voldown'); refreshStatus(); });
-el('rp-vu').addEventListener('click', async () => { if (currentVolume < 100) { await sendRadio('volup'); refreshStatus(); } });
+el('rp-vd').addEventListener('click', async () => { await setVolume(Math.max(0,   currentVolume - 5)); });
+el('rp-vu').addEventListener('click', async () => { await setVolume(Math.min(100, currentVolume + 5)); });
 el('player-prog-bar').addEventListener('click', e => {
   if (!currentDuration) return;
   const rect = e.currentTarget.getBoundingClientRect();
@@ -1582,8 +1582,8 @@ el('btn-next').addEventListener('click', () => {
   const items = getDisplayItems(currentPodcast);
   if (currentIdx < items.length - 1) playTrack(currentIdx + 1);
 });
-el('btn-vd').addEventListener('click', async () => { await sendRadio('voldown'); refreshStatus(); });
-el('btn-vu').addEventListener('click', async () => { if (currentVolume < 100) { await sendRadio('volup'); refreshStatus(); } });
+el('btn-vd').addEventListener('click', async () => { await setVolume(Math.max(0,   currentVolume - 5)); });
+el('btn-vu').addEventListener('click', async () => { await setVolume(Math.min(100, currentVolume + 5)); });
 
 // ═══════════════════════════════════════
 // SON DE DÉMARRAGE (Web Audio API)

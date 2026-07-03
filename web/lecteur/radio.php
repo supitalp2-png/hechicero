@@ -162,7 +162,7 @@ if (isset($_GET['action'])) {
     if ($action === "volup") {
         $status = mpd_status();
         $volume = isset($status['volume']) ? (int)$status['volume'] : 10;
-        mpd_command('setvol ' . min(50, $volume + 5));
+        mpd_command('setvol ' . min(100, $volume + 5));
     }
 
     if ($action === 'setvol' && isset($_GET['vol'])) {
@@ -250,11 +250,15 @@ if (isset($_GET['action'])) {
     if ($action === 'set_output' && isset($_GET['mode'])) {
         header('Content-Type: application/json; charset=utf-8');
         if ($_GET['mode'] === 'casque') {
-            mpd_batch(['enableoutput 1', 'disableoutput 0']);
+            $res = mpd_batch(['enableoutput 1', 'disableoutput 0']);
         } else {
-            mpd_batch(['enableoutput 0', 'disableoutput 1']);
+            $res = mpd_batch(['enableoutput 0', 'disableoutput 1']);
         }
-        echo json_encode(['ok' => true, 'mode' => $_GET['mode']]);
+        // Ne pas répondre ok:true si la commande n'a en fait jamais atteint
+        // MPD (socket pas encore prêt, typiquement au boot) — sinon un
+        // script qui poll cet endpoint croit avoir réussi dès le 1er essai.
+        $ok = !str_starts_with($res, 'MPD connection failed');
+        echo json_encode(['ok' => $ok, 'mode' => $_GET['mode']]);
         exit;
     }
 }

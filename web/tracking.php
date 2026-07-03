@@ -270,7 +270,6 @@ try {
             'radio_top_stations' => $radio_top_stations,
         ]);
     } elseif ($action === 'headphone_today') {
-        // Temps casque du jour (réinitialise à minuit heure locale)
         $stmt = $db->prepare(
             "SELECT COALESCE(SUM(listened_s), 0) AS casque_s
              FROM play_events
@@ -278,53 +277,41 @@ try {
                AND date(ts_start, 'unixepoch', 'localtime') = date('now', 'localtime')"
         );
         $stmt->execute();
-        $row = $stmt->fetch(PDO::FETCH_ASSOC);
-        $casque_s  = (float)($row['casque_s'] ?? 0);
-        $max_s     = 7200.0;
-        $pct       = min(100, round($casque_s / $max_s * 100, 1));
-        $level     = $pct >= 90 ? 'danger' : ($pct >= 75 ? 'alerte' : ($pct >= 50 ? 'attention' : 'ok'));
+        $row      = $stmt->fetch(PDO::FETCH_ASSOC);
+        $casque_s = (float)($row['casque_s'] ?? 0);
+        $max_s    = 7200.0;
+        $pct      = min(100, round($casque_s / $max_s * 100, 1));
         echo json_encode([
-            'ok'        => true,
-            'casque_s'  => round($casque_s),
-            'casque_min'=> round($casque_s / 60, 1),
-            'pct'       => $pct,
-            'level'     => $level,
+            'ok'         => true,
+            'casque_s'   => round($casque_s),
+            'casque_min' => round($casque_s / 60, 1),
+            'pct'        => $pct,
+            'level'      => $pct >= 90 ? 'danger' : ($pct >= 75 ? 'alerte' : ($pct >= 50 ? 'attention' : 'ok')),
         ]);
     } elseif ($action === 'headphone_history') {
-        // 14 jours glissants de fatigue auditive casque
         $n_days = 14;
-        $max_s  = 7200.0; // 2h = 100%
+        $max_s  = 7200.0;
         $today  = date('Y-m-d');
         $since  = mktime(0, 0, 0, (int)date('m'), (int)date('d') - $n_days + 1, (int)date('Y'));
-
         $stmt = $db->prepare(
             "SELECT date(ts_start, 'unixepoch', 'localtime') AS jour,
-                    COALESCE(SUM(listened_s), 0)             AS casque_s
+                    COALESCE(SUM(listened_s), 0) AS casque_s
              FROM play_events
-             WHERE output_mode = 'casque'
-               AND ts_start >= ?
-             GROUP BY jour
-             ORDER BY jour ASC"
+             WHERE output_mode = 'casque' AND ts_start >= ?
+             GROUP BY jour ORDER BY jour ASC"
         );
         $stmt->execute([$since]);
-        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
         $by_day = [];
-        foreach ($rows as $r) { $by_day[$r['jour']] = (float)$r['casque_s']; }
-
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
+            $by_day[$r['jour']] = (float)$r['casque_s'];
+        }
         $days = [];
         for ($i = $n_days - 1; $i >= 0; $i--) {
             $jour = date('Y-m-d', mktime(0, 0, 0, (int)date('m'), (int)date('d') - $i, (int)date('Y')));
             $cs   = $by_day[$jour] ?? 0.0;
             $pct  = min(100, round($cs / $max_s * 100, 1));
-            $days[] = [
-                'jour'     => $jour,
-                'casque_s' => round($cs),
-                'pct'      => $pct,
-                'is_today' => ($jour === $today),
-            ];
+            $days[] = ['jour' => $jour, 'casque_s' => round($cs), 'pct' => $pct, 'is_today' => ($jour === $today)];
         }
-
         $today_s   = $by_day[$today] ?? 0.0;
         $today_pct = min(100, round($today_s / $max_s * 100, 1));
         echo json_encode([

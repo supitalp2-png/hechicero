@@ -27,12 +27,28 @@ Le démarrage kiosque est géré par `~/kiosk.sh`, appelé depuis `~/.config/lxs
 Contenu actuel :
 ```bash
 #!/bin/bash
+# ⚠️ Sécurité audio (TICKET-031) — pas de détection matérielle casque/HP :
+# on force la sortie sur les HP + un volume enfant bas AVANT de lancer
+# Chromium, pour ne jamais hériter d'un état "casque à fond" resté actif
+# côté MPD depuis la session précédente.
+for i in $(seq 1 15); do
+  resp=$(curl -sf "http://localhost/lecteur/radio.php?action=set_output&mode=hp")
+  if echo "$resp" | grep -q '"ok":true'; then
+    break
+  fi
+  sleep 1
+done
+curl -sf "http://localhost/lecteur/radio.php?action=setvol&vol=13" >/dev/null  # 20% IHM ≈ 13% MPD (speakers_max=66)
+
 chromium --noerrdialogs --disable-infobars --kiosk http://localhost/lecteur &
-sleep 12
+sleep 6
 python3 /home/thomas/hechicero/scripts/play_chime.py
 ```
 
 Points clés :
+- La bascule HP + volume bas est forcée **côté shell, avant Chromium** (pas en JS) : ça évite toute dépendance à l'état MPD restauré au boot, et ça ne touche pas à la logique de navigation de l'IHM (`initAudioMode()` se contente de relire l'état HP/casque déjà correct auprès de MPD)
+- La boucle vérifie le **vrai contenu** de la réponse (`"ok":true`), pas juste le succès HTTP — `radio.php` pouvait répondre `ok:true` même quand la commande n'atteignait pas MPD (socket pas encore prêt tout au début du boot), ce qui faisait sortir la boucle trop tôt sans avoir réellement basculé sur HP (bug observé le 2026-07-03 : son sorti sur casque au démarrage malgré le script). Corrigé aussi côté `radio.php` (`set_output` renvoie désormais `ok:false` si `mpd_batch()` n'a pas atteint MPD).
+- Jusqu'à 15 tentatives (1s d'intervalle) car MPD peut mettre quelques secondes à être prêt au boot
 - Chromium lancé **en arrière-plan** (`&`) pour ne pas bloquer le script
 - Le chime joue après un délai (ajustable) pour attendre que la page soit chargée
 - **Ne pas remettre le chime avant Chromium** — il jouerait au boot de l’OS, pas à l’affichage du lecteur

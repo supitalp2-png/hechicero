@@ -197,109 +197,45 @@ $currentPage = basename($_SERVER['PHP_SELF'] ?? 'dashboard.php');
     }
 
     /* ── Casque dashboard ──────────────────────────────────── */
-    @keyframes thermo-blink {
-      0%, 100% { opacity: 1; }
-      50%       { opacity: 0.1; }
-    }
+    @keyframes ear-pulse { 0%,100%{opacity:1} 50%{opacity:.15} }
     .hp-badge {
-      display: inline-block; padding: 4px 13px;
-      border-radius: 20px; font-size: 13px; font-weight: 700;
-      border: 1px solid transparent;
+      display:inline-block; padding:4px 13px;
+      border-radius:20px; font-size:13px; font-weight:700;
+      border:1px solid transparent;
     }
-    /* Thermomètre */
-    .hp-thermo-side {
-      display: flex; gap: 6px; align-items: flex-end;
-      padding-right: 14px; flex-shrink: 0; position: relative;
-    }
-    .hp-thermo-labels {
-      position: relative; height: 200px; width: 32px;
-      font-size: 10px; color: var(--muted);
-      text-align: right; flex-shrink: 0;
-    }
-    .hp-thermo-labels span {
-      position: absolute; right: 0; line-height: 1;
-      transform: translateY(50%);
-    }
-    .hp-tube {
-      width: 26px; height: 200px;
-      background: #060d18;
-      border: 1.5px solid rgba(100,116,139,.4);
-      border-radius: 13px; position: relative; overflow: hidden;
-      box-shadow:
-        inset 0 0 14px rgba(0,0,0,.75),
-        inset 1.5px 0 0 rgba(255,255,255,.05),
-        inset -1.5px 0 0 rgba(0,0,0,.35);
-    }
-    .hp-tube-fill {
-      position: absolute; bottom: 0; left: 0; right: 0;
-      height: 0%;
-      transition: height 1.3s cubic-bezier(.22,1,.36,1), background .4s;
-    }
-    .hp-sheen {
-      position: absolute; top: 0; left: 4px; width: 5px; bottom: 0;
-      background: linear-gradient(90deg, transparent, rgba(255,255,255,.16), transparent);
-      border-radius: 3px; pointer-events: none;
-    }
-    .hp-tick {
-      position: absolute; left: 0; right: 0;
-      height: 0; border-top: 1px dashed rgba(100,116,139,.45);
-    }
-    .hp-bulb {
-      width: 48px; height: 48px; border-radius: 50%;
-      margin-top: -10px;
-      border: 1.5px solid rgba(100,116,139,.4);
-      background: #22c55e;
-      transition: background-color .4s, box-shadow .5s;
-      position: relative; overflow: hidden; flex-shrink: 0;
-    }
-    .hp-bulb-shine {
-      position: absolute;
-      width: 13px; height: 13px; top: 7px; left: 9px;
-      background: rgba(255,255,255,.28); border-radius: 50%;
-      filter: blur(2px);
-    }
-    /* Graphique barres */
+    /* Graphique capacité restante (barre haute = bien = peu écouté) */
     .hp-bars-wrap {
-      position: relative; height: 200px;
-      border-bottom: 1px solid #334155;
+      position:relative; height:160px; border-bottom:1px solid #334155;
     }
     .hp-bg-gradient {
-      position: absolute; inset: 0; pointer-events: none;
-      border-radius: 3px 3px 0 0;
-      background: linear-gradient(to bottom,
-        rgba(239,68,68,.09) 0%, rgba(249,115,22,.06) 10%,
-        rgba(234,179,8,.04) 28%, rgba(34,197,94,.03) 55%,
-        rgba(34,197,94,.015) 100%);
+      position:absolute; inset:0; pointer-events:none; border-radius:3px 3px 0 0;
+      background:linear-gradient(to bottom,
+        rgba(34,197,94,.07) 0%,
+        rgba(234,179,8,.05) 48%,
+        rgba(249,115,22,.06) 74%,
+        rgba(239,68,68,.09) 100%);
     }
     .hp-thr {
-      position: absolute; left: 0; right: 0;
-      height: 1px; background: rgba(239,68,68,.38);
+      position:absolute; left:0; right:0;
+      height:1px; background:rgba(234,179,8,.3);
     }
-    .hp-thr.t75 { background: rgba(249,115,22,.3); }
-    .hp-thr.t50 { background: rgba(234,179,8,.26); }
+    .hp-thr.t25 { background:rgba(249,115,22,.35); }
+    .hp-thr.t10 { background:rgba(239,68,68,.42); }
     .hp-bars {
-      position: absolute; inset: 0;
-      display: flex; align-items: flex-end; gap: 3px; padding: 0 2px;
+      position:absolute; inset:0;
+      display:flex; align-items:flex-end; gap:3px; padding:0 2px;
     }
     .hp-bar {
-      flex: 1; border-radius: 3px 3px 0 0; position: relative;
-      transition: height .9s cubic-bezier(.22,1,.36,1), background-color .4s;
+      flex:1; border-radius:3px 3px 0 0; position:relative;
+      transition:height .9s cubic-bezier(.22,1,.36,1), background-color .4s;
     }
     .hp-bar.today::after {
-      content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
-      background: rgba(255,255,255,.3); border-radius: 3px;
+      content:''; position:absolute; top:0; left:0; right:0; height:3px;
+      background:rgba(255,255,255,.28); border-radius:3px;
     }
-    .hp-bar[data-pct]::before {
-      content: attr(data-pct) '%';
-      position: absolute; top: -15px; left: 50%;
-      transform: translateX(-50%);
-      font-size: 8px; white-space: nowrap; opacity: .75;
-    }
-    .hp-day-labels { display: flex; gap: 3px; padding: 5px 2px 0; }
-    .hp-day-label {
-      flex: 1; text-align: center; font-size: 9px; color: #475569;
-    }
-    .hp-day-label.today { color: #e2e8f0; font-weight: 600; }
+    .hp-day-labels { display:flex; gap:3px; padding:5px 2px 0; }
+    .hp-day-label  { flex:1; text-align:center; font-size:9px; color:#475569; }
+    .hp-day-label.today { color:#e2e8f0; font-weight:600; }
     /* ─────────────────────────────────────────────────────── */
 
     @media (max-width: 980px) {
@@ -376,68 +312,65 @@ $currentPage = basename($_SERVER['PHP_SELF'] ?? 'dashboard.php');
     </div>
 
     <section class="ha-panel" style="margin-bottom:18px">
-      <!-- En-tête -->
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px">
         <h2 style="margin:0">🎧 Fatigue auditive — casque</h2>
-        <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
-          <div>
-            <span id="hp-time" style="font-size:20px;font-weight:700;line-height:1">—</span>
-            <span style="font-size:12px;color:var(--muted);margin-left:5px">aujourd'hui</span>
-          </div>
-          <span id="hp-badge" class="hp-badge">…</span>
-          <span id="hp-updated" class="muted" style="font-size:11px"></span>
-        </div>
+        <span id="hp-updated" class="muted" style="font-size:11px"></span>
       </div>
 
-      <!-- Thermomètre (gauche) + Graphique (droite) -->
+      <!-- Layout côte à côte : oreille gauche | graphique droite -->
       <div style="display:flex;gap:0;align-items:flex-start">
 
-        <!-- Thermomètre (z-index:2 = au premier plan) -->
-        <div class="hp-thermo-side" style="z-index:2">
-          <div class="hp-thermo-labels">
-            <span style="bottom:100%;padding-bottom:3px;font-size:11px;color:var(--text)">2h</span>
-            <span style="bottom:90%;color:#ef4444;opacity:.75;font-size:9px">1h48</span>
-            <span style="bottom:75%;color:#f97316;opacity:.85">1h30</span>
-            <span style="bottom:50%;color:#eab308;opacity:.85">1h</span>
-            <span style="bottom:0;padding-top:2px">0</span>
+        <!-- GAUCHE : icône oreille colorée + jauge verticale + infos du jour -->
+        <div style="flex-shrink:0;width:160px;padding-right:20px;border-right:1px solid rgba(100,116,139,.2)">
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
+
+            <!-- Icône oreille (silhouette solide, couleur = niveau fatigue) — tracée depuis oreille.svg -->
+            <svg id="hp-ear-svg" viewBox="300 130 530 930" width="58" height="101" xmlns="http://www.w3.org/2000/svg" style="display:block;flex-shrink:0;transition:filter .5s">
+              <path id="hp-ear-color" fill="#22c55e" d="M 594.00,150.42 C 606.61,148.89 622.59,150.94 635.00,153.49 635.00,153.49 643.00,154.70 643.00,154.70 685.77,165.20 723.57,192.63 753.10,224.54 772.69,245.70 787.87,265.50 801.69,291.00 854.63,388.67 855.03,507.88 818.31,611.00 808.37,638.90 795.07,665.29 780.50,691.00 780.50,691.00 763.05,718.42 763.05,718.42 750.47,740.21 739.29,762.88 731.88,787.00 725.21,808.72 720.36,833.37 718.17,856.00 716.39,874.34 715.31,902.02 710.12,919.00 703.99,939.03 686.46,963.86 672.74,979.58 652.00,1003.34 623.68,1028.71 593.00,1037.97 583.46,1040.84 579.33,1042.98 569.00,1043.00 569.00,1043.00 549.00,1043.00 549.00,1043.00 533.69,1042.82 515.11,1033.44 502.85,1024.81 467.31,999.80 445.09,955.42 429.20,916.00 429.20,916.00 417.35,888.00 417.35,888.00 414.69,881.87 411.59,875.81 411.21,869.00 410.74,860.64 415.77,850.67 424.01,847.85 426.71,846.93 430.16,846.94 433.00,847.01 444.30,847.29 448.47,854.57 452.58,864.00 452.58,864.00 469.85,905.00 469.85,905.00 469.85,905.00 479.30,926.00 479.30,926.00 492.08,953.11 515.93,990.66 547.00,998.30 550.73,999.21 558.95,999.19 563.00,999.08 568.03,998.94 571.02,999.12 576.00,997.63 588.20,993.99 599.45,987.59 609.83,980.32 626.21,968.85 646.20,946.59 657.33,930.00 660.86,924.73 668.44,912.64 670.45,907.00 674.78,894.90 676.70,860.63 678.17,846.00 680.80,819.75 686.49,793.06 694.67,768.00 703.59,740.65 714.03,718.84 728.42,694.00 728.42,694.00 739.26,677.00 739.26,677.00 752.40,655.52 764.77,633.52 773.94,610.00 780.27,593.78 786.30,576.90 790.53,560.00 795.28,541.00 801.77,507.17 802.00,488.00 802.00,488.00 803.00,458.00 803.00,458.00 803.00,458.00 802.00,441.00 802.00,441.00 801.86,429.82 797.93,405.33 795.42,394.00 787.59,358.52 776.43,328.70 756.69,298.00 746.36,281.93 735.38,267.70 722.01,254.00 698.69,230.11 670.63,208.30 638.00,198.97 638.00,198.97 631.00,197.56 631.00,197.56 623.04,195.66 615.23,194.01 607.00,194.00 607.00,194.00 598.00,194.00 598.00,194.00 590.40,194.09 582.36,195.81 575.00,197.56 575.00,197.56 566.00,199.37 566.00,199.37 550.19,203.92 534.14,211.45 520.00,219.81 494.08,235.13 468.02,257.32 447.29,279.10 422.44,305.22 405.55,325.81 390.31,359.00 381.70,377.74 374.87,396.99 369.87,417.00 367.71,425.66 365.68,443.78 360.47,449.90 349.23,463.08 324.10,457.04 325.04,433.00 325.28,426.88 329.01,410.47 330.63,404.00 335.58,384.19 342.12,364.61 350.52,346.00 359.65,325.78 369.88,306.17 383.00,288.17 400.48,264.21 421.46,243.23 443.27,223.26 472.27,196.69 506.62,173.19 544.00,160.30 556.30,156.06 570.09,152.83 583.00,151.28 583.00,151.28 594.00,150.42 594.00,150.42 Z"/>
+              <!-- Concha / canal auditif -->
+              <path fill="#ffffff" opacity=".9" d="M 729.00,569.00 C 722.73,557.94 720.56,545.44 718.73,533.00 718.73,533.00 715.28,510.00 715.28,510.00 713.01,491.30 712.70,479.05 704.69,461.00 699.24,448.71 691.47,435.55 679.91,428.09 656.51,412.99 627.57,425.53 607.00,439.58 601.60,443.27 594.51,448.33 590.06,453.09 581.50,462.25 571.57,487.68 566.81,500.00 553.81,533.66 552.37,571.57 563.02,606.00 563.02,606.00 585.91,660.00 585.91,660.00 592.74,676.69 597.12,694.04 598.83,712.00 599.70,721.08 600.91,738.56 598.15,747.00 596.22,752.91 589.45,762.19 585.41,767.00 573.68,780.98 555.95,792.42 538.00,796.47 538.00,796.47 531.00,797.30 531.00,797.30 525.46,798.11 525.69,798.92 519.00,799.00 519.00,799.00 506.00,799.00 506.00,799.00 499.10,798.92 485.58,796.16 479.00,793.75 470.92,790.79 469.60,790.40 462.00,785.82 459.00,784.01 455.80,781.41 453.32,778.92 451.35,776.94 449.29,774.44 447.99,771.96 439.32,755.38 451.99,744.40 461.12,732.00 473.33,715.41 483.22,697.47 492.24,679.00 494.04,675.33 502.00,657.02 502.09,654.00 502.21,650.40 498.12,645.79 496.00,643.00 496.00,643.00 478.75,620.72 478.75,620.72 469.05,609.07 462.18,587.15 462.18,572.00 462.18,556.59 469.39,545.97 479.32,534.91 491.99,520.82 511.25,505.54 521.43,491.00 535.37,471.08 529.53,448.41 535.74,426.00 544.75,393.52 571.18,382.20 602.00,377.87 607.34,377.12 611.51,376.07 617.00,376.00 641.89,375.71 656.39,375.06 679.96,385.58 710.33,399.13 733.66,430.54 745.05,461.00 748.00,468.89 752.30,480.68 752.91,489.00 753.51,497.16 751.98,504.08 750.40,512.00 747.77,525.17 744.28,540.45 739.68,553.00 737.26,559.61 735.72,565.66 729.00,569.00 Z"/>
+            </svg>
+
+            <!-- Jauge verticale : 100% en haut, 0% en bas, dot qui descend -->
+            <div style="position:relative;width:28px;height:101px;flex-shrink:0">
+              <span style="position:absolute;right:0;top:0;font-size:8px;color:var(--muted);line-height:1">100%</span>
+              <span style="position:absolute;right:0;bottom:0;font-size:8px;color:var(--muted);line-height:1">0%</span>
+              <div style="position:absolute;left:4px;top:12px;bottom:12px;width:4px;background:rgba(100,116,139,.18);border-radius:2px"></div>
+              <div id="hp-gauge-fill" style="position:absolute;left:4px;bottom:12px;width:4px;border-radius:2px;background:#22c55e;height:77px;transition:height .9s cubic-bezier(.22,1,.36,1),background .4s"></div>
+              <div id="hp-gauge-dot" style="position:absolute;left:-1px;top:12px;width:14px;height:14px;border-radius:50%;background:#22c55e;border:2px solid #0a1120;transition:top .9s cubic-bezier(.22,1,.36,1),background .4s;transform:translateY(-50%)"></div>
+            </div>
+
           </div>
-          <div style="display:flex;flex-direction:column;align-items:center">
-            <div class="hp-tube">
-              <div id="hp-tube-fill" class="hp-tube-fill">
-                <div class="hp-sheen"></div>
-              </div>
-              <div class="hp-tick" style="bottom:90%"></div>
-              <div class="hp-tick t75" style="bottom:75%"></div>
-              <div class="hp-tick t50" style="bottom:50%"></div>
-            </div>
-            <div id="hp-bulb" class="hp-bulb">
-              <div class="hp-bulb-shine"></div>
-            </div>
+
+          <div style="text-align:center">
+            <div style="font-size:10px;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.06em">Aujourd'hui</div>
+            <div style="font-size:24px;font-weight:700;line-height:1;margin-bottom:8px" id="hp-time">—</div>
+            <span id="hp-badge" class="hp-badge" style="display:inline-block;margin-bottom:8px;font-size:11px">…</span>
+            <div style="font-size:11px;color:var(--muted)" id="hp-remain">—</div>
           </div>
         </div>
 
-        <!-- Graphique 14 jours (z-index:1 = en arrière-plan) -->
-        <div style="flex:1;min-width:0;position:relative;z-index:1">
+        <!-- DROITE : graphique 14j -->
+        <div style="flex:1;min-width:0;padding-left:20px">
+          <div style="font-size:11px;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:.06em">Capacité restante · 14 jours glissants</div>
           <div class="hp-bars-wrap">
             <div class="hp-bg-gradient"></div>
-            <div class="hp-thr"     style="bottom:90%"></div>
-            <div class="hp-thr t75" style="bottom:75%"></div>
-            <div class="hp-thr t50" style="bottom:50%"></div>
+            <div class="hp-thr"     style="bottom:50%"></div>
+            <div class="hp-thr t25" style="bottom:25%"></div>
+            <div class="hp-thr t10" style="bottom:10%"></div>
             <div id="hp-bars" class="hp-bars">
               <div style="color:var(--muted);font-size:12px;margin:auto">Chargement…</div>
             </div>
           </div>
           <div id="hp-day-labels" class="hp-day-labels"></div>
+          <div style="display:flex;gap:12px;margin-top:10px;font-size:11px;flex-wrap:wrap" class="muted">
+            <span><span style="color:#22c55e">●</span> Normal (&lt;1h)</span>
+            <span><span style="color:#eab308">●</span> Modéré (1h–1h30)</span>
+            <span><span style="color:#f97316">●</span> Attention (1h30–1h48)</span>
+            <span><span style="color:#ef4444">●</span> Limite (&gt;1h48)</span>
+          </div>
         </div>
 
-      </div>
-
-      <!-- Légende -->
-      <div style="display:flex;gap:16px;margin-top:10px;font-size:11px;flex-wrap:wrap" class="muted">
-        <span><span style="color:#22c55e">●</span> Normal (&lt;1h)</span>
-        <span><span style="color:#eab308">●</span> Modéré (1h–1h30)</span>
-        <span><span style="color:#f97316">●</span> Attention (1h30–1h48)</span>
-        <span><span style="color:#ef4444">●</span> Limite (&gt;1h48)</span>
       </div>
     </section>
 
@@ -773,8 +706,7 @@ $currentPage = basename($_SERVER['PHP_SELF'] ?? 'dashboard.php');
               <th>Titre du podcast</th>
               <th>Langue</th>
               <th>Écoutes</th>
-              <th>Temps total</th>
-              <th>Complétion moyenne</th>
+              <th>Temp              <th>Complétion moyenne</th>
             </tr>
           </thead>
           <tbody>${body}</tbody>
@@ -1001,22 +933,32 @@ $currentPage = basename($_SERVER['PHP_SELF'] ?? 'dashboard.php');
         const min   = Number(t.casque_min || 0);
         const color = pct>=90?'#ef4444':pct>=75?'#f97316':pct>=50?'#eab308':'#22c55e';
 
-        const fill = qs('hp-tube-fill');
-        const bulb = qs('hp-bulb');
-        if (fill) {
-          fill.style.height     = Math.min(100, pct) + '%';
-          fill.style.background = `linear-gradient(to top, ${color}, ${color}bb)`;
-          fill.style.animation  = pct >= 90 ? 'thermo-blink 0.9s ease-in-out infinite' : '';
+        // Icône oreille : couleur pleine selon le niveau de fatigue
+        const remain   = Math.max(0, 100 - pct);
+        const earColor = qs('hp-ear-color');
+        const earSvg   = qs('hp-ear-svg');
+        if (earColor) earColor.setAttribute('fill', color);
+        if (earSvg)   earSvg.style.filter = pct >= 90 ? `drop-shadow(0 0 6px ${color}90)` : '';
+
+        // Jauge verticale : hauteur du fill = capacité restante, position du point = fatigue
+        const gaugeFill = qs('hp-gauge-fill');
+        const gaugeDot  = qs('hp-gauge-dot');
+        if (gaugeFill) {
+          gaugeFill.style.height          = `${(remain * 0.77).toFixed(1)}px`;
+          gaugeFill.style.backgroundColor = color;
         }
-        if (bulb) {
-          bulb.style.backgroundColor = color;
-          bulb.style.boxShadow = `0 0 20px 6px ${color}40, 0 0 6px 2px ${color}70`;
-          bulb.style.animation = pct >= 90 ? 'thermo-blink 0.9s ease-in-out infinite' : '';
+        if (gaugeDot) {
+          gaugeDot.style.top             = `${(12 + (pct / 100) * 77).toFixed(1)}px`;
+          gaugeDot.style.backgroundColor = color;
         }
 
         const h = Math.floor(min / 60), m = Math.round(min % 60);
         qs('hp-time').textContent = min < 1 ? '0 min' : h > 0
           ? `${h}h${String(m).padStart(2,'0')}` : `${Math.round(min)} min`;
+
+        const remainMin = Math.round(120 - min);
+        const remainEl  = qs('hp-remain');
+        if (remainEl) remainEl.textContent = remainMin > 0 ? `${remainMin} min restantes` : 'Limite atteinte';
 
         let bg, label;
         if (pct >= 90)      { bg='rgba(239,68,68,.15)';  label='⚠️ Limite !'; }

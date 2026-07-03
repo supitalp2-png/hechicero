@@ -225,8 +225,8 @@ Le lecteur doit fonctionner **sans lag** sur un Raspberry Pi 5.
   - Lecteur : `openRadioCatalog()` et `goToPodcasts()` rechargent `data.json` à chaque visite
   - Lecteur : `setInterval` 5 min pour config/parental (veille, contrôle parental)
 - Bascule sortie audio HP/Casque — TICKET-031 partiel ✅
-  - DAC USB KT USB Audio branché sur card 3 ALSA (HiFiBerry = card 2)
-  - MPD configuré avec 2 sorties : `My ALSA Device` (hw:2,0) + `Casque USB` (hw:3,0)
+  - DAC USB KT USB Audio + HiFiBerry, sur cartes ALSA dont le numéro **dérive d'un boot à l'autre** (bug 2026-07-03 : card 2/3 inversés vs. setup initial) → `/etc/mpd.conf` doit référencer les cartes par nom (`hw:CARD=sndrpihifiberry,DEV=0` / `hw:CARD=Audio,DEV=0`), jamais par numéro
+  - MPD configuré avec 2 sorties : `My ALSA Device` (HiFiBerry, HP) + `Casque USB` (DAC USB, casque)
   - Bouton pill dans la statusbar (icône haut-parleur / casque SVG, surligné cyan en mode casque)
   - `radio.php` : actions `get_output` / `set_output` (enableoutput/disableoutput MPD 0-indexed)
   - Volume mémorisé par mode (localStorage `hechicero_vol_hp` / `hechicero_vol_casque`, IHM 0–100%)

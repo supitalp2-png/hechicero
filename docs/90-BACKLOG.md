@@ -1,7 +1,7 @@
 # Backlog Hechicero
 
 > Convention : `TICKET-### — [type] — Titre — (prio) — owner`
-> Dernière mise à jour : 2026-07-02 (session 14 — radios/podcasts temps réel)
+> Dernière mise à jour : 2026-07-03 (session 15 — dashboard fatigue auditive + fix bug audio boot HP/casque)
 
 ---
 
@@ -20,15 +20,25 @@
 - [ ] TICKET-031 — hardware/feature — Sortie casque avec bascule automatique haut-parleurs
       - Contrainte : HiFiBerry Amp4 conservé (pas de sortie casque native)
       - Solution retenue :
-          • DAC USB : KT USB Audio (card 3 ALSA) — branché, fonctionnel ✅
+          • DAC USB : KT USB Audio — branché, fonctionnel ✅
           • Jack : XMSJSIY TRS 3.5mm panel mount ∅22mm chromé → à monter dans le boîtier
-          • MPD : 2 sorties configurées — `My ALSA Device` hw:2,0 + `Casque USB` hw:3,0 ✅
+          • MPD : 2 sorties configurées — `My ALSA Device` (HiFiBerry, HP) + `Casque USB` (DAC USB) ✅
+          • ⚠️ Référencer les cartes par **nom** (`hw:CARD=sndrpihifiberry,DEV=0` / `hw:CARD=Audio,DEV=0`), jamais par numéro (`hw:N,0`) — le numéro de carte ALSA n'est pas stable d'un boot à l'autre sur ce Pi (cf. bug ci-dessous)
       - ✅ Implémenté session 14 (partiel) — bascule manuelle depuis l'IHM enfant :
           • Bouton pill dans la statusbar (toujours visible sur tous les écrans)
           • Volume mémorisé par mode (HP / casque) en localStorage
           • Séquence bascule : volume d'abord, sortie ensuite (évite pic sonore)
           • `radio.php` : get_output / set_output (MPD enableoutput/disableoutput)
           • `currentVolumeMax()` : VOLUME_MAX_SPEAKERS ou VOLUME_MAX_HEADPHONES selon mode
+      - 🐛 Bug corrigé le 2026-07-03 — son sorti par le casque au boot alors que HP affiché/attendu :
+          • Cause : `/etc/mpd.conf` référençait les cartes par numéro (`hw:2,0`/`hw:3,0`) ; ce numéro a dérivé entre le setup initial et aujourd'hui (HiFiBerry et DAC USB ont échangé leurs numéros) → corrigé en référençant par nom
+          • `radio.php` `set_output` répondait `ok:true` même quand la commande n'atteignait pas MPD (socket pas prêt au boot) → corrigé pour vérifier la vraie réponse
+          • `~/kiosk.sh` force désormais HP + volume 20% IHM avant Chromium, avec retry qui vérifie le vrai `ok:true`
+          • ✅ Confirmé fonctionnel par Thomas après reboot complet
+      - 🎨 Widget dashboard fatigue auditive (session 2026-07-03) — `dashboard.php` :
+          • Icône oreille : silhouette tracée depuis `web/oreille.svg` (référence déposée par Thomas), couleur dynamique selon fatigue (vert/jaune/orange/rouge)
+          • Zone concha/canal interne en blanc 90% opacité (le noir était invisible sur le fond bleu nuit)
+          • Jauge verticale à côté (100% en haut → 0% en bas, dot qui descend avec la fatigue)
       - ⏳ Reste à faire :
           • Monter le jack dans le boîtier + câbler DAC USB
           • Câbler le circuit LM393 sur GPIO → voir §12 de 80-hardware.md
