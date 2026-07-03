@@ -13,9 +13,11 @@ l'image — utile si ce dépôt n'est pas accessible au moment où on en a besoi
 ## 1. Vue d'ensemble
 
 Sauvegarde **manuelle uniquement** — pas de rythme automatique. Une image
-bootable complète (`dd` compressé en `.img.gz`) de la carte SD — système,
-configuration, code et données inclus — stockée sur le NAS Freebox :
-`\\Freebox_Server\Disque 1\Backup Hechicero\hechicero_durcie.img.gz`.
+bootable complète (`dd` compressé en `.img.gz`, nom `hechicero_durcie.img.gz`)
+de la carte SD — système, configuration, code et données inclus — stockée
+sur un NAS local. Adresse et chemin réseau exacts : voir `data/backup_config.json`
+dans le dépôt, ou directement le `README.md` présent à côté de l'image sur
+le NAS (pas republié ici volontairement — ce document est public sur GitHub).
 
 Une seule version à la fois ("durcie"), remplacée quand Thomas valide un état
 stable du projet (bouton dans l'admin, mode Expert → 💾 Sauvegardes) — pas de
@@ -34,7 +36,9 @@ Le script ne plante jamais si le NAS est injoignable — il note l'échec dans
 Se fait entièrement **depuis un PC Windows** — pas besoin de toucher au Pi
 avant la toute dernière étape.
 
-1. Ouvre l'explorateur de fichiers Windows, va sur `\\Freebox_Server\Disque 1\Backup Hechicero`
+1. Ouvre l'explorateur de fichiers Windows, va sur le dossier de sauvegarde
+   sur ton NAS (chemin réseau exact : `data/backup_config.json` dans le
+   dépôt, champs `host`/`share`/`subdir`)
 2. Récupère `hechicero_durcie.img.gz`
 3. Installe **Raspberry Pi Imager** si besoin : https://www.raspberrypi.com/software/
 4. Lance Raspberry Pi Imager
@@ -44,6 +48,18 @@ avant la toute dernière étape.
 7. **"WRITE"** → attendre la fin (plusieurs minutes selon la taille de la carte et la vitesse de la clé/carte)
 8. Éjecter proprement la carte, l'insérer dans le Raspberry Pi, brancher l'alimentation
 9. Hechicero doit démarrer directement dans sa configuration habituelle — rien d'autre à faire
+
+**Optionnel — remettre le code à jour :** la version durcie n'est refaite que pour
+les évolutions majeures, alors que le code est poussé sur GitHub plus souvent.
+Après le redémarrage, si tu veux repartir avec le code le plus récent (pas
+juste celui de la dernière version durcie) :
+```bash
+cd ~/hechicero && git pull
+```
+Le dépôt git est déjà présent sur l'image (inclus dans le ghost complet) —
+pas besoin de le re-cloner, un simple `git pull` suffit. Sans risque : la
+configuration système (mpd.conf, kiosk.sh, UPower...) n'est pas touchée par
+un `git pull`, seuls le code et les docs suivis par git le sont.
 
 ---
 
@@ -110,9 +126,9 @@ changer d'IP réseau).
 
 ## 4. Dépannage
 
-- **"NAS injoignable" dans l'admin** : vérifier que le Freebox Server répond
-  (`ping 192.168.1.254` depuis le Pi), que le Pi a bien du réseau, que le
-  partage `Disque 1` est toujours actif côté Freebox OS.
+- **"NAS injoignable" dans l'admin** : vérifier que le NAS répond (`ping`
+  l'IP configurée dans `data/backup_config.json`, depuis le Pi), que le Pi
+  a bien du réseau, que le partage réseau est toujours actif côté NAS.
 - **Échec de montage CIFS** : vérifier `/etc/hechicero-nas-credentials`
   (identifiants toujours valides ? mot de passe changé côté Freebox ?).
 - **Validation durcie qui ne se lance pas depuis l'admin** : vérifier la

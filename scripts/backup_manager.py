@@ -201,6 +201,12 @@ validation — dernière mise à jour : {now_iso()}
 7. Retire la carte, insère-la dans le Raspberry Pi, branche l'alimentation
 8. Hechicero doit redémarrer directement dans sa configuration habituelle
 
+**Optionnel — code à jour :** cette image ne contient que le code du moment de
+cette validation. Si du code plus récent a été poussé sur GitHub depuis,
+`cd ~/hechicero && git pull` sur le Pi une fois redémarré (le dépôt git est
+déjà sur l'image, pas besoin de le re-cloner). Sans risque pour la config
+système, qui n'est pas suivie par git.
+
 Détail complet (avec dépannage) : `docs/85-SAUVEGARDE_RESTAURATION.md`
 dans le dépôt du projet (accessible via Q:\\ si le partage Samba fonctionne,
 sinon sur GitHub).
