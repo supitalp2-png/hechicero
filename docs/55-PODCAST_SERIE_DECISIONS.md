@@ -21,7 +21,9 @@ C'est le cadeau dans le cadeau.
 
 ### Mécanisme de découverte (validé)
 
-**Déclencheur** : appuyer **3 fois** sur le titre "Hechicero" dans l'écran d'accueil → la série se déverrouille et apparaît dans le catalogue.
+**Première découverte** : appuyer **3 fois** sur le titre "Hechicero" dans l'écran d'accueil → la série se déverrouille, l'**épisode 0 se lance automatiquement**.
+
+**Accès ensuite** : la série ne rejoint PAS le catalogue normal des podcasts — elle reste dans un **menu secret séparé**. Une fois débloqué une première fois, l'accès à ce menu redevient plus simple qu'un triple tap (proposition à valider : un simple clic sur "Hechicero" depuis l'écran d'accueil).
 
 ### Système de hints progressifs
 
@@ -41,16 +43,18 @@ Ce hint ne s'affiche qu'une seule fois. Une fois l'easter egg découvert, les hi
 - Les hints ne doivent jamais apparaître pendant la lecture
 - Ton : mystérieux et invitant, jamais condescendant
 - La découverte doit rester une surprise même avec les hints — le hint 1 laisse une marge d'exploration
-- Une fois déverrouillé, la série apparaît dans le catalogue comme n'importe quel podcast (avec sa propre jaquette)
+- La série reste dans son propre menu secret, séparée des podcasts normaux — jamais mélangée au catalogue habituel, même après déverrouillage
+- L'épisode 0 ne se relance pas automatiquement à chaque entrée dans le menu secret : il devient un épisode normal de la liste, au même titre que EP1-EP7, après sa première lecture automatique
 
 ---
 
-## Plan de la série (7 épisodes)
+## Plan de la série (épisode 0 d'ouverture + 7 épisodes)
 
 Alternance technique / histoire / personnel.
 
 | # | Titre | Registre |
 |---|---|---|
+| 0 | Bienvenue | ouverture / cadeau |
 | 1 | Pourquoi papa a fait ça | histoire personnelle |
 | 2 | C'est quoi l'électronique ? | technique |
 | 3 | Comment fonctionne le cerveau de papa | personnel / intime |
@@ -58,6 +62,12 @@ Alternance technique / histoire / personnel.
 | 5 | L'algo et le code | Histoire grand H + technique |
 | 6 | C'est quoi un OS ? | technique (Linux) |
 | 7 | C'est quoi un podcast ? | méta + clôture de série |
+
+### Épisode 0 — format particulier
+
+Contrairement aux épisodes 1 à 7 (dialogue deux voix), l'épisode 0 est une **voix unique** : Papa s'adresse directement à l'enfant au moment même de la découverte. Très court (~1-2 min). Il annonce le cadeau, dit l'essentiel ("un cadeau pour te dire à quel point je t'aime"), et invite à en reparler avec Papa et Maman.
+
+À décider (technique, voir TICKET-058) : l'épisode 0 se lance-t-il automatiquement juste après le déverrouillage (3 taps), ou apparaît-il simplement en tête de la série dans le catalogue ?
 
 ---
 
@@ -77,7 +87,9 @@ Le collègue, la directrice et la maman apparaissent dans l'épisode 4 dédié E
 
 ## Conventions d'écriture
 
-- **Ton** : chaleureux, sincère, compréhensible pour un enfant de 7 ans. Vraies histoires, pas de leçons de morale.
+- **Ton** : léger mais sérieux — on aime faire des blagues, ça n'empêche pas d'aborder des choses sérieuses. Chaleureux, sincère, compréhensible pour un enfant de 7 ans. Vraies histoires, pas de leçons de morale.
+- **Adresse affectueuse** : "mon fils", jamais "mon grand"
+- **Orthographe** : "[prénom]" (sans tréma), jamais "[prénom]"
 - **Cerveau de papa** : pas de vocabulaire médical ni d'étiquette diagnostique. Décrire l'effet concret : besoin de mordre dans du complexe pour être calme, et le revers obsessionnel.
 - **Épisode algo/code** : inclure Al-Khwarizmi (étapes logiques) et Jacquard (donner des instructions à une machine).
 
@@ -88,9 +100,15 @@ Le collègue, la directrice et la maman apparaissent dans l'épisode 4 dédié E
 > Ce bloc est la matière brute pour l'épisode 1. Papa parle à "le petit" (prénom réel dans `private/` uniquement — voir invariant §6.0).
 > Aucun prénom réel dans ce fichier (repo public).
 
+### Le déclic — pourquoi Hechicero, vraiment
+
+Tout part d'une observation simple. Le petit adore écouter des histoires sur son Merlin, en français — il en apprend énormément, il progresse, il y prend un vrai plaisir. Mais le Merlin a ses limites : il ne permet pas de faire tout ce qu'on voudrait, et surtout, rien d'équivalent n'existe en espagnol. Papa se dit alors : et si je pouvais lui offrir la même chose, mais dans les deux langues ?
+
+C'est le déclic de départ. Pas un projet technique pour le plaisir de la technique — une envie précise, pour le petit.
+
 ### Le message central
 
-Un projet, ce n'est pas une idée qui apparaît seule comme une épiphanie. Il faut la mûrir, la digérer, la faire grandir. L'échec n'est pas la fin — c'est souvent le signe qu'on est encore plus proche de la solution.
+Mais pour construire un objet comme ça, il faut d'abord comprendre une chose : un projet, ce n'est pas une idée qui apparaît seule comme une épiphanie. Il faut la mûrir, la digérer, la faire grandir. L'échec n'est pas la fin — c'est souvent le signe qu'on est encore plus proche de la solution.
 
 ### La vraie histoire d'Hechicero — les étapes
 
@@ -118,6 +136,7 @@ Et puis un jour, tout s'aligne. L'idée a eu le temps de grandir. Papa rencontre
 
 > Version avec prénom réel → `private/ep1-script-notes.md`
 
+- Ça a commencé par une envie simple : te donner en espagnol ce que tu aimais déjà en français.
 - Un projet, ça se mûrit. L'idée d'Hechicero a commencé à germer dans la tête de papa bien avant ta naissance.
 - Un échec, c'est rarement une fin. La radio TSF n'a pas marché — mais elle a appris quelque chose. Et cette chose-là a servi plus tard.
 - Les bons moments, on ne les choisit pas toujours — mais on peut s'y préparer en continuant à avancer.
@@ -129,7 +148,8 @@ Et puis un jour, tout s'aligne. L'idée a eu le temps de grandir. Papa rencontre
 
 | Épisode | État |
 |---|---|
-| EP1 — Pourquoi papa a fait ça | Matière narrative ajoutée (voir bloc ci-dessus) — brouillon à retravailler |
+| EP0 — Bienvenue | Script écrit (voix unique Papa), voir `private/podcast-easteregg/ep00-brouillon-fr.md` |
+| EP1 — Pourquoi papa a fait ça | Brouillon écrit (déclic Merlin/espagnol → école ingénieur → radio TSF → le bon moment), voir `private/podcast-easteregg/ep01-brouillon-fr.md` — à valider |
 | EP2 — C'est quoi l'électronique ? | Brouillon écrit — à retravailler |
 | EP3 — Comment fonctionne le cerveau de papa | Brouillon écrit — à retravailler |
 | EP4 — Les gens derrière le projet | Plan en cours — pas de script |
@@ -168,8 +188,8 @@ Rien n'est figé. On verra exactement ce qu'on fait quand on arrivera à cette p
 ## Intégration dans Hechicero
 
 - Les fichiers audio seront stockés comme les autres podcasts : `podcasts/decisions_prises/audio/`
-- Pas de référence dans `data.json` principal — fichier séparé ou entrée masquée
-- Le mécanisme de découverte (easter egg) est à concevoir — TICKET-058
+- **Pas de fusion avec le catalogue normal** — pas de référence dans `data.json` principal, fichier séparé, menu secret dédié (pas un podcast parmi les autres)
+- Le mécanisme d'accès (première découverte 3 taps + EP0 auto, puis accès simplifié — proposition : simple clic sur "Hechicero") est à concevoir techniquement — TICKET-058
 - Disponible FR + ES → traduction ou double enregistrement à définir
 
 ---
