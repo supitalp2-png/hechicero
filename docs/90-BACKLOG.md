@@ -7,17 +7,21 @@
 
 # 🔥 Priorité haute
 
-- [ ] TICKET-085 — infra — Ghost de la carte SD (image bootable sans audio)
-      - Exigence : copier l'image sur une nouvelle carte → ça redémarre et ça fonctionne directement
-      - Séquence :
-          1. `scripts/ghost_sd_prepare.sh --execute` — vide `podcasts/*/audio/`, `podcasts/*/images/`, `web/lecteur/images/` (dry-run par défaut sans `--execute`)
-          2. `sudo scripts/ghost_sd_backup.sh /chemin/disque/externe` — `dd` de la carte SD + PiShrink si installé
-          3. Stocker l'image sur disque externe (fait par le script ci-dessus)
-          4. Relancer l'ingestion RSS pour re-télécharger MP3 et jaquettes : `python3 scripts/rss_ingest/ingest.py`
-      - Scripts créés le 2026-07-03 (`scripts/ghost_sd_prepare.sh`, `scripts/ghost_sd_backup.sh`) — pas encore testés en conditions réelles (nécessite un disque externe connecté au Pi)
-      - ⚠️ `dd` lit le disque système pendant qu'il tourne (pas d'arrêt des services) — snapshot pas garanti parfaitement cohérent, lancer de préférence juste après un boot propre
-      - Penser à vérifier/documenter aussi les configs système hors git avant le ghost (cf. [[project_backups]] en mémoire : UPower.conf, mpd.conf, kiosk.sh, Apache vhosts, Plymouth theme)
-      - À définir : fréquence (avant chaque sprint hardware minimum)
+- [ ] TICKET-085 — infra — Sauvegarde automatique de la carte SD (ghost durci + quotidien)
+      - Doc complète : `docs/85-SAUVEGARDE_RESTAURATION.md` (restauration Windows pas-à-pas + mise en place système)
+      - Conçu et implémenté le 2026-07-03 — étendu en cours de session d'un simple script manuel vers un système automatique complet :
+          • Deux types de sauvegarde vers NAS Freebox (SMB/CIFS) : **durcie** (une seule, remplacée manuellement quand Thomas valide un état stable via l'admin) et **quotidienne** (automatique 3h du matin, rotation 7 dernières)
+          • `scripts/backup_manager.py` — orchestration complète (montage NAS, `dd | gzip`, rotation, état JSON, bascule atomique de la durcie)
+          • `data/backup_config.json` (non-secret, versionné) + `/etc/hechicero-nas-credentials` (secret, root uniquement, hors dépôt)
+          • Timer systemd `hechicero-backup-daily.timer` (`etc/systemd/system/`, `Persistent=true` — rattrape le tir au boot si le Pi était éteint à 3h)
+          • Règle sudoers dédiée pour laisser l'admin web déclencher une validation durcie (root requis pour lire `/dev/mmcblk0` et monter le NAS) sans donner un accès root complet à www-data
+          • Page admin `web/admin/backup_dashboard.php` : état dernière sauvegarde, version durcie actuelle, historique, bouton de validation — lien visible **seulement en mode Expert** de l'admin principale (persona parent geek, pas l'autre parent)
+          • `README.md` régénéré automatiquement sur le NAS à chaque sauvegarde (secours si le dépôt n'est pas accessible)
+      - Scripts manuels créés initialement (`scripts/ghost_sd_prepare.sh`, `scripts/ghost_sd_backup.sh`) conservés pour un usage ponctuel/disque externe, mais le flux normal passe désormais par `backup_manager.py`
+      - Notes réseau utiles pour la suite : `mafreebox.freebox.fr` résout vers une IP publique Free depuis le Pi (pas la Freebox locale) → utiliser l'IP de la passerelle (`192.168.1.254`) ; montage CIFS anonyme (`guest`) suffit pour lister les partages mais pas pour écrire, un compte Freebox est nécessaire
+      - ⚠️ `dd` lit le disque système pendant qu'il tourne (pas d'arrêt des services) — snapshot pas garanti parfaitement cohérent
+      - ⏳ Pas encore testé : premier run réel du timer systemd (déployé mais pas encore passé par un vrai cycle 3h), premier clic "valider durcie" depuis l'admin
+      - Penser à vérifier/documenter aussi les configs système hors git avant tout (cf. [[project_backups]] en mémoire : UPower.conf, mpd.conf, kiosk.sh, Apache vhosts, Plymouth theme) — capturées dans le ghost complet, mais bon à savoir si restauration partielle
 
 - [ ] TICKET-031 — hardware/feature — Sortie casque avec bascule automatique haut-parleurs
       - Contrainte : HiFiBerry Amp4 conservé (pas de sortie casque native)

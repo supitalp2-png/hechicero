@@ -17,6 +17,10 @@ define('TRACKING_DB',   PROJECT_ROOT . '/data/tracking.db');
 define('INGEST_LOG',    '/tmp/hechicero_ingest.log');
 define('INGEST_PID',    '/tmp/hechicero_ingest.pid');
 define('INGEST_SCRIPT', PROJECT_ROOT . '/scripts/rss_ingest/ingest.py');
+define('BACKUP_STATE_JSON', PROJECT_ROOT . '/data/backup_state.json');
+define('BACKUP_SCRIPT',     PROJECT_ROOT . '/scripts/backup_manager.py');
+define('BACKUP_LOG',        '/tmp/hechicero_backup_validate.log');
+define('BACKUP_PID',        '/tmp/hechicero_backup_validate.pid');
 
 // ── Helpers ──────────────────────────────────────────────────
 
@@ -439,6 +443,30 @@ if (isset($_GET['action'])) {
         exit;
       }
 
+    // ── Sauvegardes (TICKET-085)
+    if ($a === 'backup_status') {
+        echo json_encode([
+            'state'   => read_json(BACKUP_STATE_JSON),
+            'running' => pid_alive(BACKUP_PID),
+            'log'     => file_exists(BACKUP_LOG) ? implode('', array_slice(file(BACKUP_LOG), -40)) : '',
+        ]);
+        exit;
+    }
+
+    if ($a === 'backup_validate') {
+        if (pid_alive(BACKUP_PID)) { echo json_encode(['ok'=>false,'msg'=>'Une sauvegarde est déjà en cours']); exit; }
+        $label = trim($_POST['label'] ?? '');
+        // Nécessite une règle sudoers dédiée (voir docs/95-RESTAURATION_URGENCE.md) :
+        // www-data ALL=(root) NOPASSWD: /usr/bin/python3 .../backup_manager.py validate*
+        $cmd = 'sudo /usr/bin/python3 ' . escapeshellarg(BACKUP_SCRIPT)
+             . ' validate --label ' . escapeshellarg($label)
+             . ' > ' . escapeshellarg(BACKUP_LOG) . ' 2>&1 & echo $!';
+        $pid = trim((string)shell_exec($cmd));
+        if ($pid) file_put_contents(BACKUP_PID, $pid);
+        echo json_encode(['ok' => (bool)$pid, 'pid' => $pid]);
+        exit;
+    }
+
     // ── Ingestion
     if ($a === 'run_ingest') {
         if (pid_alive(INGEST_PID)) { echo json_encode(['ok'=>false,'msg'=>'Déjà en cours']); exit; }
@@ -733,6 +761,9 @@ input:checked + .slider:before { transform:translateX(20px); }
       </a>
       <a class="ha-btn" href="/admin/battery_dashboard.php">
         <span class="ha-btn-icon">🔋</span> Batterie
+      </a>
+      <a class="ha-btn expert-only" href="/admin/backup_dashboard.php" title="Visible seulement en mode Expert">
+        <span class="ha-btn-icon">💾</span> Sauvegardes
       </a>
       <a class="ha-btn" href="/lecteur/" target="_blank" title="Ouvrir le lecteur enfant">
         <span class="ha-btn-icon">📻</span> Lecteur
