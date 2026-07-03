@@ -28,6 +28,7 @@ import json
 import logging
 import os
 import re
+import shlex
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -163,9 +164,13 @@ def run_ghost(dest_file: Path) -> tuple[bool, str, int]:
     dest_file.parent.mkdir(parents=True, exist_ok=True)
     tmp_dest = dest_file.with_suffix(dest_file.suffix + ".part")
 
+    # Chemins passés a bash -c : toujours les quoter (le sous-dossier NAS
+    # "Backup Hechicero" contient un espace, sans quoi bash coupe la commande
+    # en plein milieu du chemin de destination).
     shell_cmd = (
         f"set -o pipefail; "
-        f"dd if={src} bs=4M status=none conv=noerror,sync | gzip -c > {tmp_dest}"
+        f"dd if={shlex.quote(str(src))} bs=4M status=none conv=noerror,sync"
+        f" | gzip -c > {shlex.quote(str(tmp_dest))}"
     )
     LOGGER.info("Ghost en cours : %s -> %s", src, dest_file)
     r = subprocess.run(["bash", "-c", shell_cmd], capture_output=True, text=True)
