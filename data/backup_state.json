@@ -1,0 +1,10 @@
+{
+  "durcie": {
+    "validated_at": "2026-07-03T10:54:03+02:00",
+    "label": "backup manuel initial (avant mise en place admin)",
+    "size_mb": 23449,
+    "file": "hechicero_durcie.img.gz",
+    "git_commit": "57a8710",
+    "last_validation_error": null
+  }
+}
