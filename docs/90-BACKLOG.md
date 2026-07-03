@@ -10,11 +10,13 @@
 - [ ] TICKET-085 — infra — Ghost de la carte SD (image bootable sans audio)
       - Exigence : copier l'image sur une nouvelle carte → ça redémarre et ça fonctionne directement
       - Séquence :
-          1. Supprimer `podcasts/*/audio/`, `podcasts/*/images/`, `web/lecteur/images/` sur le Pi
-          2. `dd` de la carte SD → image bootable complète
-          3. PiShrink pour compresser l'espace vide
-          4. Stocker l'image sur disque externe
-          5. Relancer l'ingestion RSS pour re-télécharger MP3 et jackets
+          1. `scripts/ghost_sd_prepare.sh --execute` — vide `podcasts/*/audio/`, `podcasts/*/images/`, `web/lecteur/images/` (dry-run par défaut sans `--execute`)
+          2. `sudo scripts/ghost_sd_backup.sh /chemin/disque/externe` — `dd` de la carte SD + PiShrink si installé
+          3. Stocker l'image sur disque externe (fait par le script ci-dessus)
+          4. Relancer l'ingestion RSS pour re-télécharger MP3 et jaquettes : `python3 scripts/rss_ingest/ingest.py`
+      - Scripts créés le 2026-07-03 (`scripts/ghost_sd_prepare.sh`, `scripts/ghost_sd_backup.sh`) — pas encore testés en conditions réelles (nécessite un disque externe connecté au Pi)
+      - ⚠️ `dd` lit le disque système pendant qu'il tourne (pas d'arrêt des services) — snapshot pas garanti parfaitement cohérent, lancer de préférence juste après un boot propre
+      - Penser à vérifier/documenter aussi les configs système hors git avant le ghost (cf. [[project_backups]] en mémoire : UPower.conf, mpd.conf, kiosk.sh, Apache vhosts, Plymouth theme)
       - À définir : fréquence (avant chaque sprint hardware minimum)
 
 - [ ] TICKET-031 — hardware/feature — Sortie casque avec bascule automatique haut-parleurs
@@ -111,6 +113,13 @@
 # 🟢 Priorité basse / À décider
 
 - [ ] TICKET-030 — feature — Égaliseur audio paramétrable
+      - Spécifié le 2026-07-03 (pas codé — priorité donnée à TICKET-085) :
+      - Besoin : ajouter un peu de basses / son plus "rond", + clarté (compensation loudness). Deux profils indépendants : HP et casque.
+      - Nouvelle page d'admin dédiée pour régler et sauvegarder les deux profils
+      - Piste technique : le HiFiBerry Amp4 est un DAC pur (pas d'EQ matériel) → plugin ALSA logiciel (type `alsaequal`/LADSPA) inséré entre MPD et la carte son, une chaîne par sortie (HP / casque) dans `/etc/asound.conf` ; `/etc/mpd.conf` doit pointer vers ces devices virtuels au lieu du hardware direct
+      - Loudness : compensation graves/aigus à bas volume (courbe Fletcher-Munson) — vrai loudness dynamique = complexe ; version simplifiée envisagée = preset EQ activé sous un seuil de volume donné
+      - Estimation : ~45 min config système (asound.conf/mpd.conf, hors dépôt, à tester en live comme TICKET-031) + ~45 min page admin + sauvegarde par profil + ~20-30 min pour le loudness simplifié — total ~1h30-2h + itérations d'écoute
+      - ⚠️ Comme pour TICKET-031, la configuration système ne peut être testée qu'en conditions réelles sur le Pi (pas de test à distance possible)
 - [ ] TICKET-037 — UX — Animations simples (fade/slide) dans l'IHM enfant
 - [ ] TICKET-046 — UX — Favoris (cœur) accessibles rapidement
 - [ ] TICKET-047 — UX — Défilement automatique (carrousel) arrêtable par l'enfant
