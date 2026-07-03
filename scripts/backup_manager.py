@@ -19,6 +19,7 @@ page admin) et sort proprement.
 Usage :
     python3 backup_manager.py validate [--label "texte libre"]
     python3 backup_manager.py status
+    python3 backup_manager.py sync_private   # copie private/ vers le NAS (jamais sur GitHub)
 """
 from __future__ import annotations
 
@@ -138,6 +139,11 @@ def nas_unmount(cfg: dict[str, Any]) -> None:
 
 def nas_backup_dir(cfg: dict[str, Any]) -> Path:
     return Path(cfg["nas"]["mount_point"]) / cfg["nas"]["subdir"]
+
+
+def nas_private_dir(cfg: dict[str, Any]) -> Path:
+    sub = cfg["nas"].get("private_subdir") or (cfg["nas"]["subdir"] + "/private")
+    return Path(cfg["nas"]["mount_point"]) / sub
 
 
 def source_device() -> str:
@@ -274,18 +280,63 @@ def cmd_status() -> int:
     return 0
 
 
+def cmd_sync_private() -> int:
+    """Synchronise private/ (jamais dans git, jamais sur GitHub) vers un dossier
+    dédié sur le NAS. Déclenché automatiquement par le hook git post-commit —
+    ne doit jamais faire échouer un commit : toute erreur est juste consignée
+    dans data/backup_state.json (clé private_sync) et le script sort proprement.
+    Ne supprime jamais rien côté NAS (rsync sans --delete) : accumulation
+    volontaire, on ne veut pas qu'une suppression locale accidentelle efface
+    aussi la copie de sauvegarde.
+    """
+    cfg = load_config()
+    state = load_state()
+    now = now_iso()
+    private_src = PROJECT_ROOT / "private"
+
+    if not private_src.is_dir():
+        return 0  # rien a synchroniser
+
+    ok, err = nas_mount(cfg)
+    if not ok:
+        LOGGER.warning("Sync private/ ignorée : %s", err)
+        state["private_sync"] = {"last_attempt": now, "ok": False, "error": err}
+        save_state(state)
+        return 0
+
+    dest = nas_private_dir(cfg)
+    dest.mkdir(parents=True, exist_ok=True)
+    r = subprocess.run(
+        ["rsync", "-a", f"{private_src}/", f"{dest}/"],
+        capture_output=True, text=True, timeout=120,
+    )
+    if r.returncode != 0:
+        err = r.stderr.strip()[:300]
+        LOGGER.warning("rsync private/ échoué : %s", err)
+        state["private_sync"] = {"last_attempt": now, "ok": False, "error": err}
+    else:
+        LOGGER.info("private/ synchronisé vers le NAS")
+        state["private_sync"] = {"last_attempt": now, "ok": True, "error": None}
+    save_state(state)
+    nas_unmount(cfg)
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="cmd", required=True)
     p_validate = sub.add_parser("validate")
     p_validate.add_argument("--label", default="", help="Description libre de cette version durcie")
     sub.add_parser("status")
+    sub.add_parser("sync_private")
     args = parser.parse_args()
 
     if args.cmd == "validate":
         return cmd_validate(args.label)
     if args.cmd == "status":
         return cmd_status()
+    if args.cmd == "sync_private":
+        return cmd_sync_private()
     return 1
 
 

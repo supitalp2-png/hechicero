@@ -29,6 +29,10 @@ cours de route.
 Le script ne plante jamais si le NAS est injoignable — il note l'échec dans
 `data/backup_state.json` (visible dans l'admin) plutôt que de planter.
 
+En plus de la durcie, le contenu de `private/` (jamais suivi par git, jamais
+sur GitHub) est synchronisé vers un dossier séparé du NAS **automatiquement à
+chaque commit** — voir §5.
+
 ---
 
 ## 2. Restaurer une carte SD morte (procédure d'urgence)
@@ -86,17 +90,19 @@ sudo chown root:root /etc/hechicero-nas-credentials
 ### 3.2 Paquets requis
 
 ```bash
-sudo apt install -y cifs-utils smbclient
+sudo apt install -y cifs-utils smbclient rsync
 ```
 
-### 3.3 Règle sudoers (permet à l'admin web de déclencher une validation durcie)
+### 3.3 Règle sudoers (permet à l'admin web *et* au hook git de déclencher une sauvegarde sans mot de passe)
 
 ```bash
 sudo visudo -f /etc/sudoers.d/hechicero-backup
 ```
-Contenu (une seule ligne) :
+Contenu (deux lignes — la première pour le bouton de l'admin web, la
+seconde pour le hook git post-commit qui synchronise `private/`) :
 ```
 www-data ALL=(root) NOPASSWD: /usr/bin/python3 /home/thomas/hechicero/scripts/backup_manager.py validate*
+thomas ALL=(root) NOPASSWD: /usr/bin/python3 /home/thomas/hechicero/scripts/backup_manager.py sync_private
 ```
 `visudo` valide la syntaxe automatiquement avant d'enregistrer — ne pas
 éditer ce fichier avec un éditeur classique.
@@ -122,6 +128,17 @@ cat ~/hechicero/data/backup_state.json
 partage, sous-dossier. Modifier et committer normalement si besoin (ex :
 changer d'IP réseau).
 
+### 3.6 Installer le hook git post-commit (synchro private/)
+
+```bash
+cp ~/hechicero/scripts/git_hooks_post_commit.sh ~/hechicero/.git/hooks/post-commit
+chmod +x ~/hechicero/.git/hooks/post-commit
+```
+Une fois fait, **plus jamais besoin d'y penser** : chaque `git commit`
+déclenche automatiquement une synchro de `private/` vers le NAS en tâche de
+fond (§5). Le hook n'est pas suivi par git (dossier `.git/` jamais versionné)
+— à refaire une seule fois après une réinstallation complète.
+
 ---
 
 ## 4. Dépannage
@@ -140,3 +157,37 @@ changer d'IP réseau).
   ```
   Si le process n'existe plus, supprimer le fichier PID :
   `sudo rm /tmp/hechicero_backup_validate.pid`
+- **`private/` ne se synchronise pas après un commit** : vérifier que le hook
+  est bien installé (`ls -la .git/hooks/post-commit`, doit exister et être
+  exécutable), que la règle sudoers `thomas` est bien en place (§3.3,
+  `sudo -l -U thomas` doit lister la commande), et regarder
+  `data/private_sync.log` et la clé `private_sync` de `data/backup_state.json`
+  pour la dernière erreur enregistrée.
+
+---
+
+## 5. Contenu privé (`private/`) — synchronisation vers le NAS
+
+`private/` contient de la réflexion perso, des noms réels, et à terme des
+éléments non publics du projet (ex : futurs podcasts easter egg) — exclu de
+git (`.gitignore`), donc jamais sur GitHub qui est public.
+
+Comme ce dossier n'est pas suivi par git, il n'était protégé par rien entre
+deux versions durcies (qui ne sont faites que pour les évolutions majeures).
+Pour éviter de perdre ce contenu en cas de carte SD morte, `scripts/backup_manager.py
+sync_private` copie `private/` vers un dossier dédié du NAS (séparé de l'image
+durcie) — déclenché automatiquement à chaque `git commit` via le hook
+`.git/hooks/post-commit` (installation : §3.6).
+
+Points clés :
+- **Aucun SSH requis à l'usage** — comme pour la durcie, tout se passe tout
+  seul une fois le hook et la règle sudoers en place (§3.3, §3.6).
+- **Ne supprime jamais rien côté NAS** (`rsync` sans `--delete`) : une
+  suppression accidentelle en local n'efface pas la copie de sauvegarde,
+  contrairement à la durcie qui remplace la version précédente —
+  volontairement moins strict sur ce point.
+- Échoue silencieusement si le NAS est injoignable au moment du commit — pas
+  de blocage, juste une entrée dans `data/private_sync.log` et
+  `data/backup_state.json` (`private_sync.ok: false`).
+- Pas de restauration automatique documentée ici : en cas de besoin, c'est
+  une simple copie de fichiers à récupérer manuellement depuis le NAS.
