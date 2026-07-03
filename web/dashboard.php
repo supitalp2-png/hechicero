@@ -223,15 +223,19 @@ $currentPage = basename($_SERVER['PHP_SELF'] ?? 'dashboard.php');
     .hp-thr.t10 { background:rgba(239,68,68,.42); }
     .hp-bars {
       position:absolute; inset:0;
-      display:flex; align-items:flex-end; gap:3px; padding:0 2px;
+      display:flex; align-items:stretch; gap:3px; padding:0 2px;
     }
-    .hp-bar {
-      flex:1; border-radius:3px 3px 0 0; position:relative;
-      transition:height .9s cubic-bezier(.22,1,.36,1), background-color .4s;
+    .hp-bar-col {
+      flex:1; position:relative;
     }
-    .hp-bar.today::after {
-      content:''; position:absolute; top:0; left:0; right:0; height:3px;
-      background:rgba(255,255,255,.28); border-radius:3px;
+    .hp-bar-mark {
+      position:absolute; left:0; right:0; height:4px; border-radius:2px;
+      transform:translateY(50%);
+      transition:bottom .9s cubic-bezier(.22,1,.36,1), background-color .4s;
+    }
+    .hp-bar-mark.today {
+      height:6px;
+      box-shadow:0 0 0 2px rgba(255,255,255,.35);
     }
     .hp-day-labels { display:flex; gap:3px; padding:5px 2px 0; }
     .hp-day-label  { flex:1; text-align:center; font-size:9px; color:#475569; }
@@ -895,15 +899,20 @@ $currentPage = basename($_SERVER['PHP_SELF'] ?? 'dashboard.php');
       const targets = [];
       days.forEach(d => {
         const pct   = Number(d.pct || 0);
+        // Niveau affiché = capacité restante (haut = bien, bas = dégradé) — cohérent
+        // avec le titre du graphique et la jauge verticale à gauche.
+        const level = Math.max(0, Math.min(100, 100 - pct));
         const color = pct>=90?'#ef4444':pct>=75?'#f97316':pct>=50?'#eab308':'#22c55e';
 
-        const bar = document.createElement('div');
-        bar.className         = 'hp-bar' + (d.is_today ? ' today' : '');
-        bar.style.height      = '0';
-        bar.style.backgroundColor = pct > 0 ? color : '#1a2640';
-        if (pct >= 50) { bar.dataset.pct = Math.round(pct); bar.style.color = color; }
-        barsEl.appendChild(bar);
-        targets.push({ el: bar, pct });
+        const col = document.createElement('div');
+        col.className = 'hp-bar-col';
+        const mark = document.createElement('div');
+        mark.className = 'hp-bar-mark' + (d.is_today ? ' today' : '');
+        mark.style.bottom = '0%';
+        mark.style.backgroundColor = color;
+        col.appendChild(mark);
+        barsEl.appendChild(col);
+        targets.push({ el: mark, level });
 
         const lbl       = document.createElement('div');
         lbl.className   = 'hp-day-label' + (d.is_today ? ' today' : '');
@@ -914,8 +923,8 @@ $currentPage = basename($_SERVER['PHP_SELF'] ?? 'dashboard.php');
 
       // Double rAF pour déclencher les transitions CSS
       requestAnimationFrame(() => requestAnimationFrame(() => {
-        targets.forEach(({ el, pct }) => {
-          el.style.height = Math.max(pct > 0 ? 1 : 0, pct) + '%';
+        targets.forEach(({ el, level }) => {
+          el.style.bottom = level + '%';
         });
       }));
     }
