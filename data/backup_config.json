@@ -6,8 +6,5 @@
         "mount_point": "/mnt/nas_backup",
         "credentials_file": "/etc/hechicero-nas-credentials"
     },
-    "retention": {
-        "daily_keep": 7
-    },
     "image_prefix": "hechicero"
 }

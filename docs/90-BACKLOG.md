@@ -7,20 +7,21 @@
 
 # 🔥 Priorité haute
 
-- [ ] TICKET-085 — infra — Sauvegarde automatique de la carte SD (ghost durci + quotidien)
+- [ ] TICKET-085 — infra — Sauvegarde de la carte SD (ghost durci, manuel uniquement)
       - Doc complète : `docs/85-SAUVEGARDE_RESTAURATION.md` (restauration Windows pas-à-pas + mise en place système)
-      - Conçu et implémenté le 2026-07-03 — étendu en cours de session d'un simple script manuel vers un système automatique complet :
-          • Deux types de sauvegarde vers NAS Freebox (SMB/CIFS) : **durcie** (une seule, remplacée manuellement quand Thomas valide un état stable via l'admin) et **quotidienne** (automatique 3h du matin, rotation 7 dernières)
-          • `scripts/backup_manager.py` — orchestration complète (montage NAS, `dd | gzip`, rotation, état JSON, bascule atomique de la durcie)
+      - Conçu et implémenté le 2026-07-03 — étendu en cours de session d'un simple script manuel vers un système complet, puis **simplifié le même jour** : pas de sauvegarde quotidienne automatique ("on ne sauvegarde que les évolutions majeures, soyons économes") — **durcie uniquement**, déclenchée à la main via l'admin :
+          • Une seule sauvegarde vers NAS Freebox (SMB/CIFS) : **durcie**, remplacée quand Thomas valide un état stable via l'admin (bascule atomique — jamais d'état sans version durcie valide)
+          • `scripts/backup_manager.py` — orchestration complète (montage NAS, `dd | gzip`, état JSON, bascule atomique)
           • `data/backup_config.json` (non-secret, versionné) + `/etc/hechicero-nas-credentials` (secret, root uniquement, hors dépôt)
-          • Timer systemd `hechicero-backup-daily.timer` (`etc/systemd/system/`, `Persistent=true` — rattrape le tir au boot si le Pi était éteint à 3h)
           • Règle sudoers dédiée pour laisser l'admin web déclencher une validation durcie (root requis pour lire `/dev/mmcblk0` et monter le NAS) sans donner un accès root complet à www-data
-          • Page admin `web/admin/backup_dashboard.php` : état dernière sauvegarde, version durcie actuelle, historique, bouton de validation — lien visible **seulement en mode Expert** de l'admin principale (persona parent geek, pas l'autre parent)
+          • Page admin `web/admin/backup_dashboard.php` : version durcie actuelle, taille, bouton de validation — lien visible **seulement en mode Expert** de l'admin principale (persona parent geek, pas l'autre parent)
           • `README.md` régénéré automatiquement sur le NAS à chaque sauvegarde (secours si le dépôt n'est pas accessible)
+          • **Aucun SSH requis à l'usage** : clic sur "Valider une nouvelle version durcie" dans l'admin → `index.php` déclenche `backup_manager.py validate` en tâche de fond via la règle sudoers → montage NAS, ghost, bascule atomique, tout est géré côté serveur. SSH n'est nécessaire qu'une seule fois, à la mise en place initiale (§3 de la doc : fichier d'identifiants, paquets, règle sudoers) — jamais ensuite.
       - Scripts manuels créés initialement (`scripts/ghost_sd_prepare.sh`, `scripts/ghost_sd_backup.sh`) conservés pour un usage ponctuel/disque externe, mais le flux normal passe désormais par `backup_manager.py`
       - Notes réseau utiles pour la suite : `mafreebox.freebox.fr` résout vers une IP publique Free depuis le Pi (pas la Freebox locale) → utiliser l'IP de la passerelle (`192.168.1.254`) ; montage CIFS anonyme (`guest`) suffit pour lister les partages mais pas pour écrire, un compte Freebox est nécessaire
       - ⚠️ `dd` lit le disque système pendant qu'il tourne (pas d'arrêt des services) — snapshot pas garanti parfaitement cohérent
-      - ⏳ Pas encore testé : premier run réel du timer systemd (déployé mais pas encore passé par un vrai cycle 3h), premier clic "valider durcie" depuis l'admin
+      - ⏳ Pas encore fait : déploiement sur le Pi réel (fichier d'identifiants, règle sudoers, paquets — §3 de la doc), premier clic "valider durcie" depuis l'admin
+      - Fichiers systemd `hechicero-backup-daily.service`/`.timer` créés puis abandonnés (design quotidien annulé) — à supprimer du dépôt (`git rm etc/systemd/system/hechicero-backup-daily.*`)
       - Penser à vérifier/documenter aussi les configs système hors git avant tout (cf. [[project_backups]] en mémoire : UPower.conf, mpd.conf, kiosk.sh, Apache vhosts, Plymouth theme) — capturées dans le ghost complet, mais bon à savoir si restauration partielle
 
 - [ ] TICKET-031 — hardware/feature — Sortie casque avec bascule automatique haut-parleurs

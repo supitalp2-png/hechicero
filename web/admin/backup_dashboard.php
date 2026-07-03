@@ -1,7 +1,6 @@
 <?php
 define('PROJECT_ROOT', is_dir('/home/thomas/hechicero') ? '/home/thomas/hechicero' : dirname(__DIR__, 2));
 define('BACKUP_STATE_JSON', PROJECT_ROOT . '/data/backup_state.json');
-define('BACKUP_CONFIG_JSON', PROJECT_ROOT . '/data/backup_config.json');
 
 function read_json(string $path): array {
     if (!file_exists($path)) return [];
@@ -24,23 +23,8 @@ function fmt_since(?string $iso): string {
 }
 
 $state  = read_json(BACKUP_STATE_JSON);
-$config = read_json(BACKUP_CONFIG_JSON);
-$daily  = $state['daily']  ?? [];
 $durcie = $state['durcie'] ?? [];
-$history = array_reverse($daily['history'] ?? []);
 $currentPage = basename($_SERVER['PHP_SELF'] ?? 'backup_dashboard.php');
-
-$dailyStatus = $daily['last_status'] ?? null;
-$dailyClass  = $dailyStatus === 'ok' ? 'ok' : ($dailyStatus === 'skipped_offline' ? 'warn' : ($dailyStatus ? 'danger' : ''));
-$dailyLabel  = ['ok' => 'OK', 'failed' => 'Échec', 'skipped_offline' => 'NAS hors ligne'][$dailyStatus] ?? '—';
-
-$daysSinceSuccess = null;
-if (!empty($daily['last_success'])) {
-    try {
-        $daysSinceSuccess = (new DateTime())->diff(new DateTime($daily['last_success']))->days;
-    } catch (Throwable $e) {}
-}
-$staleWarning = $daysSinceSuccess !== null && $daysSinceSuccess >= 3;
 ?><!doctype html>
 <html lang="fr">
 <head>
@@ -54,9 +38,7 @@ $staleWarning = $daysSinceSuccess !== null && $daysSinceSuccess >= 3;
       background: rgba(32, 66, 100, 0.42); color: var(--text); font-size: 13px;
     }
     .status-pill.ok     { color: var(--ok); }
-    .status-pill.warn   { color: var(--warn); }
     .status-pill.danger { color: var(--danger); }
-    .ha-table td, .ha-table th { padding: 10px; border-bottom: 1px solid rgba(32, 66, 100, 0.6); }
     .validate-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
     .validate-row input[type=text] {
       flex: 1; min-width: 220px; background: var(--bg); border: 1px solid var(--border);
@@ -72,10 +54,6 @@ $staleWarning = $daysSinceSuccess !== null && $daysSinceSuccess >= 3;
       padding: 10px; font-family: monospace; font-size: 11px; color: var(--muted);
       max-height: 160px; overflow-y: auto; white-space: pre-wrap; display: none;
     }
-    .stale-banner {
-      background: rgba(226, 75, 74, 0.12); border: 1px solid var(--danger); color: var(--danger);
-      border-radius: 10px; padding: 10px 14px; font-size: 13px; margin-bottom: 16px;
-    }
   </style>
 </head>
 <body>
@@ -83,7 +61,7 @@ $staleWarning = $daysSinceSuccess !== null && $daysSinceSuccess >= 3;
     <div class="ha-header">
       <div>
         <h1>💾 Sauvegardes</h1>
-        <div class="ha-subtitle">Ghost complet de la carte SD — version durcie + sauvegardes quotidiennes (TICKET-085)</div>
+        <div class="ha-subtitle">Ghost complet de la carte SD — version durcie, validée manuellement après chaque évolution majeure</div>
       </div>
       <nav class="ha-nav">
         <a class="ha-btn <?php echo $currentPage === 'index.php' ? 'active' : ''; ?>" href="/">
@@ -104,12 +82,6 @@ $staleWarning = $daysSinceSuccess !== null && $daysSinceSuccess >= 3;
       </nav>
     </div>
 
-    <?php if ($staleWarning): ?>
-    <div class="stale-banner">
-      ⚠️ Dernière sauvegarde réussie il y a <?php echo $daysSinceSuccess; ?> jours — vérifier que le Pi et le NAS sont bien en ligne la nuit.
-    </div>
-    <?php endif; ?>
-
     <div class="ha-grid ha-cols-auto" style="margin-bottom:18px;">
       <div class="ha-panel">
         <div class="ha-stat-label">Version durcie actuelle</div>
@@ -124,29 +96,24 @@ $staleWarning = $daysSinceSuccess !== null && $daysSinceSuccess >= 3;
         </div>
       </div>
       <div class="ha-panel">
-        <div class="ha-stat-label">Dernière sauvegarde quotidienne</div>
-        <div class="ha-stat-value"><span class="status-pill <?php echo $dailyClass; ?>"><?php echo htmlspecialchars($dailyLabel); ?></span></div>
-        <div class="ha-stat-note">
-          <?php echo !empty($daily['last_success']) ? 'Réussie il y a ' . htmlspecialchars(fmt_since($daily['last_success'])) : 'Jamais réussie'; ?>
-          <?php if (!empty($daily['last_error'])): ?><br><?php echo htmlspecialchars($daily['last_error']); ?><?php endif; ?>
-        </div>
+        <div class="ha-stat-label">Taille de l'image</div>
+        <div class="ha-stat-value"><?php echo isset($durcie['size_mb']) ? number_format($durcie['size_mb'] / 1024, 1) . ' Go' : '—'; ?></div>
+        <div class="ha-stat-note">Sur le NAS Freebox — pas de sauvegarde automatique</div>
       </div>
+      <?php if (!empty($durcie['last_validation_error'])): ?>
       <div class="ha-panel">
-        <div class="ha-stat-label">Taille dernière image</div>
-        <div class="ha-stat-value"><?php echo isset($daily['last_size_mb']) ? number_format($daily['last_size_mb'] / 1024, 1) . ' Go' : '—'; ?></div>
-        <div class="ha-stat-note">Rotation : <?php echo (int)($config['retention']['daily_keep'] ?? 7); ?> sauvegardes conservées</div>
+        <div class="ha-stat-label">Dernière tentative en échec</div>
+        <div class="ha-stat-value"><span class="status-pill danger">Échec</span></div>
+        <div class="ha-stat-note"><?php echo htmlspecialchars($durcie['last_validation_error']); ?></div>
       </div>
-      <div class="ha-panel">
-        <div class="ha-stat-label">Rythme automatique</div>
-        <div class="ha-stat-value" style="font-size:16px">Chaque nuit à 3h</div>
-        <div class="ha-stat-note">Rattrapée au prochain démarrage si le Pi était éteint</div>
-      </div>
+      <?php endif; ?>
     </div>
 
-    <section class="ha-panel" style="margin-bottom:18px">
+    <section class="ha-panel">
       <h2>Valider une nouvelle version durcie</h2>
       <p class="muted" style="font-size:13px;margin-bottom:12px">
-        À faire après avoir testé et validé un état stable du projet. Lance un ghost complet
+        À faire après avoir testé et validé un état stable du projet — pas de rythme
+        automatique, uniquement pour les évolutions majeures. Lance un ghost complet
         immédiat (~1h+) et remplace la version durcie précédente une fois terminé avec succès.
       </p>
       <div class="validate-row">
@@ -154,34 +121,6 @@ $staleWarning = $daysSinceSuccess !== null && $daysSinceSuccess >= 3;
         <button class="btn-primary" id="btn-validate">Valider une nouvelle version durcie</button>
       </div>
       <div id="backup-log"></div>
-    </section>
-
-    <section class="ha-panel">
-      <h2>Historique des sauvegardes quotidiennes</h2>
-      <?php if (!$history): ?>
-        <div class="ha-empty">Aucune sauvegarde encore enregistrée.</div>
-      <?php else: ?>
-        <table class="ha-table" style="width:100%">
-          <thead>
-            <tr><th>Date</th><th>Statut</th><th>Taille</th><th>Détail</th></tr>
-          </thead>
-          <tbody>
-            <?php foreach ($history as $h): ?>
-              <?php
-                $st = $h['status'] ?? '—';
-                $cls = $st === 'ok' ? 'ok' : ($st === 'skipped_offline' ? 'warn' : 'danger');
-                $lbl = ['ok' => 'OK', 'failed' => 'Échec', 'skipped_offline' => 'NAS hors ligne'][$st] ?? $st;
-              ?>
-              <tr>
-                <td><?php echo htmlspecialchars($h['date'] ?? '—'); ?></td>
-                <td><span class="status-pill <?php echo $cls; ?>"><?php echo htmlspecialchars($lbl); ?></span></td>
-                <td><?php echo isset($h['size_mb']) ? number_format($h['size_mb'] / 1024, 1) . ' Go' : '—'; ?></td>
-                <td style="color:var(--muted);font-size:12px"><?php echo htmlspecialchars($h['error'] ?? ''); ?></td>
-              </tr>
-            <?php endforeach; ?>
-          </tbody>
-        </table>
-      <?php endif; ?>
     </section>
   </div>
 

@@ -1,23 +1,22 @@
 #!/usr/bin/env python3
-"""TICKET-085 — Sauvegardes automatiques de la carte SD (ghost complet, dd|gzip)
-vers un NAS distant (Freebox, monté en CIFS).
+"""TICKET-085 — Sauvegarde de la carte SD (ghost complet, dd|gzip) vers un NAS
+distant (Freebox, monté en CIFS).
 
-Deux types de sauvegarde :
-- "daily" (non durcie) : lancée chaque nuit à 3h par un timer systemd
-  (hechicero-backup-daily.timer, Persistent=true — rattrape le tir au
-  prochain boot si le Pi était éteint à l'heure prévue). Rotation : ne garde
-  que les N dernières (cf. data/backup_config.json -> retention.daily_keep).
-- "durcie" : déclenchée manuellement depuis la page admin quand Thomas valide
-  un état stable du projet. Une seule à la fois, remplacée à chaque validation
-  (écriture sur un fichier temporaire puis bascule atomique, pour ne jamais
-  laisser un état sans durcie valide si le process est interrompu).
+Sauvegarde manuelle uniquement, déclenchée depuis la page admin quand Thomas
+valide un état stable du projet ("version durcie") — pas de sauvegarde
+automatique quotidienne : les évolutions du projet ne sont pas assez
+fréquentes/critiques pour le justifier, et ça évite de gaspiller de l'espace
+NAS et de la bande passante pour rien.
 
-Le NAS ou le réseau peuvent être indisponibles (Hechicero pas toujours en
-ligne la nuit) : ce script ne plante jamais dans ce cas, il enregistre l'échec
-dans data/backup_state.json (lu par la page admin) et sort proprement.
+Une seule version durcie à la fois, remplacée à chaque validation (écriture
+sur un fichier temporaire puis bascule atomique, pour ne jamais laisser un
+état sans durcie valide si le process est interrompu).
+
+Le NAS ou le réseau peuvent être indisponibles : ce script ne plante jamais
+dans ce cas, il enregistre l'échec dans data/backup_state.json (lu par la
+page admin) et sort proprement.
 
 Usage :
-    python3 backup_manager.py daily
     python3 backup_manager.py validate [--label "texte libre"]
     python3 backup_manager.py status
 """
@@ -28,7 +27,6 @@ import json
 import logging
 import os
 import re
-import shutil
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -71,7 +69,7 @@ def load_config() -> dict[str, Any]:
 
 
 def load_state() -> dict[str, Any]:
-    return load_json(STATE_PATH, {"daily": {}, "durcie": {}})
+    return load_json(STATE_PATH, {"durcie": {}})
 
 
 def save_state(state: dict[str, Any]) -> None:
@@ -119,7 +117,7 @@ def nas_mount(cfg: dict[str, Any]) -> tuple[bool, str]:
 
     creds_file = Path(nas["credentials_file"])
     if not creds_file.exists():
-        return False, f"Fichier d'identifiants manquant : {creds_file} (voir docs/95-RESTAURATION_URGENCE.md)"
+        return False, f"Fichier d'identifiants manquant : {creds_file} (voir docs/85-SAUVEGARDE_RESTAURATION.md)"
 
     os.makedirs(mount_point, exist_ok=True)
     cmd = [
@@ -178,41 +176,23 @@ def run_ghost(dest_file: Path) -> tuple[bool, str, int]:
     return True, "", size
 
 
-def rotate_daily(cfg: dict[str, Any]) -> None:
-    keep = cfg.get("retention", {}).get("daily_keep", 7)
-    prefix = cfg.get("image_prefix", "hechicero")
-    backup_dir = nas_backup_dir(cfg)
-    if not backup_dir.exists():
-        return
-    files = sorted(backup_dir.glob(f"{prefix}_daily_*.img.gz"))
-    for old in files[:-keep] if len(files) > keep else []:
-        try:
-            old.unlink()
-            LOGGER.info("Rotation : supprimé %s", old.name)
-        except Exception as e:
-            LOGGER.warning("Rotation : échec suppression %s: %s", old, e)
-
-
 def write_readme(cfg: dict[str, Any], state: dict[str, Any]) -> None:
     durcie = state.get("durcie", {})
-    daily = state.get("daily", {})
     content = f"""# Sauvegardes Hechicero — LIS-MOI D'ABORD
 
 Ce dossier contient des images complètes (ghost) de la carte SD du Raspberry Pi
-"Hechicero". Mis à jour automatiquement à chaque sauvegarde — dernière mise à
-jour : {now_iso()}
+"Hechicero". Sauvegarde manuelle uniquement, faite après chaque évolution
+majeure validée par Thomas — pas de rythme automatique. Mis à jour à chaque
+validation — dernière mise à jour : {now_iso()}
 
 ## État actuel
 
 - **Version durcie actuelle** : `{durcie.get('file', '—')}` — validée le {durcie.get('validated_at', '—')}
   {("(" + durcie.get('label') + ")") if durcie.get('label') else ''}
-- **Dernière sauvegarde quotidienne** : {daily.get('last_success', '—')} ({daily.get('last_status', '—')})
 
 ## Comment restaurer une carte SD (depuis un PC Windows)
 
-1. Choisis quelle image restaurer :
-   - `hechicero_durcie.img.gz` = dernière version stable validée par Thomas (recommandé par défaut)
-   - `hechicero_daily_YYYY-MM-DD.img.gz` = sauvegarde d'une nuit précise (si besoin de revenir juste avant un problème)
+1. Récupère `hechicero_durcie.img.gz` dans ce dossier
 2. Télécharge et installe **Raspberry Pi Imager** si ce n'est pas déjà fait : https://www.raspberrypi.com/software/
 3. Ouvre Raspberry Pi Imager
 4. Clique sur **"CHOOSE OS"** → tout en bas → **"Use custom"** → sélectionne le fichier `.img.gz` directement dans ce dossier réseau (pas besoin de le décompresser, Raspberry Pi Imager le fait automatiquement)
@@ -221,7 +201,7 @@ jour : {now_iso()}
 7. Retire la carte, insère-la dans le Raspberry Pi, branche l'alimentation
 8. Hechicero doit redémarrer directement dans sa configuration habituelle
 
-Détail complet (avec captures et dépannage) : `docs/95-RESTAURATION_URGENCE.md`
+Détail complet (avec dépannage) : `docs/85-SAUVEGARDE_RESTAURATION.md`
 dans le dépôt du projet (accessible via Q:\\ si le partage Samba fonctionne,
 sinon sur GitHub).
 
@@ -238,45 +218,6 @@ et de brancher — pas d'étape de configuration supplémentaire.
         (backup_dir / "README.md").write_text(content, encoding="utf-8")
     except Exception as e:
         LOGGER.warning("Impossible d'écrire le README sur le NAS : %s", e)
-
-
-def cmd_daily() -> int:
-    cfg = load_config()
-    state = load_state()
-    today = datetime.now().strftime("%Y-%m-%d")
-    entry: dict[str, Any] = {"date": today, "attempted_at": now_iso()}
-
-    ok, err = nas_mount(cfg)
-    if not ok:
-        entry.update(status="skipped_offline", error=err)
-        LOGGER.warning("Sauvegarde quotidienne annulée : %s", err)
-    else:
-        prefix = cfg.get("image_prefix", "hechicero")
-        dest = nas_backup_dir(cfg) / f"{prefix}_daily_{today}.img.gz"
-        success, error, size = run_ghost(dest)
-        if success:
-            entry.update(status="ok", size_mb=round(size / 1024 / 1024), file=dest.name)
-            rotate_daily(cfg)
-        else:
-            entry.update(status="failed", error=error)
-        write_readme(cfg, state)
-        nas_unmount(cfg)
-
-    daily = state.setdefault("daily", {})
-    daily["last_attempt"] = entry["attempted_at"]
-    daily["last_status"] = entry["status"]
-    daily["last_error"] = entry.get("error")
-    if entry["status"] == "ok":
-        daily["last_success"] = entry["attempted_at"]
-        daily["last_size_mb"] = entry.get("size_mb")
-        daily["last_file"] = entry.get("file")
-    history = daily.setdefault("history", [])
-    history.append(entry)
-    daily["history"] = history[-14:]
-    save_state(state)
-
-    LOGGER.info("Sauvegarde quotidienne terminée : %s", entry["status"])
-    return 0
 
 
 def cmd_validate(label: str) -> int:
@@ -330,14 +271,11 @@ def cmd_status() -> int:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="cmd", required=True)
-    sub.add_parser("daily")
     p_validate = sub.add_parser("validate")
     p_validate.add_argument("--label", default="", help="Description libre de cette version durcie")
     sub.add_parser("status")
     args = parser.parse_args()
 
-    if args.cmd == "daily":
-        return cmd_daily()
     if args.cmd == "validate":
         return cmd_validate(args.label)
     if args.cmd == "status":

@@ -335,16 +335,17 @@ class MpdClient:
 
     def wait_event(self) -> set[str]:
         """
-        Envoie `idle player mixer`, attend jusqu'à HEARTBEAT_S secondes.
+        Envoie `idle player mixer output`, attend jusqu'à HEARTBEAT_S secondes.
         Retourne l'ensemble des sous-systèmes qui ont changé :
           {'player'}          → play/pause/stop/changement de piste
           {'mixer'}           → changement de volume uniquement
-          {'player', 'mixer'} → les deux simultanément
+          {'output'}          → bascule HP/casque (enableoutput/disableoutput)
           set()               → timeout heartbeat, rien n'a changé
+          (combinaisons possibles si plusieurs surviennent dans le même idle)
         Dans tous les cas, la connexion est prête pour d'autres commandes.
         """
         assert self._sock
-        self._send(b"idle player mixer\n")
+        self._send(b"idle player mixer output\n")
 
         deadline = time.monotonic() + HEARTBEAT_S
         buf = b""
@@ -389,6 +390,8 @@ def run() -> None:
     # État courant
     open_id: int | None = None    # id de la session play_events en cours
     open_file: str | None = None  # fichier MPD de cette session
+    open_mode: str | None = None  # 'hp' | 'casque' de la session en cours
+    open_elapsed_offset: float = 0.0  # elapsed MPD au dernier découpage (bascule sortie)
     prev_state: str = "stopped"
     # Volume : liste de mesures pour calcul de la moyenne pondérée par session
     vol_samples: list[int] = []
@@ -429,6 +432,8 @@ def run() -> None:
                     mode = mpd.get_output_mode()
                     open_id = db_open_session(conn, meta, ts_start, vol, mode)
                     open_file = cur_file
+                    open_mode = mode
+                    open_elapsed_offset = 0.0
                     vol_samples = [vol] if vol is not None else []
                     LOGGER.info("Session initiale : %s id=%d vol=%s%% mode=%s", meta["podcast_id"], open_id, vol, mode)
 
@@ -441,7 +446,7 @@ def run() -> None:
                     if open_id:
                         status, _ = mpd.status_and_song()
                         if status.get("state") == "play":
-                            elapsed = float(status.get("elapsed", 0) or 0)
+                            elapsed = float(status.get("elapsed", 0) or 0) - open_elapsed_offset
                             vol = parse_volume(status)
                             if vol is not None:
                                 vol_samples.append(vol)
@@ -449,14 +454,58 @@ def run() -> None:
                             LOGGER.debug("Heartbeat id=%d elapsed=%.0fs vol=%s%%", open_id, elapsed, vol)
                     continue
 
+                # ── Bascule de sortie (HP ↔ casque) en cours de lecture ─────
+                # Sans ça, le mode enregistré reste figé sur celui du début de
+                # la piste — on scinde la session en deux pour attribuer
+                # correctement le temps écouté à chaque mode (widget fatigue
+                # auditive : mesure de sécurité, doit être exact).
+                if "output" in changed:
+                    new_mode = mpd.get_output_mode()
+                    if open_id and new_mode != open_mode:
+                        status, song = mpd.status_and_song()
+                        if status.get("state") == "play":
+                            elapsed_raw = float(status.get("elapsed", 0) or 0)
+                            duration = float(status.get("duration", 0) or 0)
+                            vol = parse_volume(status)
+                            if vol is not None:
+                                vol_samples.append(vol)
+                            listened_leg = max(0.0, elapsed_raw - open_elapsed_offset)
+                            now = int(time.time())
+                            db_close_session(conn, open_id, now, listened_leg, vol_avg())
+                            LOGGER.info(
+                                "Session scindée (bascule sortie %s→%s) id=%d listened=%.0fs",
+                                open_mode, new_mode, open_id, listened_leg,
+                            )
+                            meta = identify(open_file or "", duration, index)
+                            if meta:
+                                open_id = db_open_session(conn, meta, now, vol, new_mode)
+                                open_elapsed_offset = elapsed_raw
+                                open_mode = new_mode
+                                vol_samples = [vol] if vol is not None else []
+                                LOGGER.info("Nouvelle session (suite bascule) id=%d mode=%s", open_id, new_mode)
+                            else:
+                                open_id = None
+                                open_file = None
+                        else:
+                            open_mode = new_mode
+                    elif open_id is None:
+                        open_mode = new_mode
+                    if changed == {"output"}:
+                        continue
+                    changed.discard("output")
+
                 if "mixer" in changed and "player" not in changed:
                     # Volume changé sans event player → juste enregistrer le nouveau volume
                     status, _ = mpd.status_and_song()
                     vol = parse_volume(status)
                     if vol is not None and open_id:
                         vol_samples.append(vol)
-                        db_heartbeat(conn, open_id, float(status.get("elapsed", 0) or 0), vol_avg())
+                        elapsed = float(status.get("elapsed", 0) or 0) - open_elapsed_offset
+                        db_heartbeat(conn, open_id, elapsed, vol_avg())
                         LOGGER.info("Volume changé : %d%% (moy session : %s%%)", vol, vol_avg())
+                    continue
+
+                if "player" not in changed:
                     continue
 
                 # ── Événement player ────────────────────────────────────────
@@ -479,10 +528,12 @@ def run() -> None:
                 if open_id and (new_state == "stop" or file_changed):
                     if vol is not None:
                         vol_samples.append(vol)
-                    db_close_session(conn, open_id, now, elapsed, vol_avg())
-                    LOGGER.info("Session fermée id=%d listened=%.0fs vol_avg=%s%%", open_id, elapsed, vol_avg())
+                    listened_final = elapsed - open_elapsed_offset
+                    db_close_session(conn, open_id, now, listened_final, vol_avg())
+                    LOGGER.info("Session fermée id=%d listened=%.0fs vol_avg=%s%%", open_id, listened_final, vol_avg())
                     open_id = None
                     open_file = None
+                    open_elapsed_offset = 0.0
                     vol_samples = []
 
                 # Ouvrir une nouvelle session si on lit un nouveau fichier
@@ -495,6 +546,8 @@ def run() -> None:
                         mode = mpd.get_output_mode()
                         open_id = db_open_session(conn, meta, ts_start, vol, mode)
                         open_file = new_file
+                        open_mode = mode
+                        open_elapsed_offset = 0.0
                         LOGGER.info(
                             "Nouvelle session : %s  id=%d  langue=%s  radio=%s  vol=%s%%  mode=%s",
                             meta["podcast_id"], open_id, meta["langue"], meta.get("is_radio"), vol, mode,

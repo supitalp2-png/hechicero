@@ -195,7 +195,7 @@
         {
             "id": "franceinter",
             "name": "Mon Petit France Inter",
-            "desc": "Généraliste · Radio France",
+            "desc": "France Inter pour les enfants !",
             "lang": "fr",
             "url": "https://icecast.radiofrance.fr/monpetitfranceinter-midfi.mp3",
             "image": "images/radio/franceinter.jpg",
@@ -208,6 +208,14 @@
             "lang": "es",
             "url": "https://liveaudio.lamusica.com/NY_WSKQ_icy",
             "image": "images/radio/lamega979fm.jpg"
+        },
+        {
+            "id": "tropicana",
+            "name": "Tropicana",
+            "desc": "La mas bacana !",
+            "lang": "es",
+            "url": "https://27403.live.streamtheworld.com/TROPICANAAAC.aac",
+            "image": "images/radio/tropicana.jpg"
         }
     ]
 }
