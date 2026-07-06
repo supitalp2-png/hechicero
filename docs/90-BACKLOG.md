@@ -54,13 +54,21 @@
         sortie et domine toujours le nœud, mesure passive/injection DC inefficaces). Nouvelle
         direction : jack à contact mécanique switché (NC/NO, indépendant du signal audio) câblé
         sur GPIO. Détail complet et schéma dans `docs/80-hardware.md` §"Sortie casque + détection".
+      - ✅ **Test de mise en route bouton GPIO validé le 2026-07-06** (`scripts/button_toggle_test.py`, bring-up TICKET-091) :
+          • Bouton physique (GPIO17, pull-up, appui = LOW) bascule HP↔casque de bout en bout, testé après reboot complet
+          • Détection par **polling** (10ms), pas par `add_event_detect()` — sur Raspberry Pi 5, la détection par interruption de `RPi.GPIO` est peu fiable (puce GPIO RP1, mal supportée par cette bibliothèque) : le premier appui passait, les suivants étaient perdus. Polling résout le problème — **à retenir pour le choix d'interface GPIO définitif (TICKET-091)** : si on reste sur GPIO direct + `RPi.GPIO`, prévoir du polling partout, pas d'interruptions
+          • Antirebond à 3 niveaux (polling rapproché + confirmation logicielle + garde-fou global 400ms) — nécessaire, un bouton peut rebondir plus que prévu
+          • 🐛 Bug critique trouvé et corrigé en même temps : `radio.php` action `get_output` utilisait une regex qui supposait `outputenabled` juste après `outputname` — MPD 0.24 insère une ligne `plugin: alsa` entre les deux, donc la detection retombait toujours sur "hp", jamais "casque". Remplacé par un vrai parsing par bloc `outputid` (`mpd_output_enabled()`)
+          • 🔄 **Volume mémorisé par mode déplacé côté serveur** (`data/audio_output_state.json`, plus seulement `localStorage` navigateur) : nécessaire pour que le bouton physique (hors navigateur) ait le même comportement que l'IHM tactile — `set_output` gère lui-même la mémoire de volume et la séquence "volume d'abord, sortie ensuite", quel que soit l'appelant (IHM, GPIO, futur détecteur auto)
+          • Le "mode qu'on quitte" est déterminé par l'état réel MPD (`outputs`), jamais par une valeur mémorisée seule — évite toute dérive si l'état a changé sans passer par `set_output`
+          • Écran resynchronisé sur l'état réel toutes les 300ms (`syncAudioMode()`, boucle globale indépendante de l'écran lecteur) — bascule déclenchée par le bouton physique reflétée quasi instantanément (logo + volume affiché)
       - ⏳ Reste à faire :
           • Vérifier si le jack XMSJSIY déjà commandé a un contact switché (compter les bornes : 3 = non, 5-6 = oui) — sinon en commander un autre (type "TRS Socket with Switch")
           • Monter le jack dans le boîtier + câbler DAC USB
-          • Câbler le contact switché du jack sur un GPIO (pull-up + débounce logiciel)
-          • Écrire le script de détection GPIO (réutiliser le pattern `GpioSignalMonitor` de `scripts/battery_watchdog.py`) + service systemd dédié
-          • Remplacer le bouton manuel par cette détection GPIO automatique
-          • Le code IHM (volumes mémorisés, séquence bascule, `radio.php` get_output/set_output) est définitif et ne change pas — seul le déclencheur (GPIO au lieu du bouton) est concerné
+          • Câbler le contact switché du jack sur un GPIO (pull-up + débounce logiciel, cf. `button_toggle_test.py` — polling, pas interruptions)
+          • Transformer le script de test en service systemd dédié une fois TICKET-091 tranché (interface GPIO définitive)
+          • Remplacer le bouton manuel par la détection GPIO automatique du contact switché
+          • Le code IHM (bouton pill, logo, volumes mémorisés) est définitif et ne change pas — seul le déclencheur (GPIO au lieu du tap écran) est concerné
 
 - [ ] TICKET-058 — feature/UX — Série podcast "Décisions Prises" + easter egg
       - Première découverte : 3 taps sur "Hechicero" à l'écran d'accueil → déverrouille + lance l'épisode 0 automatiquement
@@ -80,6 +88,7 @@
       - Options : (1) GPIO direct Pi 5, (2) MCP23017 I²C (préféré, évite conflit HiFiBerry), (3) Pico USB HID
       - Décider avant câblage des 5 boutons Gebildet
       - Impacte : config MPD, scripts Python GPIO
+      - 🧪 Test de mise en route fait le 2026-07-06 (`scripts/button_toggle_test.py`, GPIO direct + `RPi.GPIO`) : fonctionne en **polling**, pas en interruptions (`add_event_detect()` peu fiable sur Pi 5/RP1 — 1er appui détecté, suivants perdus). Si l'option (1) GPIO direct est retenue pour les 5 boutons définitifs, prévoir la même approche polling partout
 
 - [ ] TICKET-092 — hardware — Trouver prise USB-A panel mount clavier de secours
       - Cible : femelle USB-A, corps métal chromé, montage ∅16-19mm

@@ -22,6 +22,7 @@ Objectif : garantir un système **robuste**, **prévisible**, **auto‑récupér
 | `hechicero-idle.service` | `~/.config/systemd/user/` | Extinction écran après inactivité (swayidle + wlopm) | ✅ (user) |
 | RSS cron 3h | `crontab -l` | Ingestion podcasts | ✅ |
 | `hechicero-kiosk.service` | `~/.config/systemd/user/` | Relancer Chromium (optionnel) | selon config |
+| `button_toggle_test.service` | `scripts/button_toggle_test.service` | Bring-up bouton GPIO test (bascule HP/casque) — TEMPORAIRE | ✅ (test) |
 
 > `hechicero-monitor.service` (ancien service batterie basé sur `get_status.py`) — **désactivé session 11**. Remplacé par `battery_tracker.service`. Ne pas réactiver.
 
@@ -266,6 +267,56 @@ systemctl --user enable --now hechicero-kiosk.service
 ### Debug
 ```
 journalctl --user -u hechicero-kiosk.service -f
+```
+
+---
+
+## 7bis. Service test bouton GPIO — button_toggle_test (TEMPORAIRE)
+
+Fichier : `/etc/systemd/system/button_toggle_test.service`
+
+⚠️ **Service de test/bring-up (TICKET-091/031), pas définitif.** Bascule HP/casque à
+chaque appui sur un bouton-poussoir câblé en GPIO17 (pull-up, appui = LOW). À
+remplacer une fois TICKET-091 tranché (interface GPIO définitive pour les 5
+boutons) et TICKET-031 câblé (détection automatique du casque par jack switché).
+Tourne en `root` : accès GPIO.
+
+```ini
+[Unit]
+Description=Hechicero Button Toggle Test (bring-up GPIO, TICKET-091/031)
+After=network.target mpd.service
+Requires=mpd.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/home/thomas/hechicero/scripts
+ExecStart=/usr/bin/python3 /home/thomas/hechicero/scripts/button_toggle_test.py --pin 17
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+### Installation
+```bash
+sudo cp scripts/button_toggle_test.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now button_toggle_test
+```
+
+### Debug
+```bash
+systemctl status button_toggle_test
+journalctl -u button_toggle_test -f
+```
+
+### Désinstallation (une fois remplacé par le service définitif)
+```bash
+sudo systemctl disable --now button_toggle_test
+sudo rm /etc/systemd/system/button_toggle_test.service
+sudo systemctl daemon-reload
 ```
 
 ---

@@ -1,0 +1,15 @@
+[Unit]
+Description=Hechicero Button Toggle Test (bring-up GPIO, TICKET-091/031)
+After=network.target mpd.service
+Requires=mpd.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/home/thomas/hechicero/scripts
+ExecStart=/usr/bin/python3 /home/thomas/hechicero/scripts/button_toggle_test.py --pin 17
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
