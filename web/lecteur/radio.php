@@ -322,8 +322,15 @@ if (isset($_GET['action'])) {
         header('Content-Type: application/json; charset=utf-8');
         $targetMode = $_GET['mode'] === 'casque' ? 'casque' : 'hp';
 
-        $state       = load_audio_state();
-        $leavingMode = $state['mode'];
+        $state = load_audio_state();
+
+        // Mode réellement actif côté MPD (pas la valeur mémorisée dans le
+        // fichier d'état, qui peut dériver si l'état MPD a changé sans
+        // passer par ici — ex: état laissé par un bug précédent, ou premier
+        // appel avant que le fichier d'état existe). Évite toute
+        // incohérence entre "on pense quitter X" et "on quitte vraiment Y".
+        $rawOutputs  = mpd_command('outputs');
+        $leavingMode = mpd_output_enabled($rawOutputs, 1) === true ? 'casque' : 'hp';
 
         // Mémorise le volume actuel (lu depuis MPD, pas besoin que l'appelant
         // le transmette) pour le mode qu'on quitte — identique que ce soit

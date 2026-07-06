@@ -1089,11 +1089,9 @@ function parseMpd(raw) {
 }
 
 async function refreshStatus() {
-  // Ne bloque pas sur le fetch status : tourne en parallèle, met à jour
-  // l'icône HP/casque (updateOutputBtn) dès qu'un changement de sortie est
-  // détecté, peu importe qui l'a déclenché (tap écran, bouton physique GPIO,
-  // future détection auto du casque).
-  syncAudioMode();
+  // La resynchro HP/casque (syncAudioMode) tourne dans sa propre boucle
+  // rapide (setInterval global, 300ms) — pas ici, pour rester réactive même
+  // hors écran lecteur et indépendamment du cycle 3s de refreshStatus.
   try {
     const raw    = await sendRadio('status');
     const status = parseMpd(raw);
@@ -1759,6 +1757,10 @@ show('home');
 loadParentalConfig();
 loadData();
 initAudioMode();
+// Resynchro rapide et globale (pas seulement écran lecteur) — un
+// basculement déclenché ailleurs (bouton physique GPIO) doit se refléter
+// à l'écran quasi instantanément, pas au bout de plusieurs secondes.
+setInterval(syncAudioMode, 300);
 
 // ── Rafraîchissement périodique de la config admin (toutes les 5 min)
 // Répercute sans redémarrage les changements de veille, contrôle parental et radios ajoutées.
