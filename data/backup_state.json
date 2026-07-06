@@ -1,10 +1,15 @@
 {
   "durcie": {
-    "validated_at": "2026-07-03T10:54:03+02:00",
-    "label": "backup manuel initial (avant mise en place admin)",
+    "validated_at": "2026-07-03T11:49:49+02:00",
+    "label": "20260703 - Grimoire scellé",
     "size_mb": 23449,
     "file": "hechicero_durcie.img.gz",
-    "git_commit": "57a8710",
+    "git_commit": "",
     "last_validation_error": null
+  },
+  "private_sync": {
+    "last_attempt": "2026-07-06T22:20:02+02:00",
+    "ok": true,
+    "error": null
   }
 }

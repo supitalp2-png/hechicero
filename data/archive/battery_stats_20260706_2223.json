@@ -1,0 +1,24 @@
+{
+  "current_level": 84,
+  "status": "discharging",
+  "current_mpd_mode": "idle",
+  "current_mpd_state": "stop",
+  "current_mpd_url": "",
+  "screen_on": true,
+  "charging": false,
+  "voltage_v": 4.072,
+  "current_ma": -96.93,
+  "power_w": 0.393,
+  "last_updated": "2026-07-06T22:22:58",
+  "current_state_since": "2026-07-06T19:45:30",
+  "estimated_autonomy_minutes": 10262,
+  "estimated_charge_time_minutes": 41,
+  "cycles_recorded": 4,
+  "model_confidence": "medium",
+  "consumption_by_mode": {
+    "webradio": 15.38,
+    "podcast": 10.47,
+    "idle": 12.35
+  },
+  "estimated_autonomy_minutes_live": 2819
+}
