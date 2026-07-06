@@ -11,10 +11,17 @@ Câblage attendu (même convention que `GpioSignalMonitor` dans
 battery_watchdog.py) : bouton entre le GPIO choisi (numérotation BCM) et la
 masse (GND), pull-up interne activé → repos = HIGH, appui = LOW.
 
+Détection par polling (lecture répétée de la broche), pas par interruption
+(`add_event_detect`) : sur Raspberry Pi 5, la détection par interruption de
+RPi.GPIO est peu fiable (puce GPIO RP1, mal supportée par cette bibliothèque)
+— un premier appui pouvait être détecté puis plus aucun ensuite. Même
+principe que `GpioSignalMonitor` (battery_watchdog.py), avec un intervalle de
+polling bien plus rapide (10ms par défaut), adapté à un appui humain.
+
 Antirebond à trois niveaux — volontairement redondant, un seul rebond
 parasite suffit à rendre le truc pénible à l'usage :
-  1. `bouncetime` RPi.GPIO : ignore tout nouveau front dans les X ms qui
-     suivent le dernier détecté (filtre matériel classique).
+  1. Polling rapproché (`--poll-ms`) : détecte le front descendant dès qu'il
+     apparaît, sans dépendre d'une interruption matérielle.
   2. Confirmation logicielle : après un front descendant, on attend un court
      instant puis on relit la broche — si elle n'est plus à l'état bas, le
      front était du bruit, on annule sans rien faire.
@@ -23,7 +30,7 @@ parasite suffit à rendre le truc pénible à l'usage :
      la précédente.
 
 Usage :
-    python3 scripts/button_toggle_test.py [--pin 17] [--bouncetime-ms 250]
+    python3 scripts/button_toggle_test.py [--pin 17] [--poll-ms 10]
 
 Ctrl+C pour arrêter proprement (libère le GPIO).
 """
@@ -73,7 +80,7 @@ def toggle_output() -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--pin", type=int, default=17, help="GPIO BCM du bouton (défaut : 17 — à adapter au câblage réel)")
-    parser.add_argument("--bouncetime-ms", type=int, default=250, help="Antirebond RPi.GPIO en ms (défaut : 250)")
+    parser.add_argument("--poll-ms", type=int, default=10, help="Intervalle de polling en ms (défaut : 10)")
     args = parser.parse_args()
 
     import RPi.GPIO as GPIO  # import ici : permet --help hors Pi sans RPi.GPIO installé
@@ -81,28 +88,35 @@ def main() -> int:
     GPIO.setmode(GPIO.BCM)
     GPIO.setup(args.pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 
+    # Polling manuel plutôt que add_event_detect() : sur Raspberry Pi 5, la
+    # détection par interruption de RPi.GPIO est connue pour être peu fiable
+    # (puce GPIO RP1, différente des Pi précédents, mal supportée par cette
+    # bibliothèque) — un appui pouvait être détecté puis plus aucun ensuite.
+    # Même principe de polling que GpioSignalMonitor (battery_watchdog.py),
+    # juste avec un intervalle bien plus rapide, adapté à un bouton humain.
+    poll_interval_s = args.poll_ms / 1000
+    last_state = GPIO.HIGH
     last_toggle = 0.0
 
-    def on_press(channel: int) -> None:
-        nonlocal last_toggle
-        time.sleep(CONFIRM_DELAY_S)
-        if GPIO.input(channel) != GPIO.LOW:
-            LOGGER.debug("Front ignoré (rebond court, non confirmé)")
-            return
-        now = time.monotonic()
-        if now - last_toggle < MIN_TOGGLE_INTERVAL_S:
-            LOGGER.debug("Front ignoré (trop proche du précédent, garde-fou)")
-            return
-        last_toggle = now
-        LOGGER.info("Appui confirmé sur GPIO%s", channel)
-        toggle_output()
-
-    GPIO.add_event_detect(args.pin, GPIO.FALLING, callback=on_press, bouncetime=args.bouncetime_ms)
-
-    LOGGER.info("Écoute du bouton sur GPIO%s (BCM) — Ctrl+C pour arrêter", args.pin)
+    LOGGER.info("Écoute du bouton sur GPIO%s (BCM, polling %sms) — Ctrl+C pour arrêter", args.pin, args.poll_ms)
     try:
         while True:
-            time.sleep(1)
+            state = GPIO.input(args.pin)
+            if state == GPIO.LOW and last_state == GPIO.HIGH:
+                # Front descendant détecté par polling — confirmation avant d'agir
+                time.sleep(CONFIRM_DELAY_S)
+                if GPIO.input(args.pin) == GPIO.LOW:
+                    now = time.monotonic()
+                    if now - last_toggle >= MIN_TOGGLE_INTERVAL_S:
+                        last_toggle = now
+                        LOGGER.info("Appui confirmé sur GPIO%s", args.pin)
+                        toggle_output()
+                    else:
+                        LOGGER.debug("Front ignoré (trop proche du précédent, garde-fou)")
+                else:
+                    LOGGER.debug("Front ignoré (rebond court, non confirmé)")
+            last_state = state
+            time.sleep(poll_interval_s)
     except KeyboardInterrupt:
         pass
     finally:
