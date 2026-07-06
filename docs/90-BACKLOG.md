@@ -48,11 +48,19 @@
           • Icône oreille : silhouette tracée depuis `web/oreille.svg` (référence déposée par Thomas), couleur dynamique selon fatigue (vert/jaune/orange/rouge)
           • Zone concha/canal interne en blanc 90% opacité (le noir était invisible sur le fond bleu nuit)
           • Jauge verticale à côté (100% en haut → 0% en bas, dot qui descend avec la fatigue)
+      - 🔄 **Décision technique (session 2026-07-03)** : abandon de l'approche LM393/comparateur
+        d'impédance pour la détection casque — testée sur plaque d'essai, ne fonctionne pas
+        (tension ~1,1V que le casque soit branché ou débranché, le DAC USB pilote activement sa
+        sortie et domine toujours le nœud, mesure passive/injection DC inefficaces). Nouvelle
+        direction : jack à contact mécanique switché (NC/NO, indépendant du signal audio) câblé
+        sur GPIO. Détail complet et schéma dans `docs/80-hardware.md` §"Sortie casque + détection".
       - ⏳ Reste à faire :
+          • Vérifier si le jack XMSJSIY déjà commandé a un contact switché (compter les bornes : 3 = non, 5-6 = oui) — sinon en commander un autre (type "TRS Socket with Switch")
           • Monter le jack dans le boîtier + câbler DAC USB
-          • Câbler le circuit LM393 sur GPIO → voir §12 de 80-hardware.md
-          • Remplacer le bouton manuel par détection GPIO automatique
-          • Le code IHM (volumes mémorisés, séquence bascule) est définitif et sera conservé
+          • Câbler le contact switché du jack sur un GPIO (pull-up + débounce logiciel)
+          • Écrire le script de détection GPIO (réutiliser le pattern `GpioSignalMonitor` de `scripts/battery_watchdog.py`) + service systemd dédié
+          • Remplacer le bouton manuel par cette détection GPIO automatique
+          • Le code IHM (volumes mémorisés, séquence bascule, `radio.php` get_output/set_output) est définitif et ne change pas — seul le déclencheur (GPIO au lieu du bouton) est concerné
 
 - [ ] TICKET-058 — feature/UX — Série podcast "Décisions Prises" + easter egg
       - Première découverte : 3 taps sur "Hechicero" à l'écran d'accueil → déverrouille + lance l'épisode 0 automatiquement

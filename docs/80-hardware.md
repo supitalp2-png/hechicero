@@ -319,24 +319,46 @@ Bande chromée aluminium (longueur ~337mm, tôle ~2-3mm) — conservée et réut
 **Composants retenus :**
 - **Jack** : XMSJSIY TRS 3,5mm panel mount ∅22mm fileté chromé, câble 50cm → commandé  
   (trou ∅16mm agrandi à 22mm avec foret étagé)
+  ⚠️ **À vérifier à réception** : ce modèle est très probablement un simple passe-plat 3 bornes
+  (tip/ring/sleeve, type "extension cable"), **sans contact switché**. Compter les bornes : 3 = pas
+  switché, 5-6 = switché (bon modèle). Si 3 bornes, recommander un jack type "TRS Socket with
+  Switch" (~3-5€) — voir décision ci-dessous.
 - **DAC USB** : UGREEN USB→Jack 3.5mm TRRS, classe USB Audio, zéro driver → commandé  
   Fixé en permanence à l’intérieur du boîtier.
 
-**Détection insertion casque — circuit LM393 :**  
-Le DAC USB étant branché en permanence, udev ne génère aucun événement lors de l’insertion du casque dans le jack. La détection passe par un comparateur d’impédance.
+**Détection insertion casque :**  
+Le DAC USB étant branché en permanence, udev ne génère aucun événement lors de l’insertion du
+casque dans le jack — il faut détecter l'insertion physique autrement.
 
-Principe : la charge du casque (16–32Ω) fait chuter la tension sur la sortie audio du DAC. Le LM393 compare cette tension à une Vref et bascule un GPIO.
+**Historique — approche comparateur d'impédance LM393, testée et abandonnée (session du
+2026-07-03) :**
+Principe initial : pont résistif 100kΩ+100kΩ/100kΩ (deux branches gauche/droite) tirant vers
++3,3V, filtré par un RC (10kΩ + 100µF) vers l'entrée du LM393, comparé à une Vref (pont diviseur) —
+l'idée étant que la charge du casque (16–32Ω) ferait chuter la tension mesurée.
+Testé sur plaque d'essai : **ne fonctionne pas**. Tension mesurée ~1,1V que le casque soit branché
+ou débranché — aucune variation détectable.
+Diagnostic : le DAC USB (UGREEN) pilote activement sa sortie audio avec une impédance de sortie
+basse et un asservissement interne — il impose sa tension de polarisation quoi qu'il y ait en face.
+Toute mesure d'impédance passive (pont diviseur) ou injection de courant DC est donc inefficace,
+le DAC absorbe/domine toujours le nœud. Seule une injection de tonalité AC hors bande audio
+(20-25kHz) avec filtre passe-bande + détecteur d'enveloppe pourrait contourner ça, mais c'est un
+niveau de complexité analogique (oscillateur, filtre sélectif) jugé disproportionné pour ce besoin.
+→ Abandon complet de cette piste.
 
-```
-DAC sortie L ──┬── R1 (1kΩ) ──── IN+ (LM393 pin 3)
-               │
-              R2 (100Ω) ── GND
-Vref (1.65V) ─────────────── IN- (LM393 pin 2)
-OUT (LM393 pin 1) ── R3 pull-up 10kΩ → 3.3V ── GPIO Pi 5
-```
+**Nouvelle approche retenue — jack à contact mécanique switché :**
+Un jack 3,5mm avec un contact NC/NO physique qui s'ouvre/se ferme purement par l'insertion de la
+fiche — totalement indépendant du signal audio, donc immunisé contre le problème ci-dessus. Ce
+contact se câble directement sur un GPIO du Pi (pull-up + débounce logiciel), sur le même principe
+que la classe `GpioSignalMonitor` déjà utilisée dans `scripts/battery_watchdog.py` (réutilisation
+directe du pattern, pas de nouveau composant logiciel à inventer).
 
-Composants : LM393 DIP-8 ×10 (HUABAN) + résistances 1kΩ/100Ω/10kΩ + plaque pastillée (kit PCB Kubii) → commandés.  
-⚠️ Schéma définitif à produire une fois le LM393 en main.
+Les composants LM393/résistances/plaque pastillée déjà commandés ne sont pas perdus (réutilisables
+pour d'autres briques électroniques du projet) mais ne servent plus à cette fonction précise.
+
+⚠️ Le code IHM déjà en place (bascule manuelle HP/casque dans `radio.php` :
+`get_output`/`set_output`, MPD 2 sorties, volumes mémorisés par mode dans
+`web/lecteur/index.html`) reste inchangé et définitif — seul le déclencheur automatique (GPIO
+au lieu du bouton manuel) est concerné par ce changement.
 
 ### 🔹 Fente rectangulaire 25×8mm — switch général batterie
 
@@ -372,9 +394,10 @@ Séquence (vis cachées sous tissu) :
 | Boutons M16 ×5 | Gebildet 16mm 5A inox | commandé |
 | USB-C alimentation | XMSJSIY panel mount fileté | commandé |
 | USB-A clavier secours | — | à chercher |
-| Jack casque | XMSJSIY TRS ∅22mm | commandé |
+| Jack casque (passe-plat) | XMSJSIY TRS ∅22mm | commandé — à vérifier si switché (probablement non) |
+| Jack casque switché | Type "TRS Socket with Switch" | à commander si le XMSJSIY n'est pas switché |
 | DAC USB | UGREEN USB→Jack TRRS | commandé |
-| LM393 ×10 | HUABAN DIP-8 | commandé |
+| LM393 ×10 (réutilisable ailleurs) | HUABAN DIP-8 | commandé, plus utilisé pour la détection casque |
 | Foret étagé | TOOLMAYS ∅4-32mm M35 AlTiN | commandé |
 | Kit PCB + résistances | Kubii | commandé |
 | Visserie M3 + entretoises | Vis M3 + YIXISI laiton | commandé |
