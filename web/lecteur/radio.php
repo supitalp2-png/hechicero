@@ -3,6 +3,7 @@
 $stream = "https://icecast.radiofrance.fr/monpetitfranceinter-midfi.mp3";
 $projectRoot = "/home/thomas/hechicero";
 const CONFIG_PATH = '/home/thomas/hechicero/web/lecteur/config.json';
+const AUDIO_STATE_PATH = '/home/thomas/hechicero/data/audio_output_state.json';
 
 function read_json_radio(string $path): array {
     if (!file_exists($path)) {
@@ -10,6 +11,49 @@ function read_json_radio(string $path): array {
     }
     $d = json_decode(file_get_contents($path), true);
     return is_array($d) ? $d : [];
+}
+
+// --- État audio partagé (mode + volume mémorisé par mode) ---
+// Source unique de vérité côté serveur : que la bascule soit déclenchée par
+// l'IHM tactile, un bouton physique (GPIO) ou plus tard une détection
+// automatique du casque, le comportement (volume mémorisé, séquence
+// "volume d'abord, sortie ensuite") doit être identique — donc géré ici,
+// pas dupliqué côté client.
+function load_audio_state(): array {
+    $d = read_json_radio(AUDIO_STATE_PATH);
+    return [
+        'mode'          => $d['mode']          ?? 'hp',
+        'volume_hp'     => $d['volume_hp']     ?? 70,
+        'volume_casque' => $d['volume_casque'] ?? 70,
+    ];
+}
+
+function save_audio_state(array $state): void {
+    $dir = dirname(AUDIO_STATE_PATH);
+    if (!is_dir($dir)) {
+        @mkdir($dir, 0755, true);
+    }
+    $tmp = AUDIO_STATE_PATH . '.tmp';
+    file_put_contents($tmp, json_encode($state, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+    rename($tmp, AUDIO_STATE_PATH);
+}
+
+function volume_max_for_mode(string $mode): int {
+    $cfg = read_json_radio(CONFIG_PATH);
+    if ($mode === 'casque') {
+        return (int)($cfg['volume']['headphones_max'] ?? 60);
+    }
+    return (int)($cfg['volume']['speakers_max'] ?? 40);
+}
+
+function mpd_to_ihm_pct(int $mpdVol, string $mode): int {
+    $max = max(1, volume_max_for_mode($mode));
+    return max(0, min(100, (int)round($mpdVol * 100 / $max)));
+}
+
+function ihm_to_mpd_vol(int $ihmPct, string $mode): int {
+    $max = volume_max_for_mode($mode);
+    return max(0, min(100, (int)round($ihmPct * $max / 100)));
 }
 
 function mpd_command(string $command): string {
@@ -259,28 +303,55 @@ if (isset($_GET['action'])) {
         mpd_command('seekid ' . $songid . ' ' . $secs);
     }
 
-    // ⚠️ TEMPORAIRE — bascule manuelle HP/casque en attendant le câblage GPIO (TICKET-031)
+    // Bascule HP/casque — TICKET-031 (bouton physique GPIO + IHM tactile,
+    // même comportement des deux côtés : volume mémorisé par mode, volume
+    // réglé avant la sortie pour éviter le pic sonore). État partagé dans
+    // data/audio_output_state.json (cf. load_audio_state/save_audio_state).
     // output 0 = HiFiBerry (haut-parleurs), output 1 = KT USB Audio (casque)
     if ($action === 'get_output') {
         header('Content-Type: application/json; charset=utf-8');
-        $raw  = mpd_command('outputs');
-        $mode = mpd_output_enabled($raw, 1) === true ? 'casque' : 'hp';
-        echo json_encode(['mode' => $mode]);
+        $raw    = mpd_command('outputs');
+        $mode   = mpd_output_enabled($raw, 1) === true ? 'casque' : 'hp';
+        $status = mpd_status();
+        $volPct = isset($status['volume']) ? mpd_to_ihm_pct((int)$status['volume'], $mode) : null;
+        echo json_encode(['mode' => $mode, 'volume_pct' => $volPct]);
         exit;
     }
 
     if ($action === 'set_output' && isset($_GET['mode'])) {
         header('Content-Type: application/json; charset=utf-8');
-        if ($_GET['mode'] === 'casque') {
+        $targetMode = $_GET['mode'] === 'casque' ? 'casque' : 'hp';
+
+        $state       = load_audio_state();
+        $leavingMode = $state['mode'];
+
+        // Mémorise le volume actuel (lu depuis MPD, pas besoin que l'appelant
+        // le transmette) pour le mode qu'on quitte — identique que ce soit
+        // l'IHM, le bouton physique ou une détection automatique qui appelle.
+        $status = mpd_status();
+        if (isset($status['volume'])) {
+            $state['volume_' . $leavingMode] = mpd_to_ihm_pct((int)$status['volume'], $leavingMode);
+        }
+
+        // Volume mémorisé pour le mode cible, appliqué AVANT la bascule de
+        // sortie — évite le pic sonore (même séquence que l'ancien code IHM).
+        $targetPct = $state['volume_' . $targetMode] ?? 70;
+        mpd_command('setvol ' . ihm_to_mpd_vol($targetPct, $targetMode));
+
+        if ($targetMode === 'casque') {
             $res = mpd_batch(['enableoutput 1', 'disableoutput 0']);
         } else {
             $res = mpd_batch(['enableoutput 0', 'disableoutput 1']);
         }
+
+        $state['mode'] = $targetMode;
+        save_audio_state($state);
+
         // Ne pas répondre ok:true si la commande n'a en fait jamais atteint
         // MPD (socket pas encore prêt, typiquement au boot) — sinon un
         // script qui poll cet endpoint croit avoir réussi dès le 1er essai.
         $ok = !str_starts_with($res, 'MPD connection failed');
-        echo json_encode(['ok' => $ok, 'mode' => $_GET['mode']]);
+        echo json_encode(['ok' => $ok, 'mode' => $targetMode, 'volume_pct' => $targetPct]);
         exit;
     }
 }

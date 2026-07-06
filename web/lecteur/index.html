@@ -1089,6 +1089,11 @@ function parseMpd(raw) {
 }
 
 async function refreshStatus() {
+  // Ne bloque pas sur le fetch status : tourne en parallèle, met à jour
+  // l'icône HP/casque (updateOutputBtn) dès qu'un changement de sortie est
+  // détecté, peu importe qui l'a déclenché (tap écran, bouton physique GPIO,
+  // future détection auto du casque).
+  syncAudioMode();
   try {
     const raw    = await sendRadio('status');
     const status = parseMpd(raw);
@@ -1380,14 +1385,13 @@ function stopPoll() {
 }
 
 // ── Sortie audio HP / Casque ──────────────────────────────
-// ⚠️ TEMPORAIRE — bascule manuelle en attendant le câblage LM393 (TICKET-031)
-let audioMode = 'hp'; // 'hp' | 'casque'
-
-// Dernier volume IHM (0-100%) par mode — persisté en localStorage
-const volumeMemory = {
-  hp:     parseInt(localStorage.getItem('hechicero_vol_hp')     ?? '70', 10),
-  casque: parseInt(localStorage.getItem('hechicero_vol_casque') ?? '70', 10),
-};
+// TICKET-031 — bouton physique GPIO + IHM tactile doivent se comporter
+// identiquement. Le volume mémorisé par mode et la séquence "volume d'abord,
+// sortie ensuite" sont gérés côté serveur (radio.php, data/audio_output_state.json)
+// — pas ici — pour que n'importe quel déclencheur (tap écran, bouton GPIO,
+// future détection auto du casque) produise le même résultat, y compris
+// l'affichage : voir syncAudioMode() appelé en boucle par refreshStatus().
+let audioMode = 'hp'; // 'hp' | 'casque' — reflète l'état serveur, pas une source de vérité locale
 
 function updateOutputBtn() {
   const btn = el('mini-btn-output');
@@ -1405,26 +1409,53 @@ function updateOutputBtn() {
   }
 }
 
-async function toggleOutput(e) {
-  e.stopPropagation();
-  // Mémoriser le volume du mode qu'on quitte
-  volumeMemory[audioMode] = currentVolume;
-  localStorage.setItem('hechicero_vol_' + audioMode, currentVolume);
-  // Basculer
-  audioMode = audioMode === 'hp' ? 'casque' : 'hp';
-  updateOutputBtn();
-  // Régler le volume AVANT de basculer la sortie — évite le pic sonore
-  await setVolume(volumeMemory[audioMode]);
-  await sendRadio('set_output', { mode: audioMode });
+// Applique le volume renvoyé par le serveur à l'affichage IHM sans repasser
+// par setVolume() (qui enverrait une commande MPD redondante — le serveur a
+// déjà réglé le volume au bon niveau pendant la bascule).
+function applyVolumeDisplay(ihmPct) {
+  if (ihmPct == null) return;
+  currentVolume = Math.max(0, Math.min(100, Math.round(ihmPct)));
+  document.querySelectorAll('.vol-fill').forEach(node => {
+    node.style.width = Math.min(100, currentVolume) + '%';
+  });
+  document.querySelectorAll('.vol-percent').forEach(node => {
+    node.textContent = currentVolume + '%';
+  });
 }
 
-async function initAudioMode() {
+async function toggleOutput(e) {
+  e.stopPropagation();
+  const target = audioMode === 'hp' ? 'casque' : 'hp';
+  // Mise à jour optimiste de l'icône — la confirmation/volume arrive juste après
+  audioMode = target;
+  updateOutputBtn();
+  try {
+    const raw = await sendRadio('set_output', { mode: target });
+    const d = JSON.parse(raw);
+    audioMode = d.mode || target;
+    updateOutputBtn();
+    applyVolumeDisplay(d.volume_pct);
+  } catch (_) {}
+}
+
+// Resynchronise l'IHM sur l'état réel serveur — nécessaire car la bascule
+// peut être déclenchée ailleurs que par ce tap (bouton physique GPIO, plus
+// tard détection auto du casque). Appelé par refreshStatus() (toutes les 3s).
+async function syncAudioMode() {
   try {
     const r = await fetch('/lecteur/radio.php?action=get_output', { cache: 'no-store' });
     const d = await r.json();
-    audioMode = d.mode || 'hp';
-    updateOutputBtn();
-  } catch(_) {}
+    const mode = d.mode || 'hp';
+    if (mode !== audioMode) {
+      audioMode = mode;
+      updateOutputBtn();
+    }
+    applyVolumeDisplay(d.volume_pct);
+  } catch (_) {}
+}
+
+async function initAudioMode() {
+  await syncAudioMode();
 }
 
 async function checkParentalTime() {
