@@ -39,7 +39,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 LOGGER = logging.getLogger("button_toggle_test")
 
 RADIO_BASE = "http://localhost/lecteur/radio.php"
-CONFIRM_DELAY_S = 0.03        # relecture de la broche après le front, pour confirmer
+CONFIRM_DELAY_S = 0.008       # relecture de la broche après le front, pour confirmer
 MIN_TOGGLE_INTERVAL_S = 0.4   # garde-fou global entre deux bascules acceptées
 
 
