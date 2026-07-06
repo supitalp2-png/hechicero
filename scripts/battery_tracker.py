@@ -30,6 +30,7 @@ ESTIMATE_WINDOW = 10
 SHUTDOWN_LEVEL_PCT = 7    # doit correspondre à DEFAULT_CRITICAL_LEVEL dans battery_watchdog
 MIN_CYCLE_DEPTH_PCT = 3   # décharge minimum pour qu'un cycle soit valide (évite les micro-cycles CV)
 MIN_CYCLE_DURATION_MIN = 5  # durée minimum en minutes
+REAL_DISCHARGE_MA_THRESHOLD = -50  # même seuil de bruit que estimated_autonomy_minutes_live
 
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -98,8 +99,41 @@ def append_datapoint(cycle: dict[str, Any], sample: dict[str, Any]) -> None:
             "charging": sample["charging"],
             "mpd_mode": sample["mpd_mode"],
             "screen": sample["screen_on"],
+            "current_ma": sample.get("current_ma"),
         }
     )
+
+
+def active_discharge_minutes(cycle: dict[str, Any]) -> float | None:
+    """Durée passée en décharge *réelle* (courant significatif), pas juste
+    "non en charge". Un Pi branché sur secteur avec la batterie déjà pleine
+    a un courant quasi nul mais est classé "discharging" faute d'état
+    intermédiaire — sans ce filtre, ce temps gonfle artificiellement le
+    ratio minutes/% et fausse l'autonomie estimée (ex: 182h calculées pour
+    un Pi qui tient en réalité quelques heures).
+
+    Retourne None si les datapoints n'ont pas de current_ma enregistré
+    (cycles capturés avant l'ajout de ce champ) — dans ce cas on retombe sur
+    duration_minutes (comportement historique, imprécis mais pas pire
+    qu'avant) plutôt que de fabriquer un chiffre à partir de rien.
+    """
+    points = cycle.get("datapoints", [])
+    discharge_points = [p for p in points if not p.get("charging", False)]
+    if not discharge_points or all(p.get("current_ma") is None for p in discharge_points):
+        return None
+
+    total_seconds = 0.0
+    for previous, current in zip(discharge_points, discharge_points[1:]):
+        ma = current.get("current_ma")
+        if ma is None or ma > REAL_DISCHARGE_MA_THRESHOLD:
+            continue  # courant trop faible : probablement sur secteur, pas une vraie décharge
+        start_dt = parse_iso(previous.get("t"))
+        end_dt = parse_iso(current.get("t"))
+        if not start_dt or not end_dt:
+            continue
+        total_seconds += max(0.0, (end_dt - start_dt).total_seconds())
+
+    return total_seconds / 60
 
 
 def dominant_mode_for_cycle(cycle: dict[str, Any]) -> str:
@@ -199,8 +233,12 @@ def compute_estimates(history: dict[str, Any], stats: dict[str, Any], window: in
     for i, cycle in enumerate(recent):
         level_start = cycle.get("level_start")
         level_end = cycle.get("level_end")
-        duration = cycle.get("duration_minutes")
-        if isinstance(level_start, (int, float)) and isinstance(level_end, (int, float)) and isinstance(duration, (int, float)):
+        # Durée de décharge *réelle* (courant significatif) si dispo, sinon
+        # on retombe sur la durée totale du cycle (comportement historique).
+        duration = active_discharge_minutes(cycle)
+        if duration is None:
+            duration = cycle.get("duration_minutes")
+        if isinstance(level_start, (int, float)) and isinstance(level_end, (int, float)) and isinstance(duration, (int, float)) and duration > 0:
             consumed = level_start - level_end
             if consumed > 0:
                 discharge_ratios.append(duration / consumed)
