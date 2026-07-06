@@ -42,7 +42,7 @@ import logging
 import time
 import urllib.request
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+logging.basicConfig(level=logging.DEBUG, format="%(asctime)s %(levelname)s %(message)s")
 LOGGER = logging.getLogger("button_toggle_test")
 
 RADIO_BASE = "http://localhost/lecteur/radio.php"
@@ -102,6 +102,8 @@ def main() -> int:
     try:
         while True:
             state = GPIO.input(args.pin)
+            if state != last_state:
+                LOGGER.debug("Broche GPIO%s : %s -> %s", args.pin, "HIGH" if last_state else "LOW", "HIGH" if state else "LOW")
             if state == GPIO.LOW and last_state == GPIO.HIGH:
                 # Front descendant détecté par polling — confirmation avant d'agir
                 time.sleep(CONFIRM_DELAY_S)
