@@ -323,9 +323,18 @@ def update_history_and_stats(sample: dict[str, Any], *, compute_only: bool = Fal
         cycle["level_start"] = sample["level"]
         cycle["discharge_start"] = sample["timestamp"]
 
-    if not compute_only and cycle and sample["status"] == "charging":
-        cycle.setdefault("charge_start", sample["timestamp"])
-        cycle["level_end"] = sample["level"]
+    # ⚠️ Ne PAS toucher à level_end ici pour chaque échantillon "charging" :
+    # level_end doit représenter le niveau au moment où la décharge s'est
+    # arrêtée (figé une seule fois par close_discharge()), pas le niveau
+    # courant qui monte pendant la charge. Bug corrigé le 2026-07-06 : ce
+    # bloc écrasait level_end à chaque poll pendant toute la charge, donc au
+    # moment de la transition suivante il contenait le niveau de FIN de
+    # charge (~95%) au lieu du point bas réel de la décharge — ce qui
+    # rendait "consumed" (level_start - level_end) faux, voire négatif, et
+    # invalidait à tort de vrais cycles profonds (ex: décharge 94%→39% sur
+    # plusieurs jours, mesurée comme si le niveau avait *monté*).
+    # charge_start est déjà couvert par close_discharge() et par le bloc
+    # elif un peu plus haut (ligne ~317) — rien d'autre à faire ici.
 
     stats.update(
         {
