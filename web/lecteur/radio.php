@@ -68,6 +68,29 @@ function mpd_batch(array $commands): string {
     return $response;
 }
 
+function mpd_output_enabled(string $raw, int $wantedId): ?bool {
+    // Découpe la réponse "outputs" en blocs par outputid, puis lit
+    // outputenabled dans le bon bloc — plutôt qu'une regex qui suppose un
+    // ordre de champs fixe juste après outputname. MPD peut insérer des
+    // champs supplémentaires (ex: "plugin: alsa" apparu en 0.24) entre les
+    // deux, ce qui cassait silencieusement l'ancienne detection (toujours
+    // "hp", jamais "casque").
+    $blocks = preg_split('/(?=^outputid: )/m', trim($raw));
+    foreach ($blocks as $block) {
+        if (!preg_match('/^outputid: (\d+)/m', $block, $idMatch)) {
+            continue;
+        }
+        if ((int)$idMatch[1] !== $wantedId) {
+            continue;
+        }
+        if (preg_match('/^outputenabled: (\d)/m', $block, $enMatch)) {
+            return $enMatch[1] === '1';
+        }
+        return null;
+    }
+    return null;
+}
+
 function mpd_status(): array {
     $raw = mpd_command('status');
     $status = [];
@@ -236,13 +259,12 @@ if (isset($_GET['action'])) {
         mpd_command('seekid ' . $songid . ' ' . $secs);
     }
 
-    // ⚠️ TEMPORAIRE — bascule manuelle HP/casque en attendant le câblage LM393 (TICKET-031)
+    // ⚠️ TEMPORAIRE — bascule manuelle HP/casque en attendant le câblage GPIO (TICKET-031)
     // output 0 = HiFiBerry (haut-parleurs), output 1 = KT USB Audio (casque)
     if ($action === 'get_output') {
         header('Content-Type: application/json; charset=utf-8');
         $raw  = mpd_command('outputs');
-        // outputid 1 activé → mode casque ; sinon → mode hp
-        $mode = preg_match('/outputid: 1\s+outputname:[^\n]+\s+outputenabled: 1/s', $raw) ? 'casque' : 'hp';
+        $mode = mpd_output_enabled($raw, 1) === true ? 'casque' : 'hp';
         echo json_encode(['mode' => $mode]);
         exit;
     }
