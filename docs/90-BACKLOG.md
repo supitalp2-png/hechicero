@@ -1,7 +1,7 @@
 # Backlog Hechicero
 
 > Convention : `TICKET-### — [type] — Titre — (prio) — owner`
-> Dernière mise à jour : 2026-07-07 (session 16 — bring-up `buttons_daemon.py` 9 GPIO, actions `radio.php` next_episode/prev_episode/now_playing, montage physique des 8 boutons)
+> Dernière mise à jour : 2026-07-08 (session 17 — nettoyage backlog : TICKET-095 fermé, TICKET-092/094 annulés, TICKET-101 créé pour la finalisation des boutons physiques)
 
 ---
 
@@ -64,7 +64,7 @@
           • Écran resynchronisé sur l'état réel toutes les 300ms (`syncAudioMode()`, boucle globale indépendante de l'écran lecteur) — bascule déclenchée par le bouton physique reflétée quasi instantanément (logo + volume affiché)
       - 🔄 **Détection automatique du branchement casque abandonnée définitivement (décision Thomas, 2026-07-08)** : après l'échec du comparateur LM393 (ci-dessus), la piste de repli — jack à contact mécanique switché câblé sur GPIO — s'avère elle aussi irréalisable en pratique. Thomas tranche : **le bouton physique manuel devient la solution définitive**, pas une étape transitoire. Le "bouton source" du boîtier (à côté de la prise jack, cf. `docs/90-BACKLOG.md` TICKET-091 et mémoire `project_hechicero_buttons_gpio`) est câblé sur GPIO17 et bascule HP/casque via `handle_hp_casque` (`scripts/buttons_daemon.py`), déjà validé en bring-up.
       - Jack XMSJSIY : reste un simple passe-plat pour la sortie casque (pas de contact switché à exploiter) — pas besoin de vérifier le nombre de bornes, cette question ne se pose plus.
-      - ⏳ Reste à faire : monter le jack + câbler le DAC USB dans le boîtier, finaliser le câblage GPIO17 → bouton "source" réel (pas juste la breadboard de test), créer le service systemd définitif (avec les autres boutons, TICKET-091)
+      - ⏳ Reste à faire : monter le jack + câbler le DAC USB dans le boîtier, finaliser le câblage GPIO17 → bouton "source" réel (pas juste la breadboard de test), créer le service systemd définitif (avec les autres boutons, voir TICKET-101)
       - Le code IHM (bouton pill, logo, volumes mémorisés) reste définitif et ne change pas — le déclencheur est et restera le bouton physique GPIO (ou le tap écran, les deux cohabitent)
 
 - [ ] TICKET-058 — feature/UX — Série podcast "Décisions Prises" + easter egg
@@ -106,25 +106,18 @@
           • Comme le boîtier n'offre que 7 boutons en ligne (un de moins que prévu), **play et pause sont fusionnés en un seul bouton toggle** (confirmé par Thomas en conditions réelles : appui→play, ré-appui→pause, etc.)
           • Layout ergonomique des 6 boutons restants, confirmé par Thomas : **vol− · précédent · play/pause · suivant · vol+ · favori**
       - ✅ Commit + push fait (`da36c95`) : `scripts/buttons_daemon.py`, `web/lecteur/radio.php`, `web/lecteur/index.html`, `docs/70-SERVICES_SYSTEMD.md`, `docs/90-BACKLOG.md` — versionné sur `origin/main` (⚠️ les changements du 2026-07-08 — fusion play/pause, layout, abandon détection auto — pas encore commités à ce stade)
-      - ⏳ Reste à faire une fois le câblage physique confirmé : mapping GPIO ↔ bouton (dans l'ordre du layout ci-dessus), assigner les handlers dans `HANDLERS` (`buttons_daemon.py`), tester en conditions réelles, créer le service systemd définitif (remplace `button_toggle_test.service`), documenter dans `70-SERVICES_SYSTEMD.md`
+      - ⏳ Reste à faire : voir TICKET-101 (mapping GPIO ↔ bouton, handlers phase 2, service systemd définitif)
 
-- [ ] TICKET-092 — hardware — Trouver prise USB-A panel mount clavier de secours
-      - Cible : femelle USB-A, corps métal chromé, montage ∅16-19mm
-      - Usage : accès clavier physique de maintenance sans ouvrir le boîtier
+- [ ] TICKET-101 — hardware — Finalisation boutons physiques : mapping GPIO ↔ bouton + service systemd définitif
+      - Suite de TICKET-091 (choix d'interface GPIO + bring-up déjà validés) et TICKET-031 (bouton "source" HP/casque)
+      - Mapping GPIO ↔ bouton une fois le câblage physique des 7 boutons confirmé (layout retenu 2026-07-08 : vol− · précédent · play/pause · suivant · vol+ · favori, + GPIO17 = source HP/casque)
+      - Assigner les handlers phase 2 dans `HANDLERS` (`scripts/buttons_daemon.py`)
+      - Tester en conditions réelles (play/pause/vol/next/prev/source physiques)
+      - Créer le service systemd définitif (remplace `button_toggle_test.service`), documenter dans `docs/70-SERVICES_SYSTEMD.md`
 
 - [ ] TICKET-093 — hardware — Trouver LED témoin alimentation ∅6mm
       - Cible : LED métal panel mount 5-6mm chromée pré-câblée, rouge ou blanche
       - Câblage : résistance série 220Ω (5V) ou 100Ω (3.3V) depuis rail Pi
-
-- [ ] TICKET-094 — hardware — Trancher format switch général batterie (fente 25×8mm)
-      - Option A : agrandir fente à ~25×13mm → rocker switch 10A standard
-      - Option B : utiliser trou ∅16mm existant → toggle switch fileté M16 haute puissance chromé
-      - Contrainte : ≥5A continu / ~10A pic démarrage
-
-- [ ] TICKET-095 — hardware — Vérifier courant max USB-C à réception
-      - Composant : XMSJSIY panel mount USB-C
-      - Cible minimale : ≥3A (Pi 5 + HiFiBerry Amp4)
-      - Si insuffisant : chercher alternative
 
 ---
 
@@ -317,6 +310,13 @@
       - ✅ Estimation live basée sur `current_ma` INA219 + `battery_capacity_mah = 6600` mAh
       - ✅ Dashboard alimentation : n'affiche que les cycles valides, "Activité 24h" remplace cycle en cours
       - ✅ `battery_history.json` réinitialisé (51 cycles invalides effacés)
+
+- [x] TICKET-095 — hardware — Vérifier courant max USB-C à réception
+      - ✅ Fermé 2026-07-08 — ≥3A confirmé à réception, composant XMSJSIY gardé tel quel
+- [x] TICKET-092 — hardware — Trouver prise USB-A panel mount clavier de secours
+      - ❌ Annulé 2026-07-08 — accès direct au Raspberry Pi en ouvrant le boîtier si besoin de debug, pas besoin de port dédié
+- [x] TICKET-094 — hardware — Trancher format switch général batterie (fente 25×8mm)
+      - ❌ Annulé 2026-07-08 — plus besoin d'un switch général batterie
 
 ---
 
