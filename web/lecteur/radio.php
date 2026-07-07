@@ -164,6 +164,44 @@ function mpd_add_and_play(string $uri): array {
     return $responses;
 }
 
+// --- Navigation épisode next/précédent (TICKET-091, boutons GPIO) ---
+// Source de vérité = fichier réellement en cours sur MPD (jamais un état
+// mémorisé côté serveur ou côté client) — même principe que get_output pour
+// TICKET-031 : ça marche identiquement que la piste ait été lancée depuis
+// l'IHM tactile ou changée par un bouton physique.
+function mpd_file_to_relative_audio(string $mpdFile, string $projectRoot): string {
+    // Inverse de normalize_path() : "file:///home/.../podcasts/x/y.mp3"
+    // -> "/podcasts/x/y.mp3" (même format que le champ "audio" de data.json)
+    $prefix = 'file://' . $projectRoot;
+    if (str_starts_with($mpdFile, $prefix)) {
+        return substr($mpdFile, strlen($prefix));
+    }
+    return $mpdFile; // webradio (URL http/https) ou chemin déjà étranger — pas d'épisode
+}
+
+// Retourne les épisodes d'un podcast dans le même ordre que getDisplayItems()
+// côté JS (web/lecteur/index.html) : chapitres/episodes, ordre inversé
+// (ep1 en premier).
+function podcast_display_items(array $podcast): array {
+    $raw = $podcast['chapitres'] ?? $podcast['episodes'] ?? [];
+    return array_values(array_reverse($raw));
+}
+
+// Cherche l'épisode actuellement en lecture dans data.json à partir du
+// chemin audio relatif. Retourne null si ce n'est pas un épisode de podcast
+// (ex : webradio en cours).
+function find_current_episode(string $relativeAudio, array $data): ?array {
+    foreach ($data['podcasts'] ?? [] as $podcast) {
+        $items = podcast_display_items($podcast);
+        foreach ($items as $idx => $ch) {
+            if (($ch['audio'] ?? null) === $relativeAudio) {
+                return ['podcast' => $podcast, 'chapter' => $ch, 'idx' => $idx, 'items' => $items];
+            }
+        }
+    }
+    return null;
+}
+
 function normalize_path(string $path, string $projectRoot): string {
     $path = trim($path);
     if ($path === '') {
@@ -359,6 +397,63 @@ if (isset($_GET['action'])) {
         // script qui poll cet endpoint croit avoir réussi dès le 1er essai.
         $ok = !str_starts_with($res, 'MPD connection failed');
         echo json_encode(['ok' => $ok, 'mode' => $targetMode, 'volume_pct' => $targetPct]);
+        exit;
+    }
+
+    // Navigation épisode — TICKET-091 (boutons GPIO physiques next/précédent).
+    // 'now_playing' : lecture seule, utilisée par l'IHM (index.html) pour se
+    // resynchroniser périodiquement sur l'épisode réellement joué (utile si
+    // la piste a été changée par un bouton physique plutôt que par un tap
+    // écran). 'next_episode'/'prev_episode' : déclenchent la bascule réelle.
+    if ($action === 'now_playing' || $action === 'next_episode' || $action === 'prev_episode') {
+        header('Content-Type: application/json; charset=utf-8');
+
+        $status  = mpd_status();
+        $mpdFile = $status['file'] ?? '';
+        $relative = mpd_file_to_relative_audio($mpdFile, $projectRoot);
+        $data = read_json_radio($projectRoot . '/web/lecteur/data.json');
+        $found = find_current_episode($relative, $data);
+
+        if ($found === null) {
+            // Rien en cours qui corresponde à un épisode de podcast (webradio,
+            // MPD à l'arrêt, ou piste inconnue) — pas une erreur en soi.
+            echo json_encode(['ok' => false, 'reason' => 'no_current_episode']);
+            exit;
+        }
+
+        if ($action === 'now_playing') {
+            echo json_encode([
+                'ok'         => true,
+                'podcast_id' => $found['podcast']['id']  ?? null,
+                'episode_id' => $found['chapter']['id']  ?? null,
+                'idx'        => $found['idx'],
+                'titre'      => $found['chapter']['titre'] ?? null,
+            ]);
+            exit;
+        }
+
+        $delta     = $action === 'next_episode' ? 1 : -1;
+        $targetIdx = $found['idx'] + $delta;
+        if ($targetIdx < 0 || $targetIdx >= count($found['items'])) {
+            echo json_encode([
+                'ok'         => false,
+                'reason'     => 'out_of_bounds',
+                'podcast_id' => $found['podcast']['id'] ?? null,
+                'idx'        => $found['idx'],
+            ]);
+            exit;
+        }
+
+        $target = $found['items'][$targetIdx];
+        mpd_add_and_play(normalize_path((string)($target['audio'] ?? ''), $projectRoot));
+
+        echo json_encode([
+            'ok'         => true,
+            'podcast_id' => $found['podcast']['id'] ?? null,
+            'episode_id' => $target['id']    ?? null,
+            'idx'        => $targetIdx,
+            'titre'      => $target['titre'] ?? null,
+        ]);
         exit;
     }
 }

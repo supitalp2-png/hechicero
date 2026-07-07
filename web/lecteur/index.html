@@ -1151,7 +1151,43 @@ async function refreshStatus() {
         }));
       }
     }
+
+    await syncNowPlaying();
   } catch(_) {}
+}
+
+// Resynchronise currentPodcast/currentIdx (et l'affichage titre/jaquette/
+// badge) sur l'épisode réellement en cours de lecture côté MPD — nécessaire
+// car un bouton physique GPIO next/précédent (TICKET-091) change la piste
+// sans passer par playTrack(). Ne relance jamais playfile ici : la piste
+// visée est déjà en cours de lecture, on aligne juste l'affichage (même
+// principe que syncAudioMode() pour TICKET-031).
+async function syncNowPlaying() {
+  try {
+    const r = await fetch('/lecteur/radio.php?action=now_playing', { cache: 'no-store' });
+    const d = await r.json();
+    if (!d.ok || !DATA) return; // webradio en cours, MPD à l'arrêt, etc.
+    if (currentPodcast?.id === d.podcast_id && currentIdx === d.idx) return; // déjà synchro
+
+    const podcast = DATA.podcasts?.find(p => p.id === d.podcast_id);
+    if (!podcast) return;
+    const items = getDisplayItems(podcast);
+    const ch = items[d.idx];
+    if (!ch) return;
+
+    currentStation = null;
+    currentPodcast = podcast;
+    currentIdx     = d.idx;
+
+    el('ctrl-pod').textContent        = podcast.titre;
+    el('ctrl-ep').textContent         = ch.titre;
+    el('player-back-lbl').textContent = podcast.titre;
+    el('player-art').src              = podcast.image;
+    el('player-art').alt              = podcast.titre;
+    el('t-total').textContent         = fmtDur(ch.duree);
+    const epMatch = ch.titre && ch.titre.match(/\b(\d+)\b/);
+    el('ep-num-badge').textContent = epMatch ? epMatch[1] : String(d.idx + 1);
+  } catch (_) {}
 }
 
 // ═══════════════════════════════════════

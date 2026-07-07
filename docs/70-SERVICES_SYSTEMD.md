@@ -23,6 +23,7 @@ Objectif : garantir un système **robuste**, **prévisible**, **auto‑récupér
 | RSS cron 3h | `crontab -l` | Ingestion podcasts | ✅ |
 | `hechicero-kiosk.service` | `~/.config/systemd/user/` | Relancer Chromium (optionnel) | selon config |
 | `button_toggle_test.service` | `scripts/button_toggle_test.service` | Bring-up bouton GPIO test (bascule HP/casque) — TEMPORAIRE | ✅ (test) |
+| `buttons_daemon.py` (pas encore un service) | `scripts/buttons_daemon.py` | Daemon définitif des 9 boutons GPIO (TICKET-091), remplacera `button_toggle_test.service` | ⏳ bring-up validé, lancé manuellement |
 
 > `hechicero-monitor.service` (ancien service batterie basé sur `get_status.py`) — **désactivé session 11**. Remplacé par `battery_tracker.service`. Ne pas réactiver.
 
@@ -318,6 +319,46 @@ sudo systemctl disable --now button_toggle_test
 sudo rm /etc/systemd/system/button_toggle_test.service
 sudo systemctl daemon-reload
 ```
+
+---
+
+## 7ter. Script boutons GPIO définitif — buttons_daemon.py (pas encore un service, TICKET-091)
+
+Fichier : `scripts/buttons_daemon.py`
+
+Successeur de `button_toggle_test.service` (§7bis) : un seul daemon qui poll les
+9 broches GPIO (17, 23, 27, 5, 6, 13, 16, 12, 25) dans une seule boucle et
+dispatche chaque appui vers un handler dédié, au lieu d'un script scopé à une
+seule broche. Polling (pas `add_event_detect()`, peu fiable sur Pi 5/RP1),
+anti-rebond à trois niveaux, indépendant par broche.
+
+**État au 2026-07-07 :** bring-up validé sur le Pi (les 9 broches détectent
+correctement les appuis, anti-rebond confirmé). ⚠️ `button_toggle_test.service`
+doit être arrêté (`sudo systemctl stop button_toggle_test`) avant de lancer
+`buttons_daemon.py` — les deux ne peuvent pas tenir GPIO17 en même temps
+(`lgpio.error: GPIO busy`).
+
+Seul GPIO17 a un handler définitif assigné (`handle_hp_casque`, repris de
+`button_toggle_test.py`). Les handlers phase 2 (`handle_play`, `handle_pause`,
+`handle_vol_up`, `handle_vol_down`, `handle_next`, `handle_prev`) sont prêts
+dans le script mais pas encore assignés aux 8 autres broches — **bloqué sur le
+mapping GPIO ↔ bouton physique**, que Thomas fera une fois les boutons montés
+dans le boîtier. Pas de handler favori : TICKET-046 (favoris) n'est pas codé,
+reporté.
+
+Pas encore de fichier `.service` : lancé manuellement pour l'instant.
+
+### Usage manuel (bring-up / test)
+```bash
+sudo systemctl stop button_toggle_test   # libère GPIO17
+sudo python3 scripts/buttons_daemon.py --debug
+```
+
+### Reste à faire avant de devenir le service définitif
+- Mapping GPIO ↔ bouton physique (Thomas, après montage boîtier)
+- Assigner les handlers phase 2 dans `HANDLERS`
+- Tester en conditions réelles (play/pause/vol/next/prev physiques)
+- Créer `buttons_daemon.service` (remplace `button_toggle_test.service`), documenter ici en §7bis mis à jour ou nouvelle section dédiée
 
 ---
 
