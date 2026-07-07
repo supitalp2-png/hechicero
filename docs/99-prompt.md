@@ -267,7 +267,7 @@ Objectif : **zéro surprise, zéro magie, zéro casse**.
 
 ## Tickets ouverts prioritaires
 - TICKET-085 : ghost carte SD (avant toute intervention hardware risquée)
-- TICKET-031 : sortie casque — DAC USB UGREEN + jack XMSJSIY + circuit LM393 GPIO (voir `docs/80-hardware.md` §12)
+- TICKET-031 : sortie casque — DAC USB UGREEN + jack XMSJSIY, bascule HP/casque par bouton physique GPIO17 ("source", définitif — détection automatique du branchement abandonnée, LM393 puis jack switché) (voir `docs/80-hardware.md` §12)
 - TICKET-058 : easter egg “Décisions Prises” (mécanisme 3 taps + création épisodes)
 - TICKET-087 : limiteur d'exposition sonore (`volume_pct` déjà enregistré, UI + config à faire)
 - TICKET-091 : choisir interface GPIO boutons (MCP23017 préféré)

@@ -114,32 +114,22 @@ def handle_unassigned(pin: int) -> None:
     LOGGER.info("Bouton GPIO%s appuyé (fonction pas encore assignée — phase 1 identification)", pin)
 
 
-def handle_play(pin: int) -> None:
-    """Play — reprend la lecture, idempotent si déjà en lecture.
+def handle_play_pause(pin: int) -> None:
+    """Play/pause — un seul bouton physique, toggle à chaque appui.
 
-    radio.php n'expose qu'un toggle unique (`action=pause` : si ça joue →
-    pause, sinon → reprend). Thomas veut deux boutons physiques distincts
-    (play strict / pause strict, pas un seul bouton toggle) — on vérifie
-    donc l'état MPD d'abord (`action=status`) et on n'appelle le toggle que
-    si la direction est la bonne, pour rester sans effet si l'état est déjà
-    celui demandé.
+    Revenu sur la décision "2 boutons distincts" (play strict / pause strict,
+    cf. ancienne version de ce handler) : le nouveau boîtier a un bouton
+    physique de moins que prévu (7 emplacements utilisables pour 8 fonctions),
+    Thomas a choisi de fusionner play+pause en un seul bouton pour compenser
+    plutôt que de sacrifier une autre fonction (2026-07-08). Comportement
+    confirmé par Thomas en conditions réelles : appui → play, ré-appui →
+    pause, ré-appui → play, etc. — exactement le toggle déjà exposé par
+    `action=pause` de radio.php, pas besoin de vérifier l'état MPD avant
+    d'agir (contrairement à l'ancienne version directionnelle handle_play/
+    handle_pause).
     """
-    state = mpd_state()
-    if state == "play":
-        LOGGER.info("Play (GPIO%s) : déjà en lecture, rien à faire", pin)
-        return
-    result = http_get("action=pause")  # état != play ici -> ce toggle relance la lecture
-    LOGGER.info("Play (GPIO%s) — réponse radio.php : %s", pin, result)
-
-
-def handle_pause(pin: int) -> None:
-    """Pause — met en pause, idempotent si déjà en pause/arrêt. Voir handle_play."""
-    state = mpd_state()
-    if state != "play":
-        LOGGER.info("Pause (GPIO%s) : déjà en pause/arrêt, rien à faire", pin)
-        return
-    result = http_get("action=pause")  # état == play ici -> ce toggle met en pause
-    LOGGER.info("Pause (GPIO%s) — réponse radio.php : %s", pin, result)
+    result = http_get("action=pause")
+    LOGGER.info("Play/pause (GPIO%s) — réponse radio.php : %s", pin, result)
 
 
 def handle_next(pin: int) -> None:
@@ -171,26 +161,37 @@ def handle_vol_down(pin: int) -> None:
 # Dispatch par broche. Les broches absentes de ce dict tombent sur
 # handle_unassigned via .get(pin, handle_unassigned) dans la boucle.
 #
-# GPIO17 est câblé et validé (bascule HP/casque). Les autres broches
-# (23, 27, 5, 6, 13, 16, 12, 25) sont câblées et détectées (bring-up
+# GPIO17 est câblé et validé (bascule HP/casque — bouton "source" du boîtier
+# réel, situé à côté de la prise jack, décision 2026-07-08). Les autres
+# broches (23, 27, 5, 6, 13, 16, 12, 25) sont câblées et détectées (bring-up
 # 2026-07-07) mais pas encore reliées à un bouton physique précis — Thomas
-# finalisera la correspondance GPIO ↔ bouton une fois les 7 boutons montés
-# dans le boîtier (play, pause, vol+, vol-, suivant, précédent — une broche
-# en réserve). Tous les handlers ci-dessus sont prêts, ex. une fois le
-# mapping connu :
-#   23: handle_play,
-#   27: handle_pause,
-#   5:  handle_vol_up,
-#   6:  handle_vol_down,
-#   13: handle_next,
-#   16: handle_prev,
-#   12: (réserve)
+# finalisera la correspondance GPIO ↔ bouton une fois les boutons montés
+# dans le boîtier.
 #
-# handle_favori volontairement absent : TICKET-046 (fonctionnalité favoris)
+# Boîtier réel (2026-07-08) : 7 boutons utilisables en ligne (dont le
+# "source"/HP-casque) + 1 bouton isolé dans l'emplacement antenne, laissé en
+# réserve complète (aucune fonction). Comme il y a un bouton de moins que
+# prévu à l'origine, play et pause sont fusionnés en un seul bouton toggle
+# (handle_play_pause) plutôt que d'en sacrifier une autre fonction. 6
+# fonctions restent donc à répartir sur les 6 broches hors GPIO17 :
+#   handle_play_pause, handle_vol_up, handle_vol_down, handle_next,
+#   handle_prev, et handle_favori (à écrire — reporté, TICKET-046).
+# Layout ergonomique proposé (ordre physique, à côté du bouton source) :
+#   vol- · précédent · play/pause · suivant · vol+ · favori
+# Assignation GPIO définitive en attente du câblage réel, ex. une fois connu :
+#   23: handle_vol_down,
+#   27: handle_prev,
+#   5:  handle_play_pause,
+#   6:  handle_next,
+#   13: handle_vol_up,
+#   16: (favori, à écrire)
+#   12, 25 : non câblés sur ce boîtier (7 positions seulement, pas 9)
+#
+# handle_favori toujours absent du code : TICKET-046 (fonctionnalité favoris)
 # n'a jamais été codée dans l'app (pas de champ à faire basculer côté
-# serveur) — reporté, décision Thomas 2026-07-07. Le bouton réservé pour ça
-# restera en handle_unassigned (log seul) jusqu'à ce que TICKET-046 soit
-# traité pour de vrai.
+# serveur) — reporté. Le bouton qui lui est destiné restera en
+# handle_unassigned (log seul) jusqu'à ce que TICKET-046 soit traité pour de
+# vrai.
 HANDLERS = {
     17: handle_hp_casque,
 }

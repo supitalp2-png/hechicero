@@ -289,19 +289,27 @@ Bande chromée aluminium (longueur ~337mm, tôle ~2-3mm) — conservée et réut
 - 1 fente rectangulaire 25×8mm → switch général batterie
 - ~10 trous ronds ∅16mm → boutons et connecteurs
 
-### 🔹 Boutons-poussoirs (trous ∅16mm)
+### 🔹 Boutons-poussoirs (boîtier réel — Grundig Concert Boy, photo 2026-07-08)
 
-| Fonction | Composant | Statut |
-|---|---|---|
-| RUN (démarrage Pi 5) | Momentané chromé M16, fils rouge+bleu → GPIO | ✅ installé |
-| Volume + | Gebildet 16mm 5A inox tête haute bornes à vis | commandé |
-| Volume – | idem | commandé |
-| Lecture / Pause | idem | commandé |
-| Piste suivante | idem | commandé |
-| Piste précédente | idem | commandé |
-| Trous restants (~4) | Bouchons flush chromés ∅16mm vissés par l’intérieur | à trouver |
+Tranche supérieure : 7 boutons-poussoirs identiques en ligne + 1 bouton isolé dans l'ancien
+emplacement de l'antenne + la prise jack casque (pas un bouton). Ordre en ligne confirmé par
+Thomas le 2026-07-08, du plus proche du jack au plus loin :
 
-**Interface GPIO** : non tranchée. Options : GPIO direct / MCP23017 I²C (préféré, évite conflit HiFiBerry) / Pico USB HID → voir TICKET-091.
+| Position | Fonction | GPIO (BCM) | Statut |
+|---|---|---|---|
+| RUN (démarrage Pi 5) | — | RUN header | ✅ installé |
+| 1 (à côté du jack) | **Source** — bascule HP/casque manuelle, définitive (détection auto abandonnée, voir ci-dessus) | GPIO17 | ✅ câblé et validé (bring-up `scripts/buttons_daemon.py`) |
+| 2 | Volume − | à assigner | ✅ monté, câblage vers le Pi à confirmer |
+| 3 | Piste précédente | à assigner | ✅ monté |
+| 4 | Lecture/Pause (fusionnés en un seul bouton toggle, boîtier a un bouton de moins que prévu) | à assigner | ✅ monté |
+| 5 | Piste suivante | à assigner | ✅ monté |
+| 6 | Volume + | à assigner | ✅ monté |
+| 7 | Favori (réservé — fonction logicielle non câblée, TICKET-046 non fait) | à assigner | ✅ monté |
+| Bouton isolé (emplacement antenne) | Réserve complète, aucune fonction | — | ✅ monté, non câblé |
+
+⚠️ Les 7 boutons en ligne + le bouton isolé sont physiquement montés (photos `Photos/06-boutons-dessus/`, 2026-07-07), mais le câblage électrique vers le Pi (breakout Freenove visible sur les mêmes photos) et la correspondance GPIO ↔ bouton précis restent à confirmer avec Thomas avant de finaliser `scripts/buttons_daemon.py` (voir `docs/90-BACKLOG.md` TICKET-091 et `docs/70-SERVICES_SYSTEMD.md` §7ter).
+
+**Interface GPIO** : tranchée dans la pratique — GPIO direct (`RPi.GPIO`), confirmé par le bring-up (2026-07-06/07). Détection par **polling**, pas `add_event_detect()` (peu fiable sur Pi 5/puce RP1 — 1er appui détecté, suivants perdus). GPIO17 (source/HP-casque) + GPIO23/27/5/6/13/16/12/25 libres — 6 fonctions à répartir dessus (vol-, précédent, play/pause, suivant, vol+, favori), 2 broches resteront non câblées (bouton isolé antenne + réserve). GPIO4 abandonné : réservé MUTE ampli sur HiFiBerry Amp4 (confirmé doc officielle HiFiBerry).
 
 ### 🔹 Alimentation — USB-C
 
@@ -345,20 +353,26 @@ le DAC absorbe/domine toujours le nœud. Seule une injection de tonalité AC hor
 niveau de complexité analogique (oscillateur, filtre sélectif) jugé disproportionné pour ce besoin.
 → Abandon complet de cette piste.
 
-**Nouvelle approche retenue — jack à contact mécanique switché :**
-Un jack 3,5mm avec un contact NC/NO physique qui s'ouvre/se ferme purement par l'insertion de la
-fiche — totalement indépendant du signal audio, donc immunisé contre le problème ci-dessus. Ce
-contact se câble directement sur un GPIO du Pi (pull-up + débounce logiciel), sur le même principe
-que la classe `GpioSignalMonitor` déjà utilisée dans `scripts/battery_watchdog.py` (réutilisation
-directe du pattern, pas de nouveau composant logiciel à inventer).
+**Piste abandonnée elle aussi — jack à contact mécanique switché (2026-07-08) :**
+Deuxième approche envisagée après l'échec du LM393 : un jack 3,5mm avec un contact NC/NO physique
+s'ouvrant/se fermant purement par l'insertion de la fiche, câblé sur GPIO (pull-up + débounce
+logiciel, même principe que `GpioSignalMonitor` de `scripts/battery_watchdog.py`). **Décision
+Thomas (2026-07-08) : abandon définitif, irréalisable en pratique.** La détection automatique du
+branchement casque n'est plus une piste active pour ce projet.
 
 Les composants LM393/résistances/plaque pastillée déjà commandés ne sont pas perdus (réutilisables
 pour d'autres briques électroniques du projet) mais ne servent plus à cette fonction précise.
 
-⚠️ Le code IHM déjà en place (bascule manuelle HP/casque dans `radio.php` :
-`get_output`/`set_output`, MPD 2 sorties, volumes mémorisés par mode dans
-`web/lecteur/index.html`) reste inchangé et définitif — seul le déclencheur automatique (GPIO
-au lieu du bouton manuel) est concerné par ce changement.
+**Solution retenue et définitive — bouton physique manuel :**
+La bascule HP/casque se fait par un bouton-poussoir dédié, appelé "source", situé à côté de la
+prise jack sur la tranche supérieure (voir tableau ci-dessous et `docs/90-BACKLOG.md` TICKET-091).
+Câblé sur GPIO17, géré par `handle_hp_casque` dans `scripts/buttons_daemon.py` — bring-up testé et
+validé le 2026-07-07. Ce n'est plus une étape transitoire en attendant une détection automatique :
+c'est la solution finale du projet.
+
+Le code IHM déjà en place (bascule manuelle HP/casque dans `radio.php` : `get_output`/`set_output`,
+MPD 2 sorties, volumes mémorisés par mode dans `web/lecteur/index.html`) reste inchangé et
+définitif — le bouton physique et le tap écran cohabitent, tous deux permanents.
 
 ### 🔹 Fente rectangulaire 25×8mm — switch général batterie
 

@@ -277,9 +277,10 @@ journalctl --user -u hechicero-kiosk.service -f
 Fichier : `/etc/systemd/system/button_toggle_test.service`
 
 ⚠️ **Service de test/bring-up (TICKET-091/031), pas définitif.** Bascule HP/casque à
-chaque appui sur un bouton-poussoir câblé en GPIO17 (pull-up, appui = LOW). À
-remplacer une fois TICKET-091 tranché (interface GPIO définitive pour les 5
-boutons) et TICKET-031 câblé (détection automatique du casque par jack switché).
+chaque appui sur un bouton-poussoir câblé en GPIO17 (pull-up, appui = LOW) — ce
+comportement lui-même est définitif (bouton physique manuel, détection auto
+abandonnée), seul ce script/service précis est temporaire. À remplacer par
+`buttons_daemon.service` une fois le câblage des autres boutons terminé (§7ter).
 Tourne en `root` : accès GPIO.
 
 ```ini

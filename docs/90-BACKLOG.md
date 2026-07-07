@@ -1,7 +1,7 @@
 # Backlog Hechicero
 
 > Convention : `TICKET-### — [type] — Titre — (prio) — owner`
-> Dernière mise à jour : 2026-07-03 (session 15 — dashboard fatigue auditive + fix bug audio boot HP/casque)
+> Dernière mise à jour : 2026-07-07 (session 16 — bring-up `buttons_daemon.py` 9 GPIO, actions `radio.php` next_episode/prev_episode/now_playing, montage physique des 8 boutons)
 
 ---
 
@@ -26,7 +26,7 @@
       - **Ajout 2026-07-03 (même session)** : `private/` (hors git, jamais sur GitHub — réflexion perso, futurs contenus non publics type easter egg) synchronisé vers un dossier dédié du NAS, automatiquement à chaque `git commit` via un hook `.git/hooks/post-commit` (template versionné : `scripts/git_hooks_post_commit.sh`) — nouvelle commande `backup_manager.py sync_private`, règle sudoers dédiée pour l'utilisateur `thomas` (voir `docs/85-SAUVEGARDE_RESTAURATION.md` §3.3, §3.6, §5). Zéro SSH à l'usage, comme pour la durcie. `rsync` sans `--delete` : n'efface jamais rien côté NAS.
       - Penser à vérifier/documenter aussi les configs système hors git avant tout (cf. [[project_backups]] en mémoire : UPower.conf, mpd.conf, kiosk.sh, Apache vhosts, Plymouth theme) — capturées dans le ghost complet, mais bon à savoir si restauration partielle
 
-- [ ] TICKET-031 — hardware/feature — Sortie casque avec bascule automatique haut-parleurs
+- [ ] TICKET-031 — hardware/feature — Sortie casque avec bouton physique de bascule HP/casque
       - Contrainte : HiFiBerry Amp4 conservé (pas de sortie casque native)
       - Solution retenue :
           • DAC USB : KT USB Audio — branché, fonctionnel ✅
@@ -62,13 +62,10 @@
           • 🔄 **Volume mémorisé par mode déplacé côté serveur** (`data/audio_output_state.json`, plus seulement `localStorage` navigateur) : nécessaire pour que le bouton physique (hors navigateur) ait le même comportement que l'IHM tactile — `set_output` gère lui-même la mémoire de volume et la séquence "volume d'abord, sortie ensuite", quel que soit l'appelant (IHM, GPIO, futur détecteur auto)
           • Le "mode qu'on quitte" est déterminé par l'état réel MPD (`outputs`), jamais par une valeur mémorisée seule — évite toute dérive si l'état a changé sans passer par `set_output`
           • Écran resynchronisé sur l'état réel toutes les 300ms (`syncAudioMode()`, boucle globale indépendante de l'écran lecteur) — bascule déclenchée par le bouton physique reflétée quasi instantanément (logo + volume affiché)
-      - ⏳ Reste à faire :
-          • Vérifier si le jack XMSJSIY déjà commandé a un contact switché (compter les bornes : 3 = non, 5-6 = oui) — sinon en commander un autre (type "TRS Socket with Switch")
-          • Monter le jack dans le boîtier + câbler DAC USB
-          • Câbler le contact switché du jack sur un GPIO (pull-up + débounce logiciel, cf. `button_toggle_test.py` — polling, pas interruptions)
-          • Transformer le script de test en service systemd dédié une fois TICKET-091 tranché (interface GPIO définitive)
-          • Remplacer le bouton manuel par la détection GPIO automatique du contact switché
-          • Le code IHM (bouton pill, logo, volumes mémorisés) est définitif et ne change pas — seul le déclencheur (GPIO au lieu du tap écran) est concerné
+      - 🔄 **Détection automatique du branchement casque abandonnée définitivement (décision Thomas, 2026-07-08)** : après l'échec du comparateur LM393 (ci-dessus), la piste de repli — jack à contact mécanique switché câblé sur GPIO — s'avère elle aussi irréalisable en pratique. Thomas tranche : **le bouton physique manuel devient la solution définitive**, pas une étape transitoire. Le "bouton source" du boîtier (à côté de la prise jack, cf. `docs/90-BACKLOG.md` TICKET-091 et mémoire `project_hechicero_buttons_gpio`) est câblé sur GPIO17 et bascule HP/casque via `handle_hp_casque` (`scripts/buttons_daemon.py`), déjà validé en bring-up.
+      - Jack XMSJSIY : reste un simple passe-plat pour la sortie casque (pas de contact switché à exploiter) — pas besoin de vérifier le nombre de bornes, cette question ne se pose plus.
+      - ⏳ Reste à faire : monter le jack + câbler le DAC USB dans le boîtier, finaliser le câblage GPIO17 → bouton "source" réel (pas juste la breadboard de test), créer le service systemd définitif (avec les autres boutons, TICKET-091)
+      - Le code IHM (bouton pill, logo, volumes mémorisés) reste définitif et ne change pas — le déclencheur est et restera le bouton physique GPIO (ou le tap écran, les deux cohabitent)
 
 - [ ] TICKET-058 — feature/UX — Série podcast "Décisions Prises" + easter egg
       - Première découverte : 3 taps sur "Hechicero" à l'écran d'accueil → déverrouille + lance l'épisode 0 automatiquement
@@ -89,19 +86,27 @@
       - Décider avant câblage des 5 boutons Gebildet
       - Impacte : config MPD, scripts Python GPIO
       - 🧪 Test de mise en route fait le 2026-07-06 (`scripts/button_toggle_test.py`, GPIO direct + `RPi.GPIO`) : fonctionne en **polling**, pas en interruptions (`add_event_detect()` peu fiable sur Pi 5/RP1 — 1er appui détecté, suivants perdus). Si l'option (1) GPIO direct est retenue pour les 5 boutons définitifs, prévoir la même approche polling partout
-      - 🔌 Plan GPIO final câblé le 2026-07-07 : GPIO17 (HP/casque, déjà validé) + GPIO23/27/5/6/13/16/12/25 libres (GPIO4 abandonné, réservé MUTE ampli HiFiBerry Amp4). Fonctions à assigner : play/pause/next/précédent/vol+/vol-/favoris (7 fonctions, 1 broche en réserve)
+      - 🔌 Plan GPIO final câblé le 2026-07-07 : GPIO17 (HP/casque, déjà validé) + GPIO23/27/5/6/13/16/12/25 libres (GPIO4 abandonné, réservé MUTE ampli HiFiBerry Amp4). Fonctions à assigner initialement : play/pause/next/précédent/vol+/vol-/favoris (7 fonctions, 1 broche en réserve) — **mis à jour le 2026-07-08** : le boîtier réel n'a que 7 boutons en ligne (dont le "source"/HP-casque = GPIO17), play+pause fusionnés en un seul bouton → 6 fonctions à répartir sur les broches hors GPIO17 (vol+, vol-, next, précédent, play/pause, favori), 2 broches libres en réserve (au lieu d'1)
       - 🧪 `scripts/buttons_daemon.py` (re)créé le 2026-07-07 — daemon phase 1 : poll des 9 GPIO en une seule boucle, anti-rebond par broche, GPIO17 → vrai handler (bascule HP/casque), les 8 autres broches journalisent juste leur appui (`--debug`) pour identifier quel GPIO correspond à quel bouton physique.
       - ✅ **Bring-up testé sur le Pi le 2026-07-07** : les 9 broches (17, 23, 27, 5, 6, 13, 16, 12, 25) détectent correctement les appuis, anti-rebond confirmé (GPIO25 a filtré plusieurs rebonds rapprochés sans faux positif). ⚠️ Pense-bête : `button_toggle_test.service` doit être arrêté (`sudo systemctl stop button_toggle_test`) avant de lancer `buttons_daemon.py` — les deux ne peuvent pas tenir GPIO17 en même temps (`lgpio.error: GPIO busy`)
       - ⏳ **Mapping GPIO ↔ bouton physique pas encore fait** — Thomas montera les boutons dans le boîtier avant de faire la correspondance bouton par bouton (bloquant pour la phase 2 de câblage)
-      - ✅ **Handlers phase 2 préparés le 2026-07-07** dans `buttons_daemon.py` (pas encore assignés à un GPIO précis, en attente du mapping physique) :
-          • `handle_play` / `handle_pause` — directionnels (pas un simple toggle) : vérifient l'état MPD via `action=status` avant d'appeler `action=pause` (radio.php n'expose qu'un toggle unique), pour que les 2 boutons physiques distincts demandés par Thomas soient bien idempotents chacun dans leur sens
+      - ✅ **Handlers phase 2 préparés le 2026-07-07, ajustés le 2026-07-08** dans `buttons_daemon.py` :
+          • `handle_play_pause` — un seul bouton, toggle simple (`action=pause`). Fusionné le 2026-07-08 (voir plus bas) — remplace les anciens `handle_play`/`handle_pause` distincts et directionnels
           • `handle_vol_up` / `handle_vol_down` — `action=volup`/`voldown` (±5)
           • `handle_next` / `handle_prev` — nouvelles actions `next_episode`/`prev_episode` ajoutées à `radio.php` (voir ci-dessous)
-          • Bouton favori **volontairement non câblé** — TICKET-046 (fonctionnalité favoris) n'a jamais été codée dans l'app, rien à faire basculer côté serveur ; décision Thomas 2026-07-07 : reporté, le GPIO réservé pour ça reste en `handle_unassigned` (log seul) jusqu'à ce que TICKET-046 soit traité
+          • Bouton favori **volontairement non câblé** — TICKET-046 (fonctionnalité favoris) n'a jamais été codée dans l'app, rien à faire basculer côté serveur ; reporté, le GPIO réservé pour ça reste en `handle_unassigned` (log seul) jusqu'à ce que TICKET-046 soit traité
       - ✅ **Nouvelles actions `radio.php` (2026-07-07)** pour la navigation épisode, nécessaires car next/précédent n'existaient qu'en JS pur dans `index.html` (état `currentPodcast`/`currentIdx` en mémoire navigateur, aucun hook serveur) :
           • `next_episode` / `prev_episode` : retrouvent l'épisode en cours à partir du fichier réellement joué par MPD (jamais un état mémorisé — même principe que `get_output`/TICKET-031), le comparent à `data.json`, et lancent l'épisode voisin. Répond `ok:false` (`out_of_bounds` ou `no_current_episode`) si en bout de série ou si ce n'est pas un épisode de podcast (webradio, MPD à l'arrêt)
           • `now_playing` : lecture seule, utilisée par `index.html` (`syncNowPlaying()`, appelée dans `refreshStatus()` toutes les 3s) pour resynchroniser l'affichage (titre/jaquette/badge) si la piste a changé via un bouton physique plutôt qu'un tap écran — ne relance jamais `playfile`, aligne juste l'affichage
-      - ⏳ Reste à faire une fois le mapping GPIO ↔ bouton connu : assigner les handlers dans `HANDLERS` (`buttons_daemon.py`), tester en conditions réelles (play/pause/vol/next/prev physiques), créer le service systemd définitif (remplace `button_toggle_test.service`), documenter dans `70-SERVICES_SYSTEMD.md`
+      - 📦 **Montage physique fait** (photos 2026-07-07, `Photos/06-boutons-dessus/`) — câblage électrique vers le Pi (breakout Freenove visible sur les mêmes photos) à confirmer avec Thomas avant de faire le mapping GPIO ↔ bouton
+      - 🔍 **Boîtier réel précisé le 2026-07-08** (photo) : même modèle Grundig Concert Boy (un 2e exemplaire acheté, pas un châssis différent). Tranche supérieure = 7 boutons-poussoirs identiques en ligne + 1 bouton isolé dans l'ancien emplacement antenne + la prise jack casque (pas un bouton, contrairement à ce qu'une 1ère photo (illisible) avait suggéré)
+      - ✅ **Layout et décisions finalisées le 2026-07-08** :
+          • 1er bouton de la ligne (à côté du jack) = **"source"** = bascule HP/casque manuelle (GPIO17, `handle_hp_casque`, déjà validé) — voir aussi TICKET-031 : la détection automatique du branchement casque est **abandonnée définitivement**, ce bouton manuel est la solution retenue, pas une étape transitoire
+          • Bouton isolé (emplacement antenne) = **réserve complète, sans fonction**
+          • Comme le boîtier n'offre que 7 boutons en ligne (un de moins que prévu), **play et pause sont fusionnés en un seul bouton toggle** (confirmé par Thomas en conditions réelles : appui→play, ré-appui→pause, etc.)
+          • Layout ergonomique des 6 boutons restants, confirmé par Thomas : **vol− · précédent · play/pause · suivant · vol+ · favori**
+      - ✅ Commit + push fait (`da36c95`) : `scripts/buttons_daemon.py`, `web/lecteur/radio.php`, `web/lecteur/index.html`, `docs/70-SERVICES_SYSTEMD.md`, `docs/90-BACKLOG.md` — versionné sur `origin/main` (⚠️ les changements du 2026-07-08 — fusion play/pause, layout, abandon détection auto — pas encore commités à ce stade)
+      - ⏳ Reste à faire une fois le câblage physique confirmé : mapping GPIO ↔ bouton (dans l'ordre du layout ci-dessus), assigner les handlers dans `HANDLERS` (`buttons_daemon.py`), tester en conditions réelles, créer le service systemd définitif (remplace `button_toggle_test.service`), documenter dans `70-SERVICES_SYSTEMD.md`
 
 - [ ] TICKET-092 — hardware — Trouver prise USB-A panel mount clavier de secours
       - Cible : femelle USB-A, corps métal chromé, montage ∅16-19mm

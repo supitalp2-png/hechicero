@@ -195,7 +195,7 @@ Le lecteur doit fonctionner **sans lag** sur un Raspberry Pi 5.
 - Fix screensaver : remplacement de `pointermove` par `pointerdown/touchstart/click` — évite les events fantômes sur Pi
 - Navigation 5 écrans fonctionnelle bout en bout (TICKET-050 ✅)
 - Filtre par langue via drapeaux FR/🇨🇴 (champ `langue` dans `data.json`)
-- Commandes MPD via `radio.php` (play, pause, playfile, volup, voldown, status, seekcur, seekid)
+- Commandes MPD via `radio.php` (play, pause, playfile, volup, voldown, status, seekcur, seekid, get_output, set_output, next_episode, prev_episode, now_playing)
 - Polling MPD conditionnel (actif uniquement sur l'écran lecteur)
 - Webradio France Inter + Radio Nacional fonctionnelles
 - Mode kiosque Chromium au boot (TICKET-039 ✅)
@@ -224,7 +224,7 @@ Le lecteur doit fonctionner **sans lag** sur un Raspberry Pi 5.
   - PHP : add_podcast → ingest ciblé `--podcast <id>` déclenché en background
   - Lecteur : `openRadioCatalog()` et `goToPodcasts()` rechargent `data.json` à chaque visite
   - Lecteur : `setInterval` 5 min pour config/parental (veille, contrôle parental)
-- Bascule sortie audio HP/Casque — TICKET-031 partiel ✅
+- Bascule sortie audio HP/Casque — TICKET-031 ✅
   - DAC USB KT USB Audio + HiFiBerry, sur cartes ALSA dont le numéro **dérive d'un boot à l'autre** (bug 2026-07-03 : card 2/3 inversés vs. setup initial) → `/etc/mpd.conf` doit référencer les cartes par nom (`hw:CARD=sndrpihifiberry,DEV=0` / `hw:CARD=Audio,DEV=0`), jamais par numéro
   - MPD configuré avec 2 sorties : `My ALSA Device` (HiFiBerry, HP) + `Casque USB` (DAC USB, casque)
   - Bouton pill dans la statusbar (icône haut-parleur / casque SVG, surligné cyan en mode casque)
@@ -232,7 +232,13 @@ Le lecteur doit fonctionner **sans lag** sur un Raspberry Pi 5.
   - Volume mémorisé par mode (localStorage `hechicero_vol_hp` / `hechicero_vol_casque`, IHM 0–100%)
   - `currentVolumeMax()` retourne `VOLUME_MAX_SPEAKERS` ou `VOLUME_MAX_HEADPHONES` selon `audioMode`
   - Séquence bascule : volume réglé AVANT la bascule MPD (évite le pic sonore)
-  - ⚠️ Temporaire : bascule manuelle depuis l'IHM — sera remplacée par détection GPIO LM393
+  - Bascule manuelle définitive : IHM (bouton pill) + bouton physique GPIO17 ("source", cf. TICKET-091). La détection automatique du branchement casque (LM393, puis jack switché) a été testée sous deux approches différentes et abandonnée dans les deux cas — le bouton manuel est la solution retenue pour de bon, pas une étape transitoire
+- Navigation épisode pilotable par bouton physique GPIO — TICKET-091 (2026-07-07) ✅ backend
+  - `radio.php` : actions `next_episode` / `prev_episode` — retrouvent l'épisode en cours à partir du **fichier réellement joué par MPD** (`action=status` → champ `file`, jamais un état mémorisé, même principe que `get_output`), le comparent à `data.json`, lancent l'épisode voisin. Répondent `ok:false` (`out_of_bounds` / `no_current_episode`) en bout de série, webradio en cours, ou MPD à l'arrêt
+  - `radio.php` : action `now_playing` (lecture seule) — utilisée par `syncNowPlaying()` (`index.html`, appelée dans `refreshStatus()` toutes les 3s) pour resynchroniser titre/jaquette/badge si la piste a changé via un bouton physique plutôt qu'un tap écran ; ne relance jamais `playfile`
+  - `scripts/buttons_daemon.py` : daemon GPIO 9 broches (poll unique, anti-rebond par broche), remplace `button_toggle_test.py` (temporaire, 1 seule broche). Bring-up testé sur le Pi le 2026-07-07 : les 9 broches (17, 23, 27, 5, 6, 13, 16, 12, 25) détectent correctement les appuis. Handlers prêts : `handle_play`/`handle_pause` (directionnels via `action=status`, radio.php n'expose qu'un toggle unique), `handle_vol_up`/`handle_vol_down`, `handle_next`/`handle_prev`
+  - ⏳ Mapping GPIO ↔ bouton physique pas encore fait (Thomas monte les boutons dans le boîtier avant de tester bouton par bouton) — bloquant avant assignation finale des handlers et création du service systemd définitif
+  - Bouton favori non câblé : TICKET-046 (fonctionnalité favoris) jamais codée dans l'app — reporté, décision 2026-07-07
 
 ### Architecture technique
 - `index.html` : fichier unique (HTML + CSS + JS)
