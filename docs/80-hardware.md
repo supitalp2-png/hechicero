@@ -11,6 +11,22 @@ Objectifs :
 
 ---
 
+## 0. Statut — Intégration matérielle terminée (2026-07-08)
+
+✅ **L'assemblage physique du boîtier est terminé.** Écran + haut-parleurs montés et câblés sur
+la nouvelle façade intérieure, boîtier Grundig Concert Boy 206 (2e exemplaire acheté) refermé,
+les 7 boutons de la tranche supérieure + le bouton isolé (emplacement antenne) installés et
+câblés. Produit fini testé fonctionnel (photos `Photos/01-vue-ensemble/02` et `03` — écran allumé,
+splash Hechicero). Détail chronologique des étapes dans `Photos/03-interieur/06` à `10` et
+`Photos/05-test-fit/06`-`07`.
+
+Ce qui reste à faire n'est plus matériel mais **logiciel** : mapping GPIO ↔ bouton physique,
+assignation des handlers dans `scripts/buttons_daemon.py`, service systemd définitif (voir
+`docs/90-BACKLOG.md` TICKET-091). Voir §12 ci-dessous pour le détail des choix de boutons/sortie
+audio retenus.
+
+---
+
 ## 1. Liste du matériel
 
 ### 🔹 Raspberry Pi 5
