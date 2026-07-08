@@ -319,6 +319,25 @@ if (isset($_GET['action'])) {
         mpd_command('seekcur ' . $sign . $delta);
     }
 
+    // TICKET-102 (récidive 2026-07-08 soir) — traceur temporaire pour l'écran
+    // de veille : le JS (index.html) appelle cette action à chaque appel de
+    // resetSleepTimer()/activateSleep()/wakeUp()/applySleepConfig() pour
+    // qu'on puisse observer sur le Pi (tail -f) ce qui réinitialise le timer
+    // au moment exact où le bug se reproduit, plutôt que de re-diagnostiquer
+    // à l'aveugle après coup. Écrit en pur append, jamais de lecture/relecture
+    // ni de verrou — pas critique si une écriture se perd occasionnellement.
+    // À retirer (ou a minima désactiver) une fois la cause trouvée : ce n'est
+    // pas un outil destiné à rester en prod indéfiniment.
+    if ($action === 'sleep_log') {
+        header('Content-Type: application/json; charset=utf-8');
+        $event = (string)($_GET['event'] ?? '?');
+        $extra = (string)($_GET['extra'] ?? '');
+        $line  = sprintf("[%s] %s %s\n", date('Y-m-d H:i:s'), $event, $extra);
+        @file_put_contents($projectRoot . '/data/sleep_debug.log', $line, FILE_APPEND | LOCK_EX);
+        echo json_encode(['ok' => true]);
+        exit;
+    }
+
     if ($action === "voldown") {
         $status = mpd_status();
         $volume = isset($status['volume']) ? (int)$status['volume'] : 10;

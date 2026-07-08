@@ -1732,6 +1732,22 @@ function normalizeSleepMode(m) {
   return m || 'retro';
 }
 
+// TICKET-102 (récidive 2026-07-08 soir) — traceur temporaire écran de veille.
+// Envoie un événement horodaté à radio.php (action=sleep_log), qui l'ajoute
+// en append dans data/sleep_debug.log sur le Pi (consultable en direct via
+// `tail -f ~/hechicero/data/sleep_debug.log` en SSH). But : capturer ce qui
+// réinitialise réellement le timer de veille au moment exact où le bug se
+// reproduit (bug revu plusieurs fois, cause jamais confirmée — on arrête de
+// deviner après coup) plutôt que de re-diagnostiquer à l'aveugle. Fire-and-
+// forget : ne doit jamais bloquer ni faire planter l'appelant.
+let lastResetAt = null; // horodatage JS du dernier reset, pour logguer le delta observé
+function logSleepEvent(event, extra) {
+  try {
+    const params = new URLSearchParams({ action: 'sleep_log', event, extra: extra ?? '' });
+    fetch('/lecteur/radio.php?' + params.toString(), { cache: 'no-store' }).catch(() => {});
+  } catch (_) {}
+}
+
 function applySleepConfig(cfg) {
   if (!cfg) return;
   const enabled = !!(cfg.sleep_enabled ?? true);
@@ -1746,11 +1762,12 @@ function applySleepConfig(cfg) {
   const brand = getSleepBrand();
   brand.className = theme === 'retro' ? 'gv-gold' : theme === 'modern' ? 'gv-chrome' : '';
   getSleepClock().style.display = hasClock ? '' : 'none';
+  logSleepEvent('apply_sleep_config', `enabled=${enabled} delay_ms=${SLEEP_DELAY} mode=${SLEEP_MODE}`);
   if (!enabled) {
     clearTimeout(sleepTimer);
     overlay.classList.remove('active');
   } else {
-    resetSleepTimer();
+    resetSleepTimer('config_reload');
   }
 }
 
@@ -1765,20 +1782,28 @@ function updateSleepClock() {
 }
 
 function activateSleep() {
+  const wasActive = getSleepOverlay().classList.contains('active');
   getSleepOverlay().classList.add('active');
   updateSleepClock();
+  logSleepEvent('activate_sleep', `already_active=${wasActive}`);
 }
 
 function wakeUp(e) {
-  if (getSleepOverlay().classList.contains('active')) {
+  const wasActive = getSleepOverlay().classList.contains('active');
+  if (wasActive) {
     e.stopPropagation();
     e.preventDefault();
     getSleepOverlay().classList.remove('active');
   }
-  resetSleepTimer();
+  logSleepEvent('wake_up', `event_type=${e.type} was_active=${wasActive}`);
+  resetSleepTimer(`wake_up:${e.type}`);
 }
 
-function resetSleepTimer() {
+function resetSleepTimer(source) {
+  const now = performance.now();
+  const sinceLast = lastResetAt == null ? -1 : Math.round(now - lastResetAt);
+  lastResetAt = now;
+  logSleepEvent('reset_timer', `source=${source ?? '?'} ms_since_last_reset=${sinceLast} delay_ms=${SLEEP_DELAY}`);
   clearTimeout(sleepTimer);
   sleepTimer = setTimeout(activateSleep, SLEEP_DELAY);
 }
@@ -1795,7 +1820,8 @@ function resetSleepTimer() {
 setInterval(updateSleepClock, 10000);
 
 // Démarrage du timer
-resetSleepTimer();
+resetSleepTimer('page_load');
+logSleepEvent('page_load', `sleep_delay_default_ms=${SLEEP_DELAY}`);
 
 // INIT
 // ═══════════════════════════════════════
