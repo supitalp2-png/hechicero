@@ -108,12 +108,25 @@
       - ✅ Commit + push fait (`da36c95`) : `scripts/buttons_daemon.py`, `web/lecteur/radio.php`, `web/lecteur/index.html`, `docs/70-SERVICES_SYSTEMD.md`, `docs/90-BACKLOG.md` — versionné sur `origin/main` (⚠️ les changements du 2026-07-08 — fusion play/pause, layout, abandon détection auto — pas encore commités à ce stade)
       - ⏳ Reste à faire : voir TICKET-101 (mapping GPIO ↔ bouton, handlers phase 2, service systemd définitif)
 
-- [ ] TICKET-101 — hardware — Finalisation boutons physiques : mapping GPIO ↔ bouton + service systemd définitif
+- [x] TICKET-101 — hardware — Finalisation boutons physiques : mapping GPIO ↔ bouton + service systemd définitif
       - Suite de TICKET-091 (choix d'interface GPIO + bring-up déjà validés) et TICKET-031 (bouton "source" HP/casque)
-      - Mapping GPIO ↔ bouton une fois le câblage physique des 7 boutons confirmé (layout retenu 2026-07-08 : vol− · précédent · play/pause · suivant · vol+ · favori, + GPIO17 = source HP/casque)
-      - Assigner les handlers phase 2 dans `HANDLERS` (`scripts/buttons_daemon.py`)
-      - Tester en conditions réelles (play/pause/vol/next/prev/source physiques)
-      - Créer le service systemd définitif (remplace `button_toggle_test.service`), documenter dans `docs/70-SERVICES_SYSTEMD.md`
+      - ✅ **Mapping GPIO ↔ bouton confirmé le 2026-07-08** (test bouton par bouton, gauche à droite) : GPIO25 = source (HP/casque), GPIO13 = vol−, GPIO17 = précédent, GPIO12 = play/pause, GPIO27 = suivant, GPIO5 = vol+, GPIO16 = réserve (pas de fonction décidée), GPIO23 = favori (bouton isolé antenne, pas encore câblé côté logiciel — TICKET-046), GPIO6 = non câblé
+      - ⚠️ GPIO17 n'est pas le bouton source dans le câblage réel (contrairement au bring-up breadboard du 2026-07-06) — c'est GPIO25. Sans impact, le dispatch est purement logiciel (`HANDLERS` dans `buttons_daemon.py`)
+      - ✅ Handlers assignés dans `HANDLERS` (`scripts/buttons_daemon.py`)
+      - ✅ Service systemd créé : `scripts/buttons_daemon.service` (remplace `button_toggle_test.service`, voir `docs/70-SERVICES_SYSTEMD.md` §7ter pour l'installation)
+      - ✅ Service installé et testé en conditions réelles par Thomas (2026-07-08) : 3 bugs trouvés et corrigés —
+          • suivant/précédent ne faisaient rien : `radio.php` lisait `mpd_status()['file']`, or la commande MPD `status` n'a PAS de champ `file:` (seul `currentsong` l'a) → ajout de `mpd_currentsong()`, utilisé par `next_episode`/`prev_episode`/`now_playing`
+          • latence perçue au play/pause : polling `syncPlaybackState()`/`syncAudioMode()` resserré de 300ms à 100ms dans `index.html`
+          • maintien du bouton volume ne répétait pas : rebond mécanique pendant le maintien lu à tort comme un relâchement (bloqué ensuite par le garde-fou anti-rebond) → hystérésis dédiée (`RELEASE_CONFIRM_S`), relâchement confirmé seulement après 50ms de HIGH continu
+      - ✅ **Nouveau (2026-07-08)** : suivant/précédent passent en tap-ou-maintien (`TAP_OR_HOLD` dans `buttons_daemon.py`) — tap bref = épisode suivant/précédent (inchangé), maintien > `HOLD_THRESHOLD_S` (0.4s) = recherche par à-coups de `SEEK_STEP_S` (5s) dans l'épisode en cours. Nouvelle action `seek_relative` dans `radio.php` (`seekcur ±N` MPD, recherche relative à la position actuelle). Recherche en secondes fixes (pas en % de la durée) — pratique standard des lecteurs de podcasts (Apple Podcasts, YouTube). Pas encore testé en conditions réelles par Thomas — valeurs `SEEK_STEP_S`/`HOLD_THRESHOLD_S` à ajuster si besoin
+      - ⏳ Reste à faire : Thomas teste le tap/maintien suivant-précédent ; décider plus tard de GPIO16 (réserve) et coder TICKET-046 pour GPIO23 (favori)
+
+- [x] TICKET-102 — bug — Écran de veille et coupure d'écran ne fonctionnaient plus après l'intégration hardware finale (2026-07-08)
+      - Symptôme rapporté par Thomas : l'overlay de veille (JS, `index.html`) apparaissait bien après le délai configuré quand la page était ouverte depuis un PC (`192.168.1.86/lecteur`), mais jamais sur l'écran d'Hechicero lui-même ; la coupure d'écran automatique (`hechicero-idle.service`) ne se déclenchait pas non plus
+      - Cause 1 — **port HDMI changé pendant l'intégration** : `scripts/screen_dpms.sh` ciblait `OUTPUT="HDMI-A-2"` en dur, mais l'écran (JRP JRP7003) est en fait branché sur `HDMI-A-1` (confirmé via `wlr-randr` sur le Pi). `wlr-randr --output HDMI-A-2 --off` échouait donc silencieusement. **Fix** : `OUTPUT="HDMI-A-1"` dans `scripts/screen_dpms.sh`, avec commentaire pour vérifier ce nom via `wlr-randr` si l'écran est un jour rebranché sur l'autre port
+      - Cause 2 — **rendu Chromium figé** : une fois le port HDMI corrigé, la coupure système s'est déclenchée seule après inactivité réelle (prouvant l'absence de faux appuis tactiles — la piste "tactile fantôme" évoquée par Thomas a donc été écartée), mais l'overlay de veille JS n'apparaissait toujours pas. Cause probable : glitch GPU au moment du changement de port HDMI ayant figé le rendu de la page (JS mort, dernière frame affichée à l'écran, indépendant du blanking système qui lui continue de fonctionner). **Fix** : relance de Chromium (`bash ~/hechicero/restart-kiosk.sh`) — confirmé résolu par Thomas après relance
+      - ⚠️ **Point de vigilance laissé ouvert** : vérifier que `hechicero-kiosk.service` (relance auto de Chromium en cas de crash, voir `docs/60-KIOSK_MODE.md` §4) est bien actif — sinon un futur gel de Chromium nécessitera de nouveau une intervention manuelle
+      - Fichier modifié : `scripts/screen_dpms.sh`
 
 - [ ] TICKET-093 — hardware — Trouver LED témoin alimentation ∅6mm
       - Cible : LED métal panel mount 5-6mm chromée pré-câblée, rouge ou blanche

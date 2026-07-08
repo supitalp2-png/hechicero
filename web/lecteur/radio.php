@@ -150,6 +150,27 @@ function mpd_status(): array {
     return $status;
 }
 
+// La commande MPD "status" ne contient PAS le fichier en cours de lecture
+// (contrairement à ce qu'on pourrait supposer) — seule "currentsong" le donne
+// (champ "file"). Bug trouvé le 2026-07-08 : next_episode/prev_episode
+// lisaient $status['file'] (toujours absent -> chaîne vide -> jamais de
+// correspondance dans data.json -> "no_current_episode" en permanence, même
+// en plein podcast).
+function mpd_currentsong(): array {
+    $raw = mpd_command('currentsong');
+    $result = [];
+
+    foreach (preg_split('/\r?\n/', $raw) as $line) {
+        if (strpos($line, ': ') !== false) {
+            [$key, $value] = explode(': ', $line, 2);
+            $result[$key] = $value;
+        }
+    }
+
+    $result['_raw'] = $raw;
+    return $result;
+}
+
 function mpd_add_and_play(string $uri): array {
     $responses = [];
     $responses['clear'] = mpd_command('clear');
@@ -171,10 +192,14 @@ function mpd_add_and_play(string $uri): array {
 // l'IHM tactile ou changée par un bouton physique.
 function mpd_file_to_relative_audio(string $mpdFile, string $projectRoot): string {
     // Inverse de normalize_path() : "file:///home/.../podcasts/x/y.mp3"
-    // -> "/podcasts/x/y.mp3" (même format que le champ "audio" de data.json)
-    $prefix = 'file://' . $projectRoot;
-    if (str_starts_with($mpdFile, $prefix)) {
-        return substr($mpdFile, strlen($prefix));
+    // -> "/podcasts/x/y.mp3" (même format que le champ "audio" de data.json).
+    // MPD peut renvoyer le champ "file" de currentsong avec OU sans le
+    // préfixe "file://" selon la version/config (pas vérifié en conditions
+    // réelles) — on gère les deux plutôt que de supposer un seul format.
+    foreach (['file://' . $projectRoot, $projectRoot] as $prefix) {
+        if (str_starts_with($mpdFile, $prefix)) {
+            return substr($mpdFile, strlen($prefix));
+        }
     }
     return $mpdFile; // webradio (URL http/https) ou chemin déjà étranger — pas d'épisode
 }
@@ -278,6 +303,20 @@ if (isset($_GET['action'])) {
     if ($action === 'seekcur' && isset($_GET['time'])) {
         $time = (int)$_GET['time'];
         mpd_command("seekcur $time");
+    }
+
+    // Recherche relative — TICKET-091, maintien des boutons physiques
+    // suivant/précédent (avance/recul de quelques secondes dans l'épisode en
+    // cours, plutôt qu'un saut d'épisode entier). MPD accepte "seekcur +N"/
+    // "seekcur -N" pour une recherche relative à la position actuelle — mais
+    // (int)$_GET['delta'] suffit à reconstruire le signe correctement tant
+    // qu'on rebâtit la chaîne nous-même (un simple cast perdrait le signe
+    // "+" pour les valeurs positives si on utilisait directement le paramètre
+    // brut sans le repasser par (int) puis reformater).
+    if ($action === 'seek_relative' && isset($_GET['delta'])) {
+        $delta = (int)$_GET['delta'];
+        $sign  = $delta >= 0 ? '+' : '';
+        mpd_command('seekcur ' . $sign . $delta);
     }
 
     if ($action === "voldown") {
@@ -408,8 +447,8 @@ if (isset($_GET['action'])) {
     if ($action === 'now_playing' || $action === 'next_episode' || $action === 'prev_episode') {
         header('Content-Type: application/json; charset=utf-8');
 
-        $status  = mpd_status();
-        $mpdFile = $status['file'] ?? '';
+        $current = mpd_currentsong();
+        $mpdFile = $current['file'] ?? '';
         $relative = mpd_file_to_relative_audio($mpdFile, $projectRoot);
         $data = read_json_radio($projectRoot . '/web/lecteur/data.json');
         $found = find_current_episode($relative, $data);

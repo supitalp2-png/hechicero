@@ -1112,12 +1112,7 @@ async function refreshStatus() {
     }
     lastMpdState = state;
 
-    const playing = state === 'play';
-    el('btn-pp').textContent       = playing ? '⏸' : '▶';
-    el('ov-icon').textContent      = playing ? '⏸' : '▶';
-    el('mini-btn-pp').textContent  = playing ? '⏸' : '▶';
-    el('rp-btn-pp').textContent    = playing ? '⏸' : '▶';
-    el('art-overlay').classList.toggle('show', !playing);
+    applyPlaybackIcons(state === 'play');
 
     if (duration > 0) {
       currentDuration = duration;
@@ -1441,6 +1436,27 @@ function updateOutputBtn() {
     el('ico-casque').classList.add('hidden');
     btn.title = 'Haut-parleurs actifs — tap pour le casque';
   }
+}
+
+// Icônes play/pause — factorisé pour être appelé à la fois par refreshStatus()
+// (cycle 3s, avec le reste : progression, volume, persistance) et par
+// syncPlaybackState() (cycle rapide 300ms) qui ne sert qu'à réduire la latence
+// perçue quand la lecture est basculée par un bouton physique GPIO plutôt que
+// par un tap écran — même principe que syncAudioMode() pour la sortie HP/casque.
+function applyPlaybackIcons(playing) {
+  el('btn-pp').textContent       = playing ? '⏸' : '▶';
+  el('ov-icon').textContent      = playing ? '⏸' : '▶';
+  el('mini-btn-pp').textContent  = playing ? '⏸' : '▶';
+  el('rp-btn-pp').textContent    = playing ? '⏸' : '▶';
+  el('art-overlay').classList.toggle('show', !playing);
+}
+
+async function syncPlaybackState() {
+  try {
+    const raw = await sendRadio('status');
+    const state = parseMpd(raw).state || 'stop';
+    applyPlaybackIcons(state === 'play');
+  } catch (_) {}
 }
 
 // Applique le volume renvoyé par le serveur à l'affichage IHM sans repasser
@@ -1796,7 +1812,11 @@ initAudioMode();
 // Resynchro rapide et globale (pas seulement écran lecteur) — un
 // basculement déclenché ailleurs (bouton physique GPIO) doit se refléter
 // à l'écran quasi instantanément, pas au bout de plusieurs secondes.
-setInterval(syncAudioMode, 300);
+// 100ms (pas 300ms) : resserré le 2026-07-08 pour améliorer la réactivité
+// perçue des boutons physiques — ça reste du polling (pas un vrai push),
+// mais à cette cadence la latence n'est plus perceptible à l'œil.
+setInterval(syncAudioMode, 100);
+setInterval(syncPlaybackState, 100);
 
 // ── Rafraîchissement périodique de la config admin (toutes les 5 min)
 // Répercute sans redémarrage les changements de veille, contrôle parental et radios ajoutées.

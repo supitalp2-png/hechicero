@@ -1,19 +1,32 @@
 #!/usr/bin/env python3
-"""Daemon des 9 boutons physiques (TICKET-091/031) — GPIO direct.
+"""Daemon des 8 boutons physiques du boîtier Hechicero — GPIO direct.
 
 Remplace `button_toggle_test.py` (scopé à un seul bouton, GPIO17, TEMPORAIRE)
-par un daemon unique qui poll les 9 broches GPIO dans une seule boucle et
-dispatche chaque appui vers un handler dédié à la broche.
+par un daemon unique qui poll les 9 broches GPIO (8 boutons câblés + 1 broche
+en réserve) dans une seule boucle et dispatche chaque appui vers un handler
+dédié à la broche.
 
-Phase 1 (ce script, à ce stade) : seul GPIO17 a un vrai handler
-(`handle_hp_casque`, bascule HP/casque via `radio.php`, repris tel quel de
-`button_toggle_test.py`). Les 8 autres broches n'ont pas encore de fonction
-assignée : elles sont seulement journalisées ("Bouton GPIOxx appuyé") pour
-permettre d'identifier, bouton par bouton, quelle broche correspond à quel
-bouton physique sur le boîtier. Une fois cette correspondance connue et les
-actions `radio.php` (play/pause/next/prev/volume/favoris) confirmées, les
-handlers de phase 2 remplaceront les logs par de vrais appels d'action
-(cf. TICKET-091 dans `docs/90-BACKLOG.md`).
+**Mapping GPIO ↔ bouton physique confirmé le 2026-07-08** (test bouton par
+bouton, gauche à droite sur la tranche supérieure du boîtier réel) :
+  GPIO25 → source (bascule HP/casque)
+  GPIO13 → volume - (maintien = répétition)
+  GPIO17 → précédent (tap) / recul de SEEK_STEP_S s dans l'épisode (maintien)
+  GPIO12 → play/pause
+  GPIO27 → suivant (tap) / avance de SEEK_STEP_S s dans l'épisode (maintien)
+  GPIO5  → volume + (maintien = répétition)
+  GPIO16 → réserve, pas de fonction pour l'instant
+  GPIO23 → favori (bouton isolé, emplacement antenne) — pas encore câblé côté
+           logiciel, TICKET-046 (fonctionnalité favoris) jamais codée
+  GPIO6  → non câblé à un bouton (broche libre inutilisée)
+
+Boutons "tap ou maintien" (2026-07-08, GPIO17/27) : un appui bref garde le
+comportement historique (épisode suivant/précédent) ; un appui tenu plus de
+HOLD_THRESHOLD_S bascule en recherche et avance/recule de SEEK_STEP_S
+secondes par à-coup dans l'épisode en cours (`action=seek_relative` côté
+radio.php, `seekcur +N`/`seekcur -N` côté MPD). Recherche en secondes fixes,
+pas en pourcentage de la durée — pratique standard des lecteurs de podcasts
+(Apple Podcasts, YouTube...), un % serait incohérent entre un épisode de
+5 minutes et un de 2 heures.
 
 Câblage attendu (même convention que GpioSignalMonitor de battery_watchdog.py
 et que button_toggle_test.py) : chaque bouton entre son GPIO (numérotation
@@ -50,10 +63,8 @@ RADIO_BASE = "http://localhost/lecteur/radio.php"
 CONFIRM_DELAY_S = 0.008       # relecture de la broche après le front, pour confirmer
 MIN_TOGGLE_INTERVAL_S = 0.4   # garde-fou par broche entre deux appuis acceptés
 
-# Plan GPIO final validé le 2026-07-07 (voir mémoire project_hechicero_buttons_gpio) :
-# GPIO17 déjà câblé et validé (bascule HP/casque). Les 8 autres sont libres,
-# fonctions à assigner (play/pause/next/précédent/vol+/vol-/favoris — 7
-# fonctions pour 8 broches, une reste en réserve). GPIO4 volontairement
+# Mapping GPIO ↔ bouton confirmé le 2026-07-08 (voir mémoire
+# project_hechicero_buttons_gpio et docstring du module). GPIO4 volontairement
 # absent : réservé MUTE ampli sur HiFiBerry Amp4 (cf. mémoire, doc HiFiBerry).
 PINS = [17, 23, 27, 5, 6, 13, 16, 12, 25]
 
@@ -95,7 +106,10 @@ def mpd_state() -> str | None:
 
 
 def handle_hp_casque(pin: int) -> None:
-    """GPIO17 — bascule HP/casque. Handler définitif, repris de button_toggle_test.py."""
+    """Bouton "source" — bascule HP/casque. Handler définitif, repris de
+    button_toggle_test.py. Câblé sur GPIO25 dans le boîtier réel (pas GPIO17,
+    qui n'était que le pin de la breadboard de test du 2026-07-06) — voir
+    mapping confirmé le 2026-07-08 en tête de fichier."""
     mode = current_mode()
     if mode is None:
         LOGGER.warning("Mode actuel inconnu (MPD injoignable ?) — bascule annulée")
@@ -133,17 +147,36 @@ def handle_play_pause(pin: int) -> None:
 
 
 def handle_next(pin: int) -> None:
-    """Épisode suivant — action=next_episode (TICKET-091). Sans effet si la
-    lecture en cours n'est pas un épisode de podcast (webradio, arrêt) ou si
-    on est déjà au dernier épisode de la série (radio.php répond ok:false)."""
+    """Tap court sur "suivant" — action=next_episode (TICKET-091). Sans effet
+    si la lecture en cours n'est pas un épisode de podcast (webradio, arrêt)
+    ou si on est déjà au dernier épisode de la série (radio.php répond
+    ok:false). Le maintien de ce même bouton fait autre chose : voir
+    handle_seek_forward / TAP_OR_HOLD."""
     result = http_get("action=next_episode")
     LOGGER.info("Épisode suivant (GPIO%s) — réponse radio.php : %s", pin, result)
 
 
 def handle_prev(pin: int) -> None:
-    """Épisode précédent — action=prev_episode (TICKET-091). Voir handle_next."""
+    """Tap court sur "précédent" — action=prev_episode (TICKET-091). Voir
+    handle_next. Le maintien fait handle_seek_back à la place."""
     result = http_get("action=prev_episode")
     LOGGER.info("Épisode précédent (GPIO%s) — réponse radio.php : %s", pin, result)
+
+
+def handle_seek_forward(pin: int) -> None:
+    """Maintien du bouton "suivant" — avance de SEEK_STEP_S secondes dans
+    l'épisode en cours (2026-07-08, à la place d'un saut d'épisode répété).
+    `action=seek_relative` utilise `seekcur +N` côté MPD (relatif à la
+    position actuelle, pas un `seekcur` absolu)."""
+    result = http_get(f"action=seek_relative&delta={SEEK_STEP_S}")
+    LOGGER.debug("Avance rapide +%ss (GPIO%s) — réponse : %s", SEEK_STEP_S, pin, result)
+
+
+def handle_seek_back(pin: int) -> None:
+    """Maintien du bouton "précédent" — recule de SEEK_STEP_S secondes.
+    Voir handle_seek_forward."""
+    result = http_get(f"action=seek_relative&delta=-{SEEK_STEP_S}")
+    LOGGER.debug("Retour rapide -%ss (GPIO%s) — réponse : %s", SEEK_STEP_S, pin, result)
 
 
 def handle_vol_up(pin: int) -> None:
@@ -161,51 +194,62 @@ def handle_vol_down(pin: int) -> None:
 # Dispatch par broche. Les broches absentes de ce dict tombent sur
 # handle_unassigned via .get(pin, handle_unassigned) dans la boucle.
 #
-# GPIO17 est câblé et validé (bascule HP/casque — bouton "source" du boîtier
-# réel, situé à côté de la prise jack, décision 2026-07-08). Les autres
-# broches (23, 27, 5, 6, 13, 16, 12, 25) sont câblées et détectées (bring-up
-# 2026-07-07) mais pas encore reliées à un bouton physique précis — Thomas
-# finalisera la correspondance GPIO ↔ bouton une fois les boutons montés
-# dans le boîtier.
-#
-# Boîtier réel (2026-07-08) : 7 boutons utilisables en ligne (dont le
-# "source"/HP-casque) + 1 bouton isolé dans l'emplacement antenne, laissé en
-# réserve complète (aucune fonction). Comme il y a un bouton de moins que
-# prévu à l'origine, play et pause sont fusionnés en un seul bouton toggle
-# (handle_play_pause) plutôt que d'en sacrifier une autre fonction. 6
-# fonctions restent donc à répartir sur les 6 broches hors GPIO17 :
-#   handle_play_pause, handle_vol_up, handle_vol_down, handle_next,
-#   handle_prev, et handle_favori (à écrire — reporté, TICKET-046).
-# Layout ergonomique proposé (ordre physique, à côté du bouton source) :
-#   vol- · précédent · play/pause · suivant · vol+ · favori
-# Assignation GPIO définitive en attente du câblage réel, ex. une fois connu :
-#   23: handle_vol_down,
-#   27: handle_prev,
-#   5:  handle_play_pause,
-#   6:  handle_next,
-#   13: handle_vol_up,
-#   16: (favori, à écrire)
-#   12, 25 : non câblés sur ce boîtier (7 positions seulement, pas 9)
-#
-# handle_favori toujours absent du code : TICKET-046 (fonctionnalité favoris)
-# n'a jamais été codée dans l'app (pas de champ à faire basculer côté
-# serveur) — reporté. Le bouton qui lui est destiné restera en
-# handle_unassigned (log seul) jusqu'à ce que TICKET-046 soit traité pour de
-# vrai.
+# Mapping confirmé le 2026-07-08 (test bouton par bouton, gauche à droite) —
+# voir docstring du module pour le détail complet par position physique.
+# GPIO17 et GPIO27 (précédent/suivant) n'utilisent PAS ce dict : ce sont des
+# boutons "tap ou maintien" (TAP_OR_HOLD ci-dessous), dispatchés à part.
+# GPIO16 (dernier bouton de la ligne) et GPIO23 (bouton isolé, emplacement
+# antenne, destiné au favori) restent volontairement en handle_unassigned :
+# GPIO16 est une vraie réserve ("on verra plus tard ce qu'on en fait", Thomas
+# 2026-07-08) ; GPIO23/favori attend TICKET-046 (fonctionnalité jamais codée
+# dans l'app — pas de champ côté serveur à faire basculer).
 HANDLERS = {
-    17: handle_hp_casque,
+    25: handle_hp_casque,   # source
+    13: handle_vol_down,
+    12: handle_play_pause,
+    5:  handle_vol_up,
 }
+
+
+# Boutons "maintien" — répètent leur action tant qu'ils restent appuyés, au
+# lieu d'exiger un appui répété. Seulement volume +/- (2026-07-08, demande
+# Thomas) : les autres boutons (next/prev/play-pause/source) ne doivent PAS
+# répéter en boucle si on les maintient par erreur.
+REPEAT_PINS = {5, 13}   # vol_up, vol_down (mapping confirmé 2026-07-08)
+REPEAT_INTERVAL_S = 0.2   # cadence de répétition tant que le bouton reste appuyé
+RELEASE_CONFIRM_S = 0.05  # HIGH doit tenir ce temps pour confirmer un vrai relâchement (filtre le rebond pendant le maintien)
+
+# Boutons "tap ou maintien" — 2026-07-08, demande Thomas : un tap court garde
+# le comportement existant (épisode suivant/précédent), un maintien avance/
+# recule de quelques secondes DANS l'épisode en cours à la place (best
+# practice podcast : pas fixe de progression, EN SECONDES, jamais en % de la
+# durée — un % serait incohérent d'un épisode de 5 min à un de 2h).
+TAP_OR_HOLD = {
+    27: (handle_next, handle_seek_forward),
+    17: (handle_prev, handle_seek_back),
+}
+HOLD_THRESHOLD_S = 0.4   # durée d'appui à partir de laquelle on bascule tap -> maintien
+SEEK_STEP_S = 5          # secondes avancées/reculées à chaque à-coup pendant le maintien
 
 
 class ButtonState:
     """Anti-rebond indépendant par broche (état HIGH/LOW + horodatage du
-    dernier appui accepté)."""
+    dernier appui accepté et de la dernière répétition en cas de maintien).
+    `held_since`/`release_since` servent à la fois aux boutons REPEAT_PINS et
+    TAP_OR_HOLD (une broche n'est jamais dans les deux catégories à la fois).
+    `is_holding` distingue, pour un bouton TAP_OR_HOLD, si le maintien a déjà
+    basculé en mode "recherche" (auquel cas on ne déclenche PAS le tap au
+    relâchement)."""
 
-    __slots__ = ("last_state", "last_press")
+    __slots__ = ("last_state", "last_press", "last_repeat", "held_since", "release_since", "is_holding")
 
     def __init__(self) -> None:
         self.last_state = 1  # GPIO.HIGH
         self.last_press = 0.0
+        self.last_repeat = 0.0
+        self.held_since: float | None = None    # non-None tant que le bouton est "maintenu" (confirmé)
+        self.release_since: float | None = None  # début d'un HIGH en cours de confirmation de relâchement
+        self.is_holding = False                 # TAP_OR_HOLD seulement : maintien déjà basculé en mode recherche
 
 
 def main() -> int:
@@ -241,7 +285,85 @@ def main() -> int:
                 if state != st.last_state:
                     LOGGER.debug("Broche GPIO%s : %s -> %s", pin, "HIGH" if st.last_state else "LOW", "HIGH" if state else "LOW")
 
-                if state == GPIO.LOW and st.last_state == GPIO.HIGH:
+                if pin in REPEAT_PINS:
+                    # Logique dédiée par hystérésis : un bouton maintenu peut rebondir
+                    # (HIGH bref) sans que ce soit un vrai relâchement. Traiter ça comme
+                    # un relâchement+re-appui ferait retomber sur le garde-fou anti-rebond
+                    # de l'appui simple (MIN_TOGGLE_INTERVAL_S) et bloquerait la répétition
+                    # — d'où le bug remonté par Thomas. Le relâchement n'est confirmé
+                    # qu'après RELEASE_CONFIRM_S de HIGH continu.
+                    now = time.monotonic()
+                    if state == GPIO.LOW:
+                        st.release_since = None
+                        if st.held_since is None:
+                            # Pas encore "maintenu" — confirmer le 1er appui comme avant
+                            time.sleep(CONFIRM_DELAY_S)
+                            if GPIO.input(pin) == GPIO.LOW:
+                                if now - st.last_press >= MIN_TOGGLE_INTERVAL_S:
+                                    st.last_press = now
+                                    st.last_repeat = now
+                                    st.held_since = now
+                                    LOGGER.info("Appui confirmé sur GPIO%s", pin)
+                                    HANDLERS.get(pin, handle_unassigned)(pin)
+                            else:
+                                LOGGER.debug("GPIO%s : front ignoré (rebond court, non confirmé)", pin)
+                        elif now - st.last_repeat >= REPEAT_INTERVAL_S:
+                            st.last_repeat = now
+                            LOGGER.debug("Répétition (maintien) sur GPIO%s", pin)
+                            HANDLERS.get(pin, handle_unassigned)(pin)
+                    else:  # HIGH
+                        if st.held_since is not None:
+                            if st.release_since is None:
+                                st.release_since = now
+                            elif now - st.release_since >= RELEASE_CONFIRM_S:
+                                st.held_since = None
+                                st.release_since = None
+
+                elif pin in TAP_OR_HOLD:
+                    # Tap ou maintien (2026-07-08, GPIO17/27 précédent/suivant) :
+                    # un appui bref déclenche tap_handler (au relâchement, comme
+                    # avant) ; un appui qui dépasse HOLD_THRESHOLD_S bascule en
+                    # "recherche" et répète hold_handler tant que ça reste appuyé.
+                    # Même hystérésis de relâchement que REPEAT_PINS ci-dessus (le
+                    # rebond mécanique en cours de maintien ne doit pas être lu
+                    # comme un relâchement).
+                    tap_handler, hold_handler = TAP_OR_HOLD[pin]
+                    now = time.monotonic()
+                    if state == GPIO.LOW:
+                        st.release_since = None
+                        if st.held_since is None:
+                            time.sleep(CONFIRM_DELAY_S)
+                            if GPIO.input(pin) == GPIO.LOW:
+                                if now - st.last_press >= MIN_TOGGLE_INTERVAL_S:
+                                    st.last_press = now
+                                    st.held_since = now
+                                    st.is_holding = False
+                            else:
+                                LOGGER.debug("GPIO%s : front ignoré (rebond court, non confirmé)", pin)
+                        else:
+                            held_duration = now - st.held_since
+                            if held_duration >= HOLD_THRESHOLD_S:
+                                if not st.is_holding:
+                                    st.is_holding = True
+                                    st.last_repeat = now
+                                    LOGGER.info("Maintien (recherche) sur GPIO%s", pin)
+                                    hold_handler(pin)
+                                elif now - st.last_repeat >= REPEAT_INTERVAL_S:
+                                    st.last_repeat = now
+                                    hold_handler(pin)
+                    else:  # HIGH
+                        if st.held_since is not None:
+                            if st.release_since is None:
+                                st.release_since = now
+                            elif now - st.release_since >= RELEASE_CONFIRM_S:
+                                if not st.is_holding:
+                                    LOGGER.info("Tap confirmé sur GPIO%s", pin)
+                                    tap_handler(pin)
+                                st.held_since = None
+                                st.release_since = None
+                                st.is_holding = False
+
+                elif state == GPIO.LOW and st.last_state == GPIO.HIGH:
                     # Front descendant détecté par polling — confirmation avant d'agir
                     time.sleep(CONFIRM_DELAY_S)
                     if GPIO.input(pin) == GPIO.LOW:
