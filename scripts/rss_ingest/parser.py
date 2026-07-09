@@ -9,31 +9,40 @@ import re
 def normalize_id(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", "", text.lower())
 
-# Bug TINA (2026-07-09, generique a tous les podcasts RSS) : "bande-annonce"
-# (avec/sans tiret ou espace) - Thomas ne veut pas que ces items soient
-# telecharges ni affiches comme episodes.
+# Bug TINA (2026-07-09, generique a tous les podcasts RSS) : items non-episode
+# a exclure entierement (ni telecharges, ni affiches) - Thomas ne les veut pas.
+# 1) "bande-annonce" (avec/sans tiret ou espace)
+# 2) auto-promo Radio France ("Retrouvez tous les episodes sur l'appli Radio
+#    France", "Voyagez dans le temps avec Tina, en avant-premiere sur
+#    l'application Radio France", etc.) - meme trouve sur des podcasts
+#    differents (TINA, La Discomobile), donc phrase generique cote Radio
+#    France, pas specifique a un podcast.
 _TRAILER_RE = re.compile(r"^bande[\s-]?annonce", re.IGNORECASE)
+_PROMO_RE = re.compile(r"appli(?:cation)?\s+radio\s+france", re.IGNORECASE)
 
-def is_trailer(title: str) -> bool:
-    return bool(_TRAILER_RE.match((title or "").strip()))
+def is_filler(title: str) -> bool:
+    t = (title or "").strip()
+    return bool(_TRAILER_RE.match(t)) or bool(_PROMO_RE.search(t))
 
-# Detection de saison (TICKET-104, 2026-07-09, demande Thomas : itunes:season
-# en priorite, motif de titre en repli — PAS d'heuristique par ecart de date,
-# invalidee explicitement pour des podcasts a sortie irreguliere comme
-# Bestioles). Motif de titre attendu : "Nom de la saison N/M : ..." (ex:
-# "Tina et les boucliers de Mars 3/10 : Le complot" -> "Tina et les boucliers
-# de Mars"). Retourne None si rien n'est detectable (ex: Professeur Caillou) —
-# pas de separation visuelle appliquee dans ce cas cote lecteur.
-_SEASON_TITLE_RE = re.compile(r"^(.*\S)\s+\d+\s*/\s*\d+\s*:")
+# Detection saison + numero d'episode dans la saison (TICKET-104, 2026-07-09,
+# demande Thomas : itunes:season en priorite, motif de titre "N/M" en repli —
+# PAS d'heuristique par ecart de date, invalidee explicitement pour des
+# podcasts a sortie irreguliere comme Bestioles). Motif de titre attendu :
+# "Nom de la saison N/M : ..." (ex: "Tina et les boucliers de Mars 3/10 : Le
+# complot" -> saison "Tina et les boucliers de Mars", numero 3). Retourne
+# (None, None) si rien n'est detectable (ex: Professeur Caillou) — pas de
+# separation visuelle cote lecteur, tri par date uniquement (cf. plus bas).
+_SEASON_EP_RE = re.compile(r"^(.*\S)\s+(\d+)\s*/\s*\d+\s*:")
 
-def detect_season(entry, title: str) -> Optional[str]:
+def detect_season(entry, title: str) -> tuple[Optional[str], Optional[int]]:
     raw_season = entry.get("itunes_season")
+    m = _SEASON_EP_RE.match(title or "")
+    ep_num = int(m.group(2)) if m else None
     if raw_season:
-        return str(raw_season).strip()
-    m = _SEASON_TITLE_RE.match(title or "")
+        return str(raw_season).strip(), ep_num
     if m:
-        return m.group(1).strip()
-    return None
+        return m.group(1).strip(), ep_num
+    return None, None
 
 def parse_duration(raw) -> Optional[int]:
     """Convertit itunes_duration en secondes (int).
@@ -65,9 +74,9 @@ def parse_rss(podcast_config):
         feed_image = feed.feed.itunes_image.get("href") if isinstance(feed.feed.itunes_image, dict) else None
 
     seen_ids = set()
-    keyed_episodes = []  # (cle_tri_chronologique, Episode)
+    raw_episodes = []  # (sort_key_date, season, ep_num_in_season, Episode)
     for entry in feed.entries:
-        if is_trailer(entry.title):
+        if is_filler(entry.title):
             continue
 
         audio_url = None
@@ -106,8 +115,9 @@ def parse_rss(podcast_config):
 
         published_parsed = entry.get("published_parsed")
         sort_key = calendar.timegm(published_parsed) if published_parsed else 0
+        season, ep_num_in_season = detect_season(entry, entry.title)
 
-        keyed_episodes.append((sort_key, Episode(
+        raw_episodes.append((sort_key, season, ep_num_in_season, Episode(
             id=ep_id,
             title=entry.title,
             audio_url=audio_url,
@@ -116,16 +126,42 @@ def parse_rss(podcast_config):
             local_image=None,
             published=entry.get("published", ""),
             duration=parse_duration(entry.get("itunes_duration")),
-            season=detect_season(entry, entry.title)
+            season=season
         )))
 
     # Ordre chronologique explicite (episode 1 -> dernier), plutot que de se
     # fier a l'ordre du flux RSS : certains flux ne sont pas strictement du
     # plus recent au plus ancien sur toute leur longueur (saisons multiples,
     # republications en lot avec dates incoherentes) - trouve en diagnostiquant
-    # TINA (2026-07-09). Le tri par published_parsed est robuste face a ca,
-    # contrairement a un simple reverse() de l'ordre du flux cote affichage.
-    keyed_episodes.sort(key=lambda pair: pair[0])
+    # TINA (2026-07-09).
+    #
+    # Tri a deux niveaux plutot qu'un simple tri par date individuelle :
+    # 1) grouper par saison, ordonner les groupes par leur date la plus
+    #    ancienne (place chaque saison au bon endroit chronologiquement,
+    #    tolerant aux quelques dates incoherentes internes a une saison)
+    # 2) a l'interieur d'une meme saison, trier par le numero d'episode
+    #    extrait du titre (fiable) plutot que par date individuelle — trouve
+    #    en diagnostiquant TINA saison "ceinture d'Alexandre le Grand" :
+    #    l'episode 2 n'existe que dans une republication en lot avec une date
+    #    incoherente (anterieure a l'episode 1), donc un tri par date seule
+    #    le place a tort avant l'episode 1. Le numero de titre n'a pas ce
+    #    probleme. Repli sur la date individuelle si pas de saison detectee
+    #    (ex: Professeur Caillou, Bestioles) — comportement inchange pour eux.
+    season_min_date: dict[str, int] = {}
+    for sort_key, season, _ep_num, _ep in raw_episodes:
+        if season is None:
+            continue
+        if season not in season_min_date or sort_key < season_min_date[season]:
+            season_min_date[season] = sort_key
+
+    def final_sort_key(item):
+        sort_key, season, ep_num, _ep = item
+        group_key = season_min_date[season] if season is not None else sort_key
+        secondary_key = ep_num if (season is not None and ep_num is not None) else sort_key
+        return (group_key, secondary_key)
+
+    raw_episodes.sort(key=final_sort_key)
+    keyed_episodes = [(sort_key, ep) for sort_key, _season, _ep_num, ep in raw_episodes]
     # Retourne aussi l'image du podcast au niveau du <channel> (feed_image) :
     # bug 2026-07-09 (La Discomobile) — ingest.py utilisait episodes[0].image_url
     # comme jaquette du podcast, ce qui marchait par coincidence quand le flux
