@@ -128,6 +128,38 @@
       - Fichier modifié : `web/lecteur/radio.php` (constante `RADIO_PAUSE_STATE_PATH`, fonctions `is_webradio_uri()`/`save_radio_pause_url()`/`pop_radio_pause_url()`/`clear_radio_pause_state()`, action `pause`, nettoyage du flag dans `play`/`playfile`)
       - ⏳ Reste à faire : tester en conditions réelles sur le boîtier (webradio + pauses répétées), puis commit + push une fois validé par Thomas
 
+- [ ] TICKET-104 — bug — Podcast TINA : images identiques, ordre incohérent, navigation bloquée en fin de saison (2026-07-09)
+      - Symptômes rapportés par Thomas (généralisables à tous les podcasts RSS, pas seulement TINA — ex. Professeur Caillou) :
+          • Toutes les images affichées sur l'écran lecteur sont identiques, alors que des images différentes existent par saison
+          • Les épisodes s'affichent à l'envers (on veut ep1 → dernier de la saison 1, puis saison 2 ep1 → ..., etc.)
+          • Impossible de passer du dernier épisode d'une saison au premier épisode de la saison suivante (bouton suivant)
+      - Diagnostic :
+          • **Images** — `web/lecteur/index.html` : l'écran lecteur (`playTrack()` + `syncNowPlaying()`) fixait `player-art.src` sur `currentPodcast.image` (la jaquette du podcast entier), jamais sur `ch.image` (l'image de l'épisode/saison en cours) — la liste d'épisodes (`renderChapters()`), elle, utilisait déjà correctement `ch.image`. Les images par saison étaient donc correctement téléchargées sur disque (vérifié : 4 tailles de fichiers distinctes pour les 4 saisons TINA) mais jamais affichées sur l'écran principal.
+          • **Ordre + doublons** — `scripts/rss_ingest/parser.py` (`parse_rss`) n'appliquait aucun tri ni déduplication : il renvoyait les épisodes tels que le flux RSS les liste. Or le flux RSS de TINA (et vérifié aussi sur Professeur Caillou) n'est **pas** strictement du plus récent au plus ancien sur toute sa longueur (saisons multiples, republications en lot avec des dates incohérentes) — 2 des 4 saisons TINA étaient même dupliquées intégralement dans le flux (rediffusion republiée avec le même titre/id, mais un `published` différent). L'affichage (`getDisplayItems()` en JS, `podcast_display_items()` en PHP) se contentait d'inverser cet ordre brut (`reverse()`), ce qui ne pouvait pas corriger un ordre déjà incohérent à la source.
+          • **Navigation next/prev bloquée en fin de saison** — pas de bug dédié dans `radio.php` (le `±1`/bornes de `next_episode`/`prev_episode` est déjà générique, pas limité à une saison) : c'est la conséquence directe des doublons/ordre incohérent ci-dessus — une fois l'ingestion corrigée, la liste `chapitres` d'un podcast est un seul flux chronologique propre, donc `next_episode` passe naturellement au premier épisode de la saison suivante.
+      - **Fix implémenté** :
+          • `web/lecteur/index.html` : `player-art.src` utilise maintenant `ch.image || podcast.image` dans `playTrack()` et `syncNowPlaying()` (au lieu de toujours `podcast.image`)
+          • `scripts/rss_ingest/parser.py` (`parse_rss`) : déduplication par id (garde la 1re occurrence rencontrée dans le flux) + tri chronologique explicite par date de publication (`published_parsed` de feedparser, pas l'ordre brut du flux) — générique à tous les podcasts RSS, pas spécifique à TINA
+          • `scripts/rss_ingest/parser.py` : filtre les items "Bande-annonce"/"Bande annonce" (regex, insensible à la casse) — ne sont plus téléchargés ni ingérés du tout (demande explicite de Thomas, 2026-07-09)
+          • `scripts/rss_ingest/ingest.py` : le tri étant désormais croissant (ancien → récent), le troncage `max_episodes` prend la fin de la liste (`[-max:]`) au lieu du début, pour garder les épisodes les plus récents en cas de dépassement
+          • `web/lecteur/index.html` (`getDisplayItems()`) et `web/lecteur/radio.php` (`podcast_display_items()`) : suppression du `reverse()`/`array_reverse()` devenu inutile (et faux) puisque l'ingest fournit déjà l'ordre chronologique dans `data.json`
+      - ⚠️ **Non traité, à part** : deux items promo non-épisodes repérés dans le flux TINA ("Voyagez dans le temps avec Tina en avant-première..." et "Retrouvez tous les épisodes sur l'appli Radio France") — pas des bandes-annonces à proprement parler, laissés en l'état, à confirmer avec Thomas si à filtrer aussi
+      - ⏳ Reste à faire : **relancer une ingestion complète** (`python3 scripts/rss_ingest/ingest.py` sur le Pi, ou bouton "Mettre à jour" de l'admin une fois TICKET-105 réglé) pour que `data.json` reflète le nouveau tri/dédoublonnage/filtre trailer — la correction de code seule ne change rien tant que les données n'ont pas été régénérées. Vérifier ensuite sur TINA : images par saison à l'écran, ordre ep1→10 par saison, saison 1→2 sans blocage, plus de bande-annonce dans la liste. Puis vérifier l'intégrité (`scripts/rss_ingest/check_integrity.py`) pour repérer les anciens fichiers audio/image de bandes-annonces devenus orphelins (à supprimer manuellement après revue)
+      - Fichiers modifiés : `web/lecteur/index.html`, `web/lecteur/radio.php`, `scripts/rss_ingest/parser.py`, `scripts/rss_ingest/ingest.py`
+
+- [ ] TICKET-105 — bug — Synchronisation admin en échec : "Permission denied" sur meta.json.tmp, plante toute la synchro (2026-07-09)
+      - Symptôme rapporté par Thomas (capture d'écran page admin) : la synchro s'arrête en erreur fatale à 10/22 podcasts avec `ERREUR FATALE : [Errno 13] Permission denied: '.../podcasts/lesodysseesduchateaudeversailles/meta.json.tmp'`
+      - Cause : la synchro déclenchée depuis l'admin web tourne en `www-data` (Apache), alors que l'ingestion nocturne (cron, `docs/20-SETUP_SYSTEME.md` §7.3) tourne en `thomas` avec `umask 002` pour que le groupe `www-data` reste en écriture. Le dossier/fichier de ce podcast précis n'a probablement pas (ou plus) la bonne permission de groupe — `write_meta()` (`scripts/rss_ingest/writer.py`) plante avec `PermissionError`, non rattrapée, ce qui interrompait **toute** la synchro (les 12 podcasts restants n'étaient jamais traités).
+      - **Fix implémenté (robustesse)** dans `scripts/rss_ingest/ingest.py` : chaque podcast est maintenant traité dans son propre bloc `try/except` — un podcast en échec (permission, réseau, etc.) est loggé comme erreur de progression et n'interrompt plus les suivants. `data.json` est ensuite reconstruit à partir de **tous** les `meta.json` sur disque (pas seulement ceux traités avec succès dans cette session), donc un podcast en échec garde sa dernière version valide au lieu de disparaître du lecteur.
+      - ⚠️ **Cause racine (permission filesystem) pas corrigée par ce fix** — il rend juste la synchro résiliente à ce genre d'échec. Reste à corriger côté Pi via SSH, ex. aligner les permissions du dossier fautif sur celles des podcasts qui synchronisent sans problème :
+        ```
+        ls -la ~/hechicero/podcasts/lesodysseesduchateaudeversailles/  # comparer avec un podcast qui marche
+        sudo chgrp -R www-data ~/hechicero/podcasts/lesodysseesduchateaudeversailles
+        sudo chmod -R g+w ~/hechicero/podcasts/lesodysseesduchateaudeversailles
+        ```
+      - ⏳ Reste à faire : Thomas vérifie/corrige la permission sur ce dossier (et idéalement audite les 21 autres pour éviter la récidive), puis relance une synchro admin complète pour confirmer que les 22 podcasts passent
+      - Fichier modifié : `scripts/rss_ingest/ingest.py`
+
 ---
 
 # 🟡 Priorité moyenne

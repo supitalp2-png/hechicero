@@ -11,6 +11,11 @@ class Episode:
     local_image: Optional[str]
     published: str
     duration: Optional[int]
+    # Identifiant de saison (TICKET-104, 2026-07-09) : itunes:season du flux si
+    # present, sinon deduit du titre (ex: "Tina et les boucliers de Mars 3/10 : ..."
+    # -> "Tina et les boucliers de Mars"). None si aucune saison detectable
+    # (ex: Professeur Caillou, Bestioles) - pas de separation visuelle dans ce cas.
+    season: Optional[str] = None
 
 @dataclass
 class PodcastConfig:

@@ -247,11 +247,13 @@ function mpd_file_to_relative_audio(string $mpdFile, string $projectRoot): strin
 }
 
 // Retourne les épisodes d'un podcast dans le même ordre que getDisplayItems()
-// côté JS (web/lecteur/index.html) : chapitres/episodes, ordre inversé
-// (ep1 en premier).
+// côté JS (web/lecteur/index.html) : chapitres/episodes, ep1 en premier.
+// L'ingest (rss_ingest/parser.py, TICKET-103bis, 2026-07-09) trie désormais
+// les épisodes chronologiquement directement dans data.json : plus besoin
+// d'inverser ici (cf. bug TINA : l'ordre brut du flux RSS n'était pas fiable
+// sur toute sa longueur, un simple array_reverse() ne suffisait pas).
 function podcast_display_items(array $podcast): array {
-    $raw = $podcast['chapitres'] ?? $podcast['episodes'] ?? [];
-    return array_values(array_reverse($raw));
+    return array_values($podcast['chapitres'] ?? $podcast['episodes'] ?? []);
 }
 
 // Cherche l'épisode actuellement en lecture dans data.json à partir du

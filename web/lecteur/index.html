@@ -300,6 +300,10 @@
     }
     .ep-row:active { transform: scale(0.97); }
     .ep-row:hover  { border-color: var(--accent); }
+    /* Petit espace entre saisons (TICKET-104) — grid-column: 1/-1 pour occuper
+       toute la largeur de la grille 2 colonnes, sinon la marge ne s'aligne pas
+       proprement selon la colonne où tombe le changement de saison. */
+    .ep-season-divider { grid-column: 1 / -1; height: 14px; }
     .ep-thumb      { width: 143px; min-width: 143px; height: 143px; object-fit: cover; display: block; flex-shrink: 0; }
     .ep-meta       { flex: 1; min-width: 0; padding: 12px 14px; display: flex; flex-direction: column; justify-content: center; }
     .ep-titre      { font-weight: 600; font-size: 1rem; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
@@ -948,11 +952,15 @@ document.addEventListener('touchstart', () => {
   pendingChimeTouch = true;
 }, { once: true });
 
-// Retourne les épisodes dans l'ordre de la série (ep1 en premier)
+// Retourne les épisodes dans l'ordre de la série (ep1 en premier).
+// L'ingest (rss_ingest/parser.py, TICKET-103bis, 2026-07-09) trie désormais
+// les épisodes chronologiquement (plus ancien -> plus récent) directement
+// dans data.json : plus besoin de reverse() ici (l'ordre du flux RSS brut
+// n'était pas fiable sur toute sa longueur — saisons multiples, republications
+// en lot — cf. bug TINA).
 function getDisplayItems(podcast) {
   if (!podcast) return [];
-  const raw = podcast.chapitres || podcast.episodes || [];
-  return [...raw].reverse();
+  return [...(podcast.chapitres || podcast.episodes || [])];
 }
 
 
@@ -1177,7 +1185,7 @@ async function syncNowPlaying() {
     el('ctrl-pod').textContent        = podcast.titre;
     el('ctrl-ep').textContent         = ch.titre;
     el('player-back-lbl').textContent = podcast.titre;
-    el('player-art').src              = podcast.image;
+    el('player-art').src              = ch.image || podcast.image;
     el('player-art').alt              = podcast.titre;
     el('t-total').textContent         = fmtDur(ch.duree);
     const epMatch = ch.titre && ch.titre.match(/\b(\d+)\b/);
@@ -1333,7 +1341,20 @@ function renderChapters() {
     list.innerHTML = '<div style="padding:12px;color:var(--muted)">Aucun épisode disponible.</div>';
     return;
   }
+  let prevSeason;
   displayItems.forEach((ch, idx) => {
+    // Petit espace entre saisons (TICKET-104) : seulement si l'ingest a pu
+    // détecter une saison (itunes:season du flux ou motif de titre "N/M") —
+    // sinon pas de séparation (ex: Professeur Caillou, Bestioles n'ont pas
+    // de saison détectable, pas de heuristique par date, cf. décision Thomas
+    // 2026-07-09 : ça ne marche pas pour les podcasts à sortie irrégulière).
+    if (ch.saison && idx > 0 && ch.saison !== prevSeason) {
+      const divider = document.createElement('div');
+      divider.className = 'ep-season-divider';
+      list.appendChild(divider);
+    }
+    prevSeason = ch.saison;
+
     const row = document.createElement('div');
     row.className = 'ep-row';
     const fallback = currentPodcast.image || '';
@@ -1371,7 +1392,7 @@ async function playTrack(idx) {
   el('ctrl-pod').textContent        = currentPodcast.titre;
   el('ctrl-ep').textContent         = ch.titre;
   el('player-back-lbl').textContent = currentPodcast.titre;
-  el('player-art').src              = currentPodcast.image;
+  el('player-art').src              = ch.image || currentPodcast.image;
   el('player-art').alt              = currentPodcast.titre;
   el('prog-fill').style.width       = '0%';
   el('t-elapsed').textContent       = '0:00';
