@@ -1769,11 +1769,38 @@ function logSleepEvent(event, extra) {
   } catch (_) {}
 }
 
+let SLEEP_ENABLED = true;
+let sleepConfigInitialized = false; // faux jusqu'au 1er applySleepConfig() réussi
+
 function applySleepConfig(cfg) {
   if (!cfg) return;
-  const enabled = !!(cfg.sleep_enabled ?? true);
-  SLEEP_DELAY = Number(cfg.sleep_delay ?? 15) * 1000;
-  SLEEP_MODE  = normalizeSleepMode(cfg.sleep_mode);
+  const enabled  = !!(cfg.sleep_enabled ?? true);
+  const newDelay = Number(cfg.sleep_delay ?? 15) * 1000;
+  const newMode  = normalizeSleepMode(cfg.sleep_mode);
+  // BUG TROUVE (2026-07-09, via le tracer sleep_log -- TICKET-102) : cette
+  // fonction est appelee par des refresh PERIODIQUES sans rapport avec une
+  // vraie activite utilisateur -- checkParentalTime() toutes les 30s (verif
+  // horaires parentaux) et la resynchro admin toutes les 5 min. Avant ce
+  // fix, resetSleepTimer() etait appele a CHAQUE appel, donc des que
+  // sleep_delay (config admin) depassait 30s, le timer d'inactivite etait
+  // perpetuellement repousse par le check parental avant d'avoir une chance
+  // d'atteindre son delai -- l'ecran de veille ne pouvait alors JAMAIS se
+  // declencher naturellement, peu importe l'inactivite reelle. Confirme par
+  // les logs : reset_timer source=config_reload ms_since_last_reset=30000
+  // en boucle avec delay_ms=120000 (120s configure, jamais atteint).
+  // Fix : ne resynchroniser (et donc reset le timer) QUE si la config a
+  // reellement change depuis le dernier appel, ou au tout premier chargement
+  // -- un refresh qui ne change rien ne doit pas repousser l'inactivite.
+  const changed = !sleepConfigInitialized
+    || enabled  !== SLEEP_ENABLED
+    || newDelay !== SLEEP_DELAY
+    || newMode  !== SLEEP_MODE;
+
+  SLEEP_ENABLED = enabled;
+  SLEEP_DELAY   = newDelay;
+  SLEEP_MODE    = newMode;
+  sleepConfigInitialized = true;
+
   const hasClock = SLEEP_MODE.endsWith('_clock');
   const theme = SLEEP_MODE.replace('_clock', ''); // 'classic'|'retro'|'modern'
   const overlay = getSleepOverlay();
@@ -1783,11 +1810,11 @@ function applySleepConfig(cfg) {
   const brand = getSleepBrand();
   brand.className = theme === 'retro' ? 'gv-gold' : theme === 'modern' ? 'gv-chrome' : '';
   getSleepClock().style.display = hasClock ? '' : 'none';
-  logSleepEvent('apply_sleep_config', `enabled=${enabled} delay_ms=${SLEEP_DELAY} mode=${SLEEP_MODE}`);
+  logSleepEvent('apply_sleep_config', `enabled=${enabled} delay_ms=${SLEEP_DELAY} mode=${SLEEP_MODE} changed=${changed}`);
   if (!enabled) {
     clearTimeout(sleepTimer);
     overlay.classList.remove('active');
-  } else {
+  } else if (changed) {
     resetSleepTimer('config_reload');
   }
 }
