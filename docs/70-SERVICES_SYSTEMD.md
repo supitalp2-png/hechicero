@@ -19,11 +19,11 @@ Objectif : garantir un système **robuste**, **prévisible**, **auto‑récupér
 | `battery_tracker.service` | `scripts/battery_tracker.service` | Collecte batterie, cycles, estimations | ✅ |
 | `battery_watchdog.service` | `scripts/battery_watchdog.service` | Arrêt propre sur batterie critique | ✅ |
 | `play_tracker.service` | `scripts/play_tracker.service` | Suivi de lecture MPD (event-driven, idle player mixer) | ✅ |
-| `hechicero-idle.service` | `~/.config/systemd/user/` | Extinction écran après inactivité (swayidle + wlopm) | ✅ (user) |
+| `hechicero-idle.service` | `~/.config/systemd/user/` | Extinction écran après inactivité (swayidle + wlr-randr) | ✅ (user) |
 | RSS cron 3h | `crontab -l` | Ingestion podcasts | ✅ |
-| `hechicero-kiosk.service` | `~/.config/systemd/user/` | Relancer Chromium (optionnel) | selon config |
-| `button_toggle_test.service` | `scripts/button_toggle_test.service` | Bring-up bouton GPIO test (bascule HP/casque) — TEMPORAIRE | ✅ (test) |
-| `buttons_daemon.py` (pas encore un service) | `scripts/buttons_daemon.py` | Daemon définitif des 9 boutons GPIO (TICKET-091), remplacera `button_toggle_test.service` | ⏳ bring-up validé, lancé manuellement |
+| `hechicero-kiosk.service` | `~/.config/systemd/user/` | Relancer Chromium (optionnel) | non activé, décision Thomas (débug manuel préféré) |
+| `button_toggle_test.service` | `scripts/button_toggle_test.service` | Bring-up bouton GPIO test (bascule HP/casque) — TEMPORAIRE | ❌ désactivé, remplacé par `buttons_daemon.service` |
+| `buttons_daemon.service` | `scripts/buttons_daemon.service` | Daemon définitif des 9 boutons GPIO (TICKET-091/101) | ✅ |
 
 > `hechicero-monitor.service` (ancien service batterie basé sur `get_status.py`) — **désactivé session 11**. Remplacé par `battery_tracker.service`. Ne pas réactiver.
 
@@ -187,9 +187,11 @@ Timer : `OnBootSec=5min`, `OnUnitActiveSec=6h`
 
 Fichier : `~/.config/systemd/user/hechicero-idle.service`
 
-Appelle `scripts/idle_screen.sh` qui relit `web/lecteur/config.json` toutes les 30 secondes. Si `screen_off_enabled` ou `screen_off_delay` change, swayidle est relancé avec le nouveau délai. Éteint l'écran via `wlopm --off \*`, le rallume au premier toucher/clic via `wlopm --on \*`.
+Appelle `scripts/idle_screen.sh` qui relit `web/lecteur/config.json` toutes les 30 secondes. Si `screen_off_enabled` ou `screen_off_delay` change, swayidle est relancé avec le nouveau délai. Éteint/rallume l'écran via `scripts/screen_dpms.sh` (`wlr-randr --output HDMI-A-1 --off`/`--on --preferred`) — **pas `wlopm`** : `wlopm` échoue sur Pi 5 + labwc (`zwlr_output_power_management_v1` non supporté), remplacé par `wlr-randr` le 2026-07-08 (TICKET-102). Le nom de sortie (`HDMI-A-1`) dépend du port physique du Pi 5 — à revérifier via `wlr-randr` si l'écran est un jour rebranché sur l'autre port.
 
-Dépendances : `swayidle`, `wlopm` (paquets apt). `WAYLAND_DISPLAY=wayland-0`, `XDG_RUNTIME_DIR=/run/user/1000`.
+Dépendances : `swayidle`, `wlr-randr` (paquets apt). `WAYLAND_DISPLAY=wayland-0`, `XDG_RUNTIME_DIR=/run/user/1000`.
+
+⚠️ Ce mécanisme (coupure d'écran système, niveau compositeur Wayland) est **indépendant** de l'overlay de veille JS affiché dans `web/lecteur/index.html` (voir `docs/30-LECTEUR.md` §"Écran de veille") — les deux peuvent avoir des bugs distincts, voir `docs/90-BACKLOG.md` TICKET-102.
 
 ```ini
 [Unit]

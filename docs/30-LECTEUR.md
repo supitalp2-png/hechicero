@@ -223,7 +223,13 @@ Le lecteur doit fonctionner **sans lag** sur un Raspberry Pi 5.
   - PHP : delete_podcast → retrait immédiat de `data.json`
   - PHP : add_podcast → ingest ciblé `--podcast <id>` déclenché en background
   - Lecteur : `openRadioCatalog()` et `goToPodcasts()` rechargent `data.json` à chaque visite
-  - Lecteur : `setInterval` 5 min pour config/parental (veille, contrôle parental)
+  - Lecteur : `setInterval` 5 min pour config/parental (contrôle parental, config veille)
+- Écran de veille (overlay JS `#sleep-overlay`, `retro`/`modern`/`classic` ± horloge) — TICKET-102
+  - Déclenché par `resetSleepTimer()`/`activateSleep()` côté client, réveil sur `click`/`keydown` réels uniquement (`touchstart`/`pointermove` explicitement exclus — faux positifs du panneau tactile CTP)
+  - Config `sleep_enabled`/`sleep_delay`/`sleep_mode` (`web/lecteur/config.json`, admin → Expert)
+  - **Bug corrigé le 2026-07-09** : `checkParentalTime()` (vérif horaires parentaux, toutes les 30s) rechargeait la config et resettait le timer de veille à *chaque* appel, même sans rien de changé — si `sleep_delay` dépassait 30s, la veille ne pouvait alors jamais se déclencher naturellement. Fix : `applySleepConfig()` ne reset le timer que si la config a réellement changé (ou 1er chargement)
+  - Traceur de debug temporaire (`logSleepEvent()` → action `sleep_log` de `radio.php` → `data/sleep_debug.log`, `tail -f` en SSH) laissé en place, à retirer une fois le fix confirmé stable dans la durée
+  - Mécanisme distinct de la coupure d'écran système (`hechicero-idle.service`, voir `docs/70-SERVICES_SYSTEMD.md` §6) — un bug sur l'un ne dit rien sur l'état de l'autre
 - Bascule sortie audio HP/Casque — TICKET-031 ✅
   - DAC USB KT USB Audio + HiFiBerry, sur cartes ALSA dont le numéro **dérive d'un boot à l'autre** (bug 2026-07-03 : card 2/3 inversés vs. setup initial) → `/etc/mpd.conf` doit référencer les cartes par nom (`hw:CARD=sndrpihifiberry,DEV=0` / `hw:CARD=Audio,DEV=0`), jamais par numéro
   - MPD configuré avec 2 sorties : `My ALSA Device` (HiFiBerry, HP) + `Casque USB` (DAC USB, casque)
