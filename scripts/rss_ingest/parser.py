@@ -126,4 +126,12 @@ def parse_rss(podcast_config):
     # TINA (2026-07-09). Le tri par published_parsed est robuste face a ca,
     # contrairement a un simple reverse() de l'ordre du flux cote affichage.
     keyed_episodes.sort(key=lambda pair: pair[0])
-    return [ep for _, ep in keyed_episodes]
+    # Retourne aussi l'image du podcast au niveau du <channel> (feed_image) :
+    # bug 2026-07-09 (La Discomobile) — ingest.py utilisait episodes[0].image_url
+    # comme jaquette du podcast, ce qui marchait par coincidence quand le flux
+    # etait newest-first. Depuis le tri chronologique ci-dessus, episodes[0]
+    # peut etre un item promotionnel non-episode (ex: "Retrouvez tous les
+    # episodes sur l'appli Radio France") dont l'image est un avatar generique
+    # Radio France, pas la vraie jaquette de l'emission. L'image de <channel>
+    # est la source fiable, independante de l'ordre des episodes.
+    return [ep for _, ep in keyed_episodes], feed_image

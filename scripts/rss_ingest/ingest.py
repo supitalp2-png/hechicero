@@ -68,11 +68,12 @@ def ingest(podcast_id=None):
     for cfg in configs:
         log(f"Podcast : {cfg.label} ({cfg.id})")
         try:
+            feed_cover_url = None
             if cfg.source_type == "html_radionacional":
                 from scraper_radionacional import scrape_radionacional
                 episodes = scrape_radionacional(cfg)
             else:
-                episodes = parse_rss(cfg)
+                episodes, feed_cover_url = parse_rss(cfg)
             # parse_rss() retourne desormais les episodes tries du plus ancien
             # au plus recent (cf. TICKET-103bis) : on garde donc les cfg.max_episodes
             # les PLUS RECENTS en tronquant par la fin, pas par le debut.
@@ -93,11 +94,14 @@ def ingest(podcast_id=None):
                     downloaded.append(ep)
                     progress.episode_done(error=f"{cfg.id}/{ep.id} : {str(e)[:120]}")
 
-            # Télécharger la cover dans web/lecteur/images/ (accessible Apache)
+            # Télécharger la cover dans web/lecteur/images/ (accessible Apache).
+            # Priorité à l'image de <channel> (feed_cover_url, fiable, cf.
+            # parser.py) ; repli sur episodes[0].image_url seulement si le flux
+            # n'expose pas d'image de channel (ou source_type scraper HTML).
             cover_local = None
-            if episodes and episodes[0].image_url:
+            cover_url = feed_cover_url or (episodes[0].image_url if episodes else None)
+            if cover_url:
                 from downloader import download_file
-                cover_url = episodes[0].image_url
                 cover_path = Path(f"/home/thomas/hechicero/web/lecteur/images/{cfg.id}.jpg")
                 result = download_file(cover_url, cover_path)
                 if result:
