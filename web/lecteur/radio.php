@@ -4,6 +4,9 @@ $stream = "https://icecast.radiofrance.fr/monpetitfranceinter-midfi.mp3";
 $projectRoot = "/home/thomas/hechicero";
 const CONFIG_PATH = '/home/thomas/hechicero/web/lecteur/config.json';
 const AUDIO_STATE_PATH = '/home/thomas/hechicero/data/audio_output_state.json';
+// TICKET pause/reprise webradio (2026-07-09) : mémorise l'URL du flux live
+// en cours quand on le coupe pour une "pause", cf. is_webradio_uri() plus bas.
+const RADIO_PAUSE_STATE_PATH = '/home/thomas/hechicero/data/radio_pause_state.json';
 
 function read_json_radio(string $path): array {
     if (!file_exists($path)) {
@@ -171,6 +174,45 @@ function mpd_currentsong(): array {
     return $result;
 }
 
+// Bug pause/reprise webradio (2026-07-09) : sur un flux live, MPD "pause 1"
+// coupe la sortie audio mais garde la connexion réseau ouverte et continue à
+// bufferiser le flux en arrière-plan. À la reprise, "play" rejoue ce buffer
+// devenu obsolète -> décalage grandissant, puis le serveur source finit
+// souvent par fermer la connexion (client resté "en retard" trop longtemps)
+// -> coupure du flux. Pas de souci pour un épisode de podcast (fichier
+// local, pas de notion de direct à rattraper) — donc on ne cible que les
+// URL http/https, cf. mpd_file_to_relative_audio() qui fait déjà cette
+// distinction ailleurs dans ce fichier.
+function is_webradio_uri(string $uri): bool {
+    return str_starts_with($uri, 'http://') || str_starts_with($uri, 'https://');
+}
+
+function save_radio_pause_url(string $url): void {
+    $dir = dirname(RADIO_PAUSE_STATE_PATH);
+    if (!is_dir($dir)) {
+        @mkdir($dir, 0755, true);
+    }
+    $tmp = RADIO_PAUSE_STATE_PATH . '.tmp';
+    file_put_contents($tmp, json_encode(['url' => $url], JSON_UNESCAPED_SLASHES));
+    rename($tmp, RADIO_PAUSE_STATE_PATH);
+}
+
+// Consomme (et efface) l'URL mémorisée par save_radio_pause_url(), s'il y en
+// a une. Effacer immédiatement évite qu'un flag oublié fausse une reprise
+// ultérieure sans rapport (ex: après un "play" manuel d'un autre flux).
+function pop_radio_pause_url(): ?string {
+    $data = read_json_radio(RADIO_PAUSE_STATE_PATH);
+    if (empty($data['url'])) {
+        return null;
+    }
+    @unlink(RADIO_PAUSE_STATE_PATH);
+    return (string)$data['url'];
+}
+
+function clear_radio_pause_state(): void {
+    @unlink(RADIO_PAUSE_STATE_PATH);
+}
+
 function mpd_add_and_play(string $uri): array {
     $responses = [];
     $responses['clear'] = mpd_command('clear');
@@ -264,22 +306,39 @@ if (isset($_GET['action'])) {
                 $playUrl = $candidate;
             }
         }
+        clear_radio_pause_state(); // nouvelle lecture explicite : tout flag de reprise en attente est obsolète
         mpd_add_and_play($playUrl);
     }
 
     if ($action === "pause") {
         $status = mpd_status();
         $state = $status['state'] ?? '';
+
         if ($state === 'play') {
-            mpd_command('pause 1');
+            $current = mpd_currentsong();
+            $file = $current['file'] ?? '';
+            if (is_webradio_uri($file)) {
+                // Voir is_webradio_uri() : on coupe complètement plutôt que de
+                // laisser MPD bufferiser le direct pendant la pause.
+                save_radio_pause_url($file);
+                mpd_command('stop');
+            } else {
+                mpd_command('pause 1');
+            }
         } else {
-            mpd_command('play');
+            $radioUrl = pop_radio_pause_url();
+            if ($radioUrl !== null) {
+                mpd_add_and_play($radioUrl); // reconnexion fraîche au direct, pas de reprise du buffer figé
+            } else {
+                mpd_command('play');
+            }
         }
     }
 
     if ($action === "playfile" && isset($_GET['path'])) {
         $path = normalize_path((string)$_GET['path'], $projectRoot);
         if ($path !== '') {
+            clear_radio_pause_state(); // idem : sélection explicite d'un épisode invalide un flag de reprise webradio
             $responses = mpd_add_and_play($path);
             if (isset($_GET['debug'])) {
                 header('Content-Type: application/json; charset=utf-8');

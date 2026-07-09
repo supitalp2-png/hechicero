@@ -121,6 +121,13 @@
       - Fichiers modifiés : `web/lecteur/radio.php` (action `sleep_log`), `web/lecteur/index.html` (`logSleepEvent()` + instrumentation des 4 fonctions de veille)
       - ⏳ Reste à faire : attendre la prochaine occurrence, lire `sleep_debug.log` à ce moment-là pour trancher enfin la cause
 
+- [ ] TICKET-103 — bug — Coupure du flux webradio après une pause/reprise (2026-07-09)
+      - Symptôme rapporté par Thomas : sur une webradio, pause puis reprise relance bien le son, mais le flux finit par se couper peu après.
+      - Cause identifiée dans `web/lecteur/radio.php`, action `pause` : sur `pause 1`, MPD coupe la sortie audio mais garde la connexion réseau ouverte et continue à bufferiser le flux en arrière-plan ; à la reprise, `play` rejoue ce buffer devenu obsolète (décalage grandissant), et le serveur source finit par fermer la connexion (client resté "en retard"). Comportement inoffensif pour un épisode de podcast (fichier local, pas de notion de direct) — le bug ne touche que les webradios.
+      - **Fix implémenté** : l'action `pause` distingue maintenant webradio (URL http/https, via `mpd_currentsong()`) et podcast. Sur une webradio en lecture : on mémorise l'URL du flux (`save_radio_pause_url()`, fichier `data/radio_pause_state.json`) puis `stop` complet au lieu de `pause 1`. À la reprise : si une URL est mémorisée, reconnexion fraîche via `mpd_add_and_play()` (au lieu de `play`) — le flux repart au direct plutôt que de rejouer un buffer figé. Comportement des podcasts (pause/reprise à la même position) inchangé.
+      - Fichier modifié : `web/lecteur/radio.php` (constante `RADIO_PAUSE_STATE_PATH`, fonctions `is_webradio_uri()`/`save_radio_pause_url()`/`pop_radio_pause_url()`/`clear_radio_pause_state()`, action `pause`, nettoyage du flag dans `play`/`playfile`)
+      - ⏳ Reste à faire : tester en conditions réelles sur le boîtier (webradio + pauses répétées), puis commit + push une fois validé par Thomas
+
 ---
 
 # 🟡 Priorité moyenne
