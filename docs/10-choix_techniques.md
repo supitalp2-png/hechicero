@@ -49,6 +49,36 @@ Capteur INA219 utilisé pour :
 - courant
 - état batterie
 
+### 🔹 Boîtier : carcasse Grundig Concert Boy 206
+Rôle : châssis extérieur du projet (vintage, bois + tissu, tranche supérieure chromée).
+Décision : réutiliser un poste radio ancien plutôt qu'un boîtier neuf, pour l'esthétique et la
+philosophie DIY/réparation du projet. Un 2e exemplaire du même modèle a été acheté en 2026-07-08
+pour l'intégration finale (le premier avait servi aux mesures/gabarits, voir `Photos/04-mesures`
+et `05-test-fit`). **Intégration matérielle terminée le 2026-07-08** : écran + haut-parleurs
+montés sur la nouvelle façade intérieure, boîtier refermé et fonctionnel — voir `docs/80-hardware.md` §0 et §12.
+
+### 🔹 Sortie casque : bouton physique manuel (pas de détection automatique)
+Rôle : basculer la sortie audio entre haut-parleurs (HiFiBerry Amp4) et casque (DAC USB UGREEN).
+Deux pistes de détection automatique du branchement ont été testées et **abandonnées
+définitivement** :
+- comparateur d'impédance LM393 (le DAC USB impose sa tension de sortie, mesure passive inefficace)
+- jack à contact mécanique switché câblé sur GPIO (irréalisable en pratique)
+
+Décision finale (2026-07-08) : un bouton-poussoir dédié ("source", GPIO17, à côté de la prise
+jack) bascule manuellement HP/casque — solution définitive, pas une étape transitoire. Logique
+serveur (volume mémorisé par mode, séquencement anti-pic sonore) dans `radio.php`
+(`get_output`/`set_output`), identique que le déclencheur soit ce bouton ou le tap écran. Détail :
+`docs/80-hardware.md` §"Sortie casque + détection", `docs/90-BACKLOG.md` TICKET-031.
+
+### 🔹 Boutons physiques : GPIO direct + polling (TICKET-091)
+9 broches GPIO (`RPi.GPIO`, `scripts/buttons_daemon.py`) plutôt qu'un MCP23017 I²C ou un Pico USB
+HID — plus simple, suffisant pour ce nombre de boutons. Détection par **polling** (~10ms), pas
+par interruptions (`add_event_detect()` peu fiable sur la puce GPIO RP1 du Pi 5). Layout du
+boîtier réel (7 boutons en ligne + 1 isolé) : bouton "source" (HP/casque) à côté du jack, puis
+volume−, précédent, lecture/pause (fusionnés, un bouton de moins que prévu), suivant, volume+,
+favori (réservé, fonctionnalité non codée) ; le bouton isolé (emplacement antenne) reste sans
+fonction. Détail : `docs/80-hardware.md` §12, `docs/90-BACKLOG.md` TICKET-091.
+
 ---
 
 ## 4. Architecture logicielle

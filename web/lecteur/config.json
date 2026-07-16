@@ -4,11 +4,11 @@
         "headphones_max": 100
     },
     "chime_enabled": true,
-    "chime_volume": 18,
+    "chime_volume": 20,
     "sleep_enabled": true,
-    "sleep_delay": 300,
+    "sleep_delay": 120,
     "sleep_mode": "retro_clock",
     "screen_off_enabled": true,
-    "screen_off_delay": 600,
-    "chime_sound": "chime.wav"
+    "screen_off_delay": 1200,
+    "chime_sound": "boot_orgue.wav"
 }

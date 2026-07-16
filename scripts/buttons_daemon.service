@@ -1,0 +1,15 @@
+[Unit]
+Description=Hechicero Buttons Daemon (8 boutons physiques GPIO, TICKET-091/101)
+After=network.target mpd.service
+Requires=mpd.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/home/thomas/hechicero/scripts
+ExecStart=/usr/bin/python3 /home/thomas/hechicero/scripts/buttons_daemon.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

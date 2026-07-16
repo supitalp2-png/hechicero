@@ -184,11 +184,29 @@
             "id": "profentucasa",
             "label": "Profe en tu casa",
             "rss": "https://www.radionacional.co/podcast/profe-en-tu-casa",
-            "enabled": true,
+            "enabled": false,
             "language": "es",
             "image": "images/profentucasa.jpg",
             "max_episodes": 999,
             "source_type": "html_radionacional"
+        },
+        {
+            "id": "tina",
+            "label": "Tina",
+            "rss": "https://radiofrance-podcast.net/podcast09/podcast_42dc42b4-ea66-4bbb-98a8-747807cfe7bf.xml",
+            "enabled": true,
+            "language": "fr",
+            "image": "images/tina.jpg",
+            "max_episodes": 999
+        },
+        {
+            "id": "ladiscomobile",
+            "label": "La Discomobile",
+            "rss": "https://radiofrance-podcast.net/podcast09/podcast_427f434a-f6b0-4aeb-8aab-fe99a1178fcf.xml",
+            "enabled": true,
+            "language": "fr",
+            "image": "images/ladiscomobile.jpg",
+            "max_episodes": 999
         }
     ],
     "radios": [
