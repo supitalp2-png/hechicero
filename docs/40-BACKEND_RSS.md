@@ -52,6 +52,15 @@ Le pipeline complet est le suivant :
    - via `feedparser`
    - extraction des épisodes
 
+1bis. Fusion avec l'historique local (TICKET-107, 2026-07-17)  
+   - les épisodes déjà présents dans l'ancien `meta.json` mais qui ont
+     disparu du flux RSS actuel (fenêtre glissante, fréquent chez Radio
+     France — constaté sur "Les Odyssées") sont **conservés**, jamais
+     supprimés silencieusement de `data.json`
+   - en cas de même id, la version fraîche du flux l'emporte (métadonnées à
+     jour) ; les fichiers déjà téléchargés ne sont pas retéléchargés
+   - `scripts/rss_ingest/parser.py::merge_episodes()`
+
 2. Téléchargement des fichiers audio  
    - stockage dans `~/hechicero/podcasts/<id>/audio/`
 

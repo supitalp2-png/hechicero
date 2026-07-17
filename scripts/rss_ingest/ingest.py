@@ -5,7 +5,7 @@ import argparse
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from pathlib import Path
-from parser import parse_rss
+from parser import parse_rss, merge_episodes
 from downloader import download_episode
 from writer import write_meta, update_data_json
 from models import PodcastConfig, PodcastMeta
@@ -26,6 +26,25 @@ def load_all_configs():
     with open(CONFIG_PATH) as f:
         raw = json.load(f)
     return [PodcastConfig(**p) for p in raw["podcasts"] if p["enabled"]]
+
+def load_episodes_from_disk(podcast_id):
+    """Charge la liste d'Episode du meta.json existant pour ce podcast
+    (liste vide si absent ou illisible). Utilisé pour fusionner avec
+    l'historique dans ingest() (TICKET-107, cf. merge_episodes) — distinct de
+    build_all_meta_from_disk ci-dessous qui gère les PodcastMeta complets des
+    podcasts non traités dans la session."""
+    from models import Episode
+    meta_path = Path(f"/home/thomas/hechicero/podcasts/{podcast_id}/meta.json")
+    if not meta_path.exists():
+        return []
+    try:
+        with open(meta_path) as f:
+            raw = json.load(f)
+        return [Episode(**e) for e in raw.get("episodes", [])]
+    except Exception as e:
+        log(f"WARNING: impossible de charger {meta_path}: {e}")
+        return []
+
 
 def build_all_meta_from_disk(configs_all, freshly_processed):
     """Reconstruit la liste complète des PodcastMeta en lisant les meta.json existants
@@ -74,6 +93,15 @@ def ingest(podcast_id=None):
                 episodes = scrape_radionacional(cfg)
             else:
                 episodes, feed_cover_url = parse_rss(cfg)
+            # TICKET-107 (2026-07-17) : fusionner avec l'historique local avant
+            # toute troncature, pour ne jamais perdre un episode deja
+            # telecharge meme s'il sort du flux RSS actuel (frequent chez
+            # Radio France, fenetre glissante — constate sur "Les Odyssees").
+            # Demande explicite de Thomas ; les entrees fresh l'emportent en
+            # cas de meme id, le reste (y compris d'occasionnelles
+            # bandes-annonces deja presentes dans un ancien meta.json) est
+            # conserve tel quel.
+            episodes = merge_episodes(load_episodes_from_disk(cfg.id), episodes)
             # parse_rss() retourne desormais les episodes tries du plus ancien
             # au plus recent (cf. TICKET-103bis) : on garde donc les cfg.max_episodes
             # les PLUS RECENTS en tronquant par la fin, pas par le debut.

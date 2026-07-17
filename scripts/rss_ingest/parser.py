@@ -4,6 +4,7 @@ from models import Episode
 from utils import log
 from pathlib import Path
 from typing import Optional
+from email.utils import parsedate_to_datetime
 import re
 
 def normalize_id(text: str) -> str:
@@ -171,3 +172,63 @@ def parse_rss(podcast_config):
     # Radio France, pas la vraie jaquette de l'emission. L'image de <channel>
     # est la source fiable, independante de l'ordre des episodes.
     return [ep for _, ep in keyed_episodes], feed_image
+
+
+def _string_sort_key(published: str) -> int:
+    """Reparse une date RSS deja stockee en string (Episode.published) en
+    timestamp epoch. Utilise par merge_episodes() pour retrier apres fusion,
+    car les episodes issus de l'historique local n'ont plus le
+    published_parsed structure de feedparser (perdu au passage par
+    meta.json)."""
+    if not published:
+        return 0
+    try:
+        return int(parsedate_to_datetime(published).timestamp())
+    except Exception:
+        return 0
+
+
+def merge_episodes(existing: list[Episode], fresh: list[Episode]) -> list[Episode]:
+    """Fusionne les episodes deja telecharges localement (existing, lus dans
+    l'ancien meta.json) avec ceux du flux RSS actuel (fresh) — TICKET-107,
+    demande explicite de Thomas (2026-07-17) : ne jamais perdre un episode
+    deja telecharge meme s'il sort du flux RSS (frequent chez Radio France,
+    fenetre glissante — vu sur "Les Odyssees").
+
+    Les entrees fresh l'emportent en cas de meme id (metadonnees a jour,
+    fichiers deja sur disque donc pas de re-telechargement par
+    download_episode()). Les entrees existing sans correspondance dans fresh
+    sont conservees telles quelles, y compris d'occasionnels items
+    filtres autrement (bandes-annonces) si deja presents dans un ancien
+    meta.json — accepte, pas une priorite de filtrer retroactivement.
+
+    Re-trie le resultat avec la meme logique a deux niveaux (saison puis
+    numero de titre, sinon date) que parse_rss(), en reparsant les dates
+    string plutot que d'utiliser published_parsed (indisponible pour les
+    episodes existing)."""
+    fresh_ids = {ep.id for ep in fresh}
+    kept_old = [ep for ep in existing if ep.id not in fresh_ids]
+    combined = kept_old + fresh
+
+    items = []
+    for ep in combined:
+        sort_key = _string_sort_key(ep.published)
+        m = _SEASON_EP_RE.match(ep.title or "")
+        ep_num = int(m.group(2)) if m else None
+        items.append((sort_key, ep.season, ep_num, ep))
+
+    season_min_date: dict[str, int] = {}
+    for sort_key, season, _ep_num, _ep in items:
+        if season is None:
+            continue
+        if season not in season_min_date or sort_key < season_min_date[season]:
+            season_min_date[season] = sort_key
+
+    def final_sort_key(item):
+        sort_key, season, ep_num, _ep = item
+        group_key = season_min_date[season] if season is not None else sort_key
+        secondary_key = ep_num if (season is not None and ep_num is not None) else sort_key
+        return (group_key, secondary_key)
+
+    items.sort(key=final_sort_key)
+    return [ep for _, _, _, ep in items]
