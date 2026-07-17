@@ -111,7 +111,7 @@
         {
             "id": "lesodyssees",
             "label": "Les Odyssées",
-            "rss": "https://radio-france-rss.aerion.workers.dev/rss/c361798b-d6e3-4282-ba0a-ebb051b9e424",
+            "rss": "https://radiofrance-podcast.net/podcast09/podcast_c361798b-d6e3-4282-ba0a-ebb051b9e424.xml",
             "enabled": true,
             "language": "fr",
             "image": "images/lesodyssees.jpg",

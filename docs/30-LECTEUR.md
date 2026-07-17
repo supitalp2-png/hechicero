@@ -35,27 +35,28 @@ Contenu :
 - `data.json` : catalogue local (radios + podcasts), généré par le backend
 - `images/` : jaquettes podcasts (`{id}.jpg`) et radios (`radio/{id}.jpg`)
 
-> `app.js` et `style.css` sont du code mort — les styles et la logique sont intégrés dans `index.html` (TICKET-040 ✅). Fichiers à supprimer (TICKET-090).
+> `app.js` et `style.css` étaient du code mort (styles et logique intégrés dans `index.html`, TICKET-040 ✅) — supprimés (TICKET-090 ✅). Il reste un `index.html.bak` dans `web/lecteur/`, à nettoyer à l'occasion.
 
 ### 3.2 Rôle des fichiers
 - **index.html** : contient toute la logique — chargement de `data.json`, rendu des 5 écrans, événements tactiles, commandes MPD
 - **data.json** : généré automatiquement par le backend (`writer.py`), jamais modifié par le lecteur
 - **config.json** : configuration avancée lue au démarrage du lecteur (via `radio.php?action=parental_status`)
 
-Format de `config.json` :
+Format de `config.json` (exemple — valeurs réelles réglées via l'admin, voir `docs/15-INVARIANTS.md` §2.3 pour la règle de volume) :
 ```json
 {
   "volume": {
     "speakers_max": 80,
-    "headphones_max": 60
+    "headphones_max": 100
   },
   "chime_enabled": true,
-  "chime_volume": 15,
+  "chime_volume": 20,
   "sleep_enabled": true,
-  "sleep_delay": 300,
+  "sleep_delay": 120,
   "sleep_mode": "retro_clock",
   "screen_off_enabled": true,
-  "screen_off_delay": 600
+  "screen_off_delay": 1200,
+  "chime_sound": "boot_orgue.wav"
 }
 ```
 
@@ -152,7 +153,7 @@ Règles :
 - aucune navigation libre  
 - aucun texte cliquable non prévu  
 - aucun menu caché  
-- volume logiciel limité (max 80%)  
+- volume logiciel limité : 80% max sur les haut-parleurs ; 100% assumé côté casque (l'impédance du casque limite elle-même la puissance réelle, décision Thomas 2026-07-17 — voir `docs/15-INVARIANTS.md` §2.3)  
 - aucune possibilité de quitter Chromium  
 - aucune commande système exposée  
 
@@ -184,7 +185,7 @@ Le lecteur doit fonctionner **sans lag** sur un Raspberry Pi 5.
 
 ---
 
-## 12. État réel au 2026-06-24
+## 12. État réel au 2026-07-17
 
 ### Implémenté et validé
 - Son de démarrage (chime) : accord grave C2–G2–C3–G3–E4 via Web Audio API, sans fichier audio — `playStartupChime(volume)` (TICKET-023 ✅)
@@ -239,12 +240,13 @@ Le lecteur doit fonctionner **sans lag** sur un Raspberry Pi 5.
   - `currentVolumeMax()` retourne `VOLUME_MAX_SPEAKERS` ou `VOLUME_MAX_HEADPHONES` selon `audioMode`
   - Séquence bascule : volume réglé AVANT la bascule MPD (évite le pic sonore)
   - Bascule manuelle définitive : IHM (bouton pill) + bouton physique GPIO17 ("source", cf. TICKET-091). La détection automatique du branchement casque (LM393, puis jack switché) a été testée sous deux approches différentes et abandonnée dans les deux cas — le bouton manuel est la solution retenue pour de bon, pas une étape transitoire
-- Navigation épisode pilotable par bouton physique GPIO — TICKET-091 (2026-07-07) ✅ backend
-  - `radio.php` : actions `next_episode` / `prev_episode` — retrouvent l'épisode en cours à partir du **fichier réellement joué par MPD** (`action=status` → champ `file`, jamais un état mémorisé, même principe que `get_output`), le comparent à `data.json`, lancent l'épisode voisin. Répondent `ok:false` (`out_of_bounds` / `no_current_episode`) en bout de série, webradio en cours, ou MPD à l'arrêt
+- Navigation épisode pilotable par bouton physique GPIO — TICKET-091/101 ✅ définitif
+  - `radio.php` : actions `next_episode` / `prev_episode` — retrouvent l'épisode en cours à partir du **fichier réellement joué par MPD** (`mpd_currentsong()`, jamais un état mémorisé, même principe que `get_output`), le comparent à `data.json`, lancent l'épisode voisin. Répondent `ok:false` (`out_of_bounds` / `no_current_episode`) en bout de série, webradio en cours, ou MPD à l'arrêt. Nouvelle action `seek_relative` (`seekcur ±N`) pour le maintien tap-ou-maintien ci-dessous
   - `radio.php` : action `now_playing` (lecture seule) — utilisée par `syncNowPlaying()` (`index.html`, appelée dans `refreshStatus()` toutes les 3s) pour resynchroniser titre/jaquette/badge si la piste a changé via un bouton physique plutôt qu'un tap écran ; ne relance jamais `playfile`
-  - `scripts/buttons_daemon.py` : daemon GPIO 9 broches (poll unique, anti-rebond par broche), remplace `button_toggle_test.py` (temporaire, 1 seule broche). Bring-up testé sur le Pi le 2026-07-07 : les 9 broches (17, 23, 27, 5, 6, 13, 16, 12, 25) détectent correctement les appuis. Handlers prêts : `handle_play`/`handle_pause` (directionnels via `action=status`, radio.php n'expose qu'un toggle unique), `handle_vol_up`/`handle_vol_down`, `handle_next`/`handle_prev`
-  - ⏳ Mapping GPIO ↔ bouton physique pas encore fait (Thomas monte les boutons dans le boîtier avant de tester bouton par bouton) — bloquant avant assignation finale des handlers et création du service systemd définitif
-  - Bouton favori non câblé : TICKET-046 (fonctionnalité favoris) jamais codée dans l'app — reporté, décision 2026-07-07
+  - `scripts/buttons_daemon.py` + `scripts/buttons_daemon.service` (actif sur le Pi) : daemon GPIO 9 broches (poll unique 10ms, anti-rebond à 3 niveaux), remplace `button_toggle_test.py`/`.service` (bring-up temporaire)
+  - ✅ **Mapping GPIO ↔ bouton confirmé (TICKET-101, boîtier réel)** : GPIO25 = source HP/casque, GPIO13 = vol−, GPIO17 = précédent, GPIO12 = play/pause (fusionné, un seul bouton), GPIO27 = suivant, GPIO5 = vol+, GPIO16 = réserve (pas de fonction décidée), GPIO23 = bouton isolé (emplacement antenne) — **physiquement câblé**, réservé pour un usage futur (pressenti pour favoris/TICKET-046, pas encore câblé côté logiciel car TICKET-046 n'est pas codé), GPIO6 = non câblé
+  - Suivant/précédent en tap-ou-maintien (`TAP_OR_HOLD`) : tap = épisode suivant/précédent (inchangé), maintien > 0.4s = recherche par pas de 5s dans l'épisode en cours — valeurs pas encore confirmées par Thomas en usage prolongé
+  - Montage physique du boîtier (jack casque, DAC USB, câblage bouton source) terminé — confirmé par Thomas le 2026-07-17
 
 ### Architecture technique
 - `index.html` : fichier unique (HTML + CSS + JS)

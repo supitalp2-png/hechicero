@@ -30,10 +30,11 @@ scripts/
 ├── idle_screen.sh         # extinction écran (swayidle + wlopm)
 └── rss_ingest/
       ├── ingest.py              # orchestrateur principal
-      ├── parser.py              # parsing RSS (feedparser)
+      ├── parser.py              # parsing RSS (feedparser), filtre/dédup/tri, fusion historique
+      ├── scraper_radionacional.py  # scraping HTML pour les podcasts source_type=html_radionacional
       ├── downloader.py          # téléchargement audio + images
       ├── writer.py              # génération data.json
-      ├── check_integrity.py     # vérification intégrité audio/images/data.json
+      ├── check_integrity.py     # vérification intégrité audio/images/data.json (ignore les podcasts enabled:false)
       ├── progress.py            # suivi temps réel (→ /tmp/hechicero_progress.json)
       ├── utils.py               # log, atomic_write_json
       └── models.py              # dataclasses Episode, PodcastConfig, PodcastMeta
@@ -49,8 +50,11 @@ Chaque fichier a un rôle clair et isolé.
 Le pipeline complet est le suivant :
 
 1. Lecture du flux RSS  
-   - via `feedparser`
+   - via `feedparser` (ou `scraper_radionacional.py` si `source_type: html_radionacional`)
    - extraction des épisodes
+   - filtre des items non-épisode (bandes-annonces, auto-promo "appli(cation) Radio France") — `is_filler()`, TICKET-104
+   - déduplication par id (garde la 1re occurrence rencontrée dans le flux) — certains flux republient le même épisode plusieurs fois avec des dates incohérentes, TICKET-104
+   - tri chronologique à deux niveaux : saisons ordonnées par leur date la plus ancienne, puis à l'intérieur d'une saison par numéro d'épisode extrait du titre (plus fiable que la date individuelle) — TICKET-104
 
 1bis. Fusion avec l'historique local (TICKET-107, 2026-07-17)  
    - les épisodes déjà présents dans l'ancien `meta.json` mais qui ont
@@ -134,19 +138,22 @@ Le backend lit un fichier de configuration listant les podcasts à ingérer.
       "rss": "https://...",
       "language": "fr",
       "enabled": true,
-      "max_episodes": 20
+      "image": "images/lesodyssees.jpg",
+      "max_episodes": 20,
+      "source_type": "rss"
     }
   ]
 }
 ```
 
 > ⚠️ Les champs exacts sont `label` (pas `name`) et `language` (pas `lang`).
+> `source_type` est optionnel (défaut `"rss"` via `feedparser`) — mettre `"html_radionacional"` pour un podcast scrapé en HTML (`scraper_radionacional.py`, ex. `profentucasa`, actuellement désactivé).
 > Voir `docs/50-PODCASTS_CONFIG.md` pour le format complet avec la section `radios`.
 
 ### Règles
 - `id` : unique, sans espace, sans accent  
 - `rss` : URL valide  
-- `enabled` : permet d’activer/désactiver un podcast  
+- `enabled` : permet d’activer/désactiver un podcast — `check_integrity.py` ignore les podcasts désactivés (pas une erreur si leur `meta.json` diverge de `data.json`)
 - `language` : `fr`, `es`, `en`…  
 
 ### Ajouter un podcast
@@ -183,6 +190,11 @@ Le backend doit être **robuste** et **ne jamais casser `data.json`**.
 ### Stratégie retry
 - 3 tentatives  
 - délai progressif  
+
+### Podcast en échec (permission, réseau…) — TICKET-105, 2026-07-09/17
+- chaque podcast est traité dans son propre bloc `try/except` dans `ingest.py`
+- un podcast en échec est loggé comme erreur de progression mais n'interrompt jamais les suivants
+- `data.json` est ensuite reconstruit à partir de **tous** les `meta.json` présents sur disque (pas seulement ceux traités avec succès dans la session en cours) — un podcast en échec garde sa dernière version valide au lieu de disparaître du lecteur
 
 ---
 
@@ -237,12 +249,12 @@ cat ~/hechicero/web/lecteur/data.json
 ---
 
 ## 12. Évolutions prévues
-- gestion des doublons de titres dans `normalize_id()` (risque de collision)
-- durées des épisodes via `ffprobe` pour les flux sans `itunes:duration` (TICKET-059)
+- Aucune évolution majeure planifiée à ce stade. Les deux points historiquement listés ici sont faits : dédup/tri fiables par id + numéro d'épisode (TICKET-104, remplace le risque de collision de `normalize_id()`) et durées via `ffprobe` pour les flux sans `itunes:duration` (TICKET-059, `probe_duration()` dans `downloader.py`).
+- Piste ouverte, non commencée : purge/rotation de l'archive locale — TICKET-107 (2026-07-17) a supprimé toute purge automatique des épisodes disparus du flux RSS pour ne jamais perdre de contenu déjà téléchargé ; l'archive ne fait donc que grossir avec le temps. Pas de souci d'espace disque identifié à ce stade, mais à surveiller.
 
 ## 13. Notes d'architecture
 - `progress.py` écrit `/tmp/hechicero_progress.json` en temps réel
 - L'admin PHP lit ce fichier via `?action=get_progress` toutes les 2 secondes
 - Les radios sont gérées dans `data/podcasts.json` (clé `radios`) par l'admin PHP
 - `writer.py` lit les radios depuis `podcasts.json` et les injecte dans `data.json` à chaque ingest
-- La cover podcast (`cover.jpg`) est téléchargée depuis l'image du premier épisode du flux RSS
+- La cover podcast est téléchargée en priorité depuis l'image de `<channel>` (fiable, indépendante de l'ordre des épisodes) ; repli sur l'image du premier épisode (`episodes[0].image_url`) seulement si le flux n'expose pas d'image de channel — corrigé TICKET-104 (2026-07-09), voir `parser.py` (`feed_cover_url`)

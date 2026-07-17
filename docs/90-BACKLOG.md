@@ -1,80 +1,11 @@
 # Backlog Hechicero
 
 > Convention : `TICKET-### — [type] — Titre — (prio) — owner`
-> Dernière mise à jour : 2026-07-16 (TICKET-091 clos et déplacé en Terminé, décision GPIO documentée dans `10-choix_techniques.md`)
+> Dernière mise à jour : 2026-07-17 (TICKET-031/057/068/087/103/104/105/106/107 clos)
 
 ---
 
 # 🔥 Priorité haute
-
-- [x] TICKET-107 — bug/feature — Ingestion RSS : conserver les épisodes qui sortent du flux (surtout "Les Odyssées")
-      - Trouvé le 2026-07-17 en auditant les orphelins post-ingestion (suite TICKET-104/105) : `ingest.py` reconstruisait `meta.json` **entièrement** à partir du flux RSS courant à chaque passage (pas de fusion avec l'historique). Résultat : tout épisode que le diffuseur (Radio France notamment) retire ou retitre dans son flux disparaissait silencieusement de `data.json`, alors même que le fichier audio/image restait sur le disque (jamais supprimé, invariant 1.5) — inaccessible depuis le lecteur.
-      - Décision Thomas (2026-07-17) : conserver les épisodes déjà téléchargés en priorité, tant pis si ça garde occasionnellement une bande-annonce déjà présente dans un ancien `meta.json`.
-      - ✅ Implémenté : `scripts/rss_ingest/parser.py::merge_episodes()` fusionne l'historique local (`meta.json` existant) avec le flux frais avant toute troncature `max_episodes` — la version fraîche l'emporte en cas de même id (métadonnées à jour), le reste est conservé tel quel et re-trié (même logique saison/numéro/date que `parse_rss()`). Câblé dans `ingest.py::ingest()`.
-      - ✅ **Validé en conditions réelles le 2026-07-17** : ingestion complète relancée sur le Pi. Découverte en creusant les orphelins restants (`aladinetlesorciermalfique`, `shhrazadeconteusedegnie`, `lesincroyablesaventuresdesindbadlemarin`, `lestroisprincesamoureux`) : ces épisodes n'étaient déjà plus dans `meta.json` **avant** ce correctif (perdus lors d'une ingestion antérieure) — la fusion ne peut pas les récupérer rétroactivement, seulement empêcher que ça se reproduise désormais. Mais bonne surprise : Radio France les a en fait **republiés sous un nouveau titre/id** dans une saison "Les 1001 nuits" (`Les 1001 nuits 1/4 : Shéhérazade conteuse de génie`, `2/4 : Aladin et le sorcier maléfique`, `3/4 : Les incroyables aventures de Sindbad le marin`, `4/4 : Les trois princes amoureux`) et "Peter Pan et Wendy" → "Wendy & Peter Pan" — donc bien présents dans `data.json`/le lecteur, juste sous un id différent. Seuls restent introuvables : `odysesdudimanche03aot2025`/`odysesdudimanche20juillet2025` (rediffusions "best of" du dimanche, probablement non republiées telles quelles) — fichiers conservés sur disque, pas de perte, juste plus référencés.
-      - Anciens fichiers orphelins (`aladinetlesorciermalfique.mp3` etc., doublons de contenu maintenant présent sous un nouvel id) : nettoyage disque optionnel, pas urgent.
-      - ⚠️ Effet de bord accepté : plus de purge automatique, l'archive locale ne fait que grossir avec le temps (pas de souci d'espace disque identifié à ce stade, mais à surveiller si un flux change radicalement d'un coup)
-      - Fichiers modifiés : `scripts/rss_ingest/parser.py`, `scripts/rss_ingest/ingest.py`, `docs/40-BACKEND_RSS.md`
-
-- [x] TICKET-085 — infra — Sauvegarde de la carte SD (ghost durci, manuel uniquement)
-      - Doc complète : `docs/85-SAUVEGARDE_RESTAURATION.md` (restauration Windows pas-à-pas + mise en place système)
-      - Conçu et implémenté le 2026-07-03 — étendu en cours de session d'un simple script manuel vers un système complet, puis **simplifié le même jour** : pas de sauvegarde quotidienne automatique ("on ne sauvegarde que les évolutions majeures, soyons économes") — **durcie uniquement**, déclenchée à la main via l'admin :
-          • Une seule sauvegarde vers NAS Freebox (SMB/CIFS) : **durcie**, remplacée quand Thomas valide un état stable via l'admin (bascule atomique — jamais d'état sans version durcie valide)
-          • `scripts/backup_manager.py` — orchestration complète (montage NAS, `dd | gzip`, état JSON, bascule atomique)
-          • `data/backup_config.json` (non-secret, versionné) + `/etc/hechicero-nas-credentials` (secret, root uniquement, hors dépôt)
-          • Règle sudoers dédiée pour laisser l'admin web déclencher une validation durcie (root requis pour lire `/dev/mmcblk0` et monter le NAS) sans donner un accès root complet à www-data
-          • Page admin `web/admin/backup_dashboard.php` : version durcie actuelle, taille, bouton de validation — lien visible **seulement en mode Expert** de l'admin principale (persona parent geek, pas l'autre parent)
-          • `README.md` régénéré automatiquement sur le NAS à chaque sauvegarde (secours si le dépôt n'est pas accessible)
-          • **Aucun SSH requis à l'usage** : clic sur "Valider une nouvelle version durcie" dans l'admin → `index.php` déclenche `backup_manager.py validate` en tâche de fond via la règle sudoers → montage NAS, ghost, bascule atomique, tout est géré côté serveur. SSH n'est nécessaire qu'une seule fois, à la mise en place initiale (§3 de la doc : fichier d'identifiants, paquets, règle sudoers) — jamais ensuite.
-      - Scripts manuels créés initialement (`scripts/ghost_sd_prepare.sh`, `scripts/ghost_sd_backup.sh`) conservés pour un usage ponctuel/disque externe, mais le flux normal passe désormais par `backup_manager.py`
-      - Notes réseau utiles pour la suite : `mafreebox.freebox.fr` résout vers une IP publique Free depuis le Pi (pas la Freebox locale) → utiliser l'IP de la passerelle locale (`ip route`, voir `data/backup_config.json` pour la valeur retenue — pas republiée ici, dépôt public) ; montage CIFS anonyme (`guest`) suffit pour lister les partages mais pas pour écrire, un compte Freebox est nécessaire
-      - ⚠️ `dd` lit le disque système pendant qu'il tourne (pas d'arrêt des services) — snapshot pas garanti parfaitement cohérent
-      - ✅ Déploiement sur le Pi réel terminé le 2026-07-03 : fichier d'identifiants, règles sudoers (www-data + thomas), paquets, hook git installé. Premier ghost réel fait (~107 GiB), enregistré comme durcie initiale. Testé de bout en bout sans montage manuel préalable (`sync_private` remonte le NAS tout seul via les identifiants).
-      - ⏳ Reste : premier clic "valider durcie" *depuis l'admin web* (le tout premier a été fait en ligne de commande faute de bouton pas encore cliqué) — sinon le système est pleinement opérationnel
-      - Fichiers systemd `hechicero-backup-daily.service`/`.timer` créés puis abandonnés (design quotidien annulé) — à supprimer du dépôt (`git rm etc/systemd/system/hechicero-backup-daily.*`)
-      - **Ajout 2026-07-03 (même session)** : `private/` (hors git, jamais sur GitHub — réflexion perso, futurs contenus non publics type easter egg) synchronisé vers un dossier dédié du NAS, automatiquement à chaque `git commit` via un hook `.git/hooks/post-commit` (template versionné : `scripts/git_hooks_post_commit.sh`) — nouvelle commande `backup_manager.py sync_private`, règle sudoers dédiée pour l'utilisateur `thomas` (voir `docs/85-SAUVEGARDE_RESTAURATION.md` §3.3, §3.6, §5). Zéro SSH à l'usage, comme pour la durcie. `rsync` sans `--delete` : n'efface jamais rien côté NAS.
-      - Penser à vérifier/documenter aussi les configs système hors git avant tout (cf. [[project_backups]] en mémoire : UPower.conf, mpd.conf, kiosk.sh, Apache vhosts, Plymouth theme) — capturées dans le ghost complet, mais bon à savoir si restauration partielle
-
-- [ ] TICKET-031 — hardware/feature — Sortie casque avec bouton physique de bascule HP/casque
-      - Contrainte : HiFiBerry Amp4 conservé (pas de sortie casque native)
-      - Solution retenue :
-          • DAC USB : KT USB Audio — branché, fonctionnel ✅
-          • Jack : XMSJSIY TRS 3.5mm panel mount ∅22mm chromé → à monter dans le boîtier
-          • MPD : 2 sorties configurées — `My ALSA Device` (HiFiBerry, HP) + `Casque USB` (DAC USB) ✅
-          • ⚠️ Référencer les cartes par **nom** (`hw:CARD=sndrpihifiberry,DEV=0` / `hw:CARD=Audio,DEV=0`), jamais par numéro (`hw:N,0`) — le numéro de carte ALSA n'est pas stable d'un boot à l'autre sur ce Pi (cf. bug ci-dessous)
-      - ✅ Implémenté session 14 (partiel) — bascule manuelle depuis l'IHM enfant :
-          • Bouton pill dans la statusbar (toujours visible sur tous les écrans)
-          • Volume mémorisé par mode (HP / casque) en localStorage
-          • Séquence bascule : volume d'abord, sortie ensuite (évite pic sonore)
-          • `radio.php` : get_output / set_output (MPD enableoutput/disableoutput)
-          • `currentVolumeMax()` : VOLUME_MAX_SPEAKERS ou VOLUME_MAX_HEADPHONES selon mode
-      - 🐛 Bug corrigé le 2026-07-03 — son sorti par le casque au boot alors que HP affiché/attendu :
-          • Cause : `/etc/mpd.conf` référençait les cartes par numéro (`hw:2,0`/`hw:3,0`) ; ce numéro a dérivé entre le setup initial et aujourd'hui (HiFiBerry et DAC USB ont échangé leurs numéros) → corrigé en référençant par nom
-          • `radio.php` `set_output` répondait `ok:true` même quand la commande n'atteignait pas MPD (socket pas prêt au boot) → corrigé pour vérifier la vraie réponse
-          • `~/kiosk.sh` force désormais HP + volume 20% IHM avant Chromium, avec retry qui vérifie le vrai `ok:true`
-          • ✅ Confirmé fonctionnel par Thomas après reboot complet
-      - 🎨 Widget dashboard fatigue auditive (session 2026-07-03) — `dashboard.php` :
-          • Icône oreille : silhouette tracée depuis `web/oreille.svg` (référence déposée par Thomas), couleur dynamique selon fatigue (vert/jaune/orange/rouge)
-          • Zone concha/canal interne en blanc 90% opacité (le noir était invisible sur le fond bleu nuit)
-          • Jauge verticale à côté (100% en haut → 0% en bas, dot qui descend avec la fatigue)
-      - 🔄 **Décision technique (session 2026-07-03)** : abandon de l'approche LM393/comparateur
-        d'impédance pour la détection casque — testée sur plaque d'essai, ne fonctionne pas
-        (tension ~1,1V que le casque soit branché ou débranché, le DAC USB pilote activement sa
-        sortie et domine toujours le nœud, mesure passive/injection DC inefficaces). Nouvelle
-        direction : jack à contact mécanique switché (NC/NO, indépendant du signal audio) câblé
-        sur GPIO. Détail complet et schéma dans `docs/80-hardware.md` §"Sortie casque + détection".
-      - ✅ **Test de mise en route bouton GPIO validé le 2026-07-06** (`scripts/button_toggle_test.py`, bring-up TICKET-091) :
-          • Bouton physique (GPIO17, pull-up, appui = LOW) bascule HP↔casque de bout en bout, testé après reboot complet
-          • Détection par **polling** (10ms), pas par `add_event_detect()` — sur Raspberry Pi 5, la détection par interruption de `RPi.GPIO` est peu fiable (puce GPIO RP1, mal supportée par cette bibliothèque) : le premier appui passait, les suivants étaient perdus. Polling résout le problème — **à retenir pour le choix d'interface GPIO définitif (TICKET-091)** : si on reste sur GPIO direct + `RPi.GPIO`, prévoir du polling partout, pas d'interruptions
-          • Antirebond à 3 niveaux (polling rapproché + confirmation logicielle + garde-fou global 400ms) — nécessaire, un bouton peut rebondir plus que prévu
-          • 🐛 Bug critique trouvé et corrigé en même temps : `radio.php` action `get_output` utilisait une regex qui supposait `outputenabled` juste après `outputname` — MPD 0.24 insère une ligne `plugin: alsa` entre les deux, donc la detection retombait toujours sur "hp", jamais "casque". Remplacé par un vrai parsing par bloc `outputid` (`mpd_output_enabled()`)
-          • 🔄 **Volume mémorisé par mode déplacé côté serveur** (`data/audio_output_state.json`, plus seulement `localStorage` navigateur) : nécessaire pour que le bouton physique (hors navigateur) ait le même comportement que l'IHM tactile — `set_output` gère lui-même la mémoire de volume et la séquence "volume d'abord, sortie ensuite", quel que soit l'appelant (IHM, GPIO, futur détecteur auto)
-          • Le "mode qu'on quitte" est déterminé par l'état réel MPD (`outputs`), jamais par une valeur mémorisée seule — évite toute dérive si l'état a changé sans passer par `set_output`
-          • Écran resynchronisé sur l'état réel toutes les 300ms (`syncAudioMode()`, boucle globale indépendante de l'écran lecteur) — bascule déclenchée par le bouton physique reflétée quasi instantanément (logo + volume affiché)
-      - 🔄 **Détection automatique du branchement casque abandonnée définitivement (décision Thomas, 2026-07-08)** : après l'échec du comparateur LM393 (ci-dessus), la piste de repli — jack à contact mécanique switché câblé sur GPIO — s'avère elle aussi irréalisable en pratique. Thomas tranche : **le bouton physique manuel devient la solution définitive**, pas une étape transitoire. Le "bouton source" du boîtier (à côté de la prise jack, cf. `docs/90-BACKLOG.md` TICKET-091 et mémoire `project_hechicero_buttons_gpio`) est câblé sur GPIO17 et bascule HP/casque via `handle_hp_casque` (`scripts/buttons_daemon.py`), déjà validé en bring-up.
-      - Jack XMSJSIY : reste un simple passe-plat pour la sortie casque (pas de contact switché à exploiter) — pas besoin de vérifier le nombre de bornes, cette question ne se pose plus.
-      - ⏳ Reste à faire : monter le jack + câbler le DAC USB dans le boîtier, finaliser le câblage GPIO17 → bouton "source" réel (pas juste la breadboard de test), créer le service systemd définitif (avec les autres boutons, voir TICKET-101)
-      - Le code IHM (bouton pill, logo, volumes mémorisés) reste définitif et ne change pas — le déclencheur est et restera le bouton physique GPIO (ou le tap écran, les deux cohabitent)
 
 - [ ] TICKET-058 — feature/UX — Série podcast "Décisions Prises" + easter egg
       - Première découverte : 3 taps sur "Hechicero" à l'écran d'accueil → déverrouille + lance l'épisode 0 automatiquement
@@ -88,59 +19,6 @@
 
 ---
 
-# 🔧 Hardware — En attente réception
-
-- [ ] TICKET-106 — infra — Objet git corrompu dans `~/hechicero` (`git log`/`git fsck` cassés)
-      - Découvert le 2026-07-09 en marge du diagnostic TICKET-102 : `git log`/`git fsck --full` échouent avec `error: garbage at end of loose object ... fatal: ... is corrupt` (objet `4236ac6e...`)
-      - `git show HEAD:<fichier>` et `git commit`/`git push` fonctionnent malgré tout (l'objet corrompu n'est pas un blob HEAD courant), mais `git log` est cassé — risque de bloquer une future opération sans prévenir
-      - Cause inconnue — pas forcément lié à Samba/Q:\ puisque les commits se font en SSH natif sur le Pi
-      - ⏳ À investiguer par Thomas en SSH (`git fsck` complet, comparaison avec `origin`, éventuellement re-clone propre si besoin)
-
-- [ ] TICKET-103 — bug — Coupure du flux webradio après une pause/reprise (2026-07-09)
-      - Symptôme rapporté par Thomas : sur une webradio, pause puis reprise relance bien le son, mais le flux finit par se couper peu après.
-      - Cause identifiée dans `web/lecteur/radio.php`, action `pause` : sur `pause 1`, MPD coupe la sortie audio mais garde la connexion réseau ouverte et continue à bufferiser le flux en arrière-plan ; à la reprise, `play` rejoue ce buffer devenu obsolète (décalage grandissant), et le serveur source finit par fermer la connexion (client resté "en retard"). Comportement inoffensif pour un épisode de podcast (fichier local, pas de notion de direct) — le bug ne touche que les webradios.
-      - **Fix implémenté** : l'action `pause` distingue maintenant webradio (URL http/https, via `mpd_currentsong()`) et podcast. Sur une webradio en lecture : on mémorise l'URL du flux (`save_radio_pause_url()`, fichier `data/radio_pause_state.json`) puis `stop` complet au lieu de `pause 1`. À la reprise : si une URL est mémorisée, reconnexion fraîche via `mpd_add_and_play()` (au lieu de `play`) — le flux repart au direct plutôt que de rejouer un buffer figé. Comportement des podcasts (pause/reprise à la même position) inchangé.
-      - Fichier modifié : `web/lecteur/radio.php` (constante `RADIO_PAUSE_STATE_PATH`, fonctions `is_webradio_uri()`/`save_radio_pause_url()`/`pop_radio_pause_url()`/`clear_radio_pause_state()`, action `pause`, nettoyage du flag dans `play`/`playfile`)
-      - ⏳ Reste à faire : tester en conditions réelles sur le boîtier (webradio + pauses répétées), puis commit + push une fois validé par Thomas
-
-- [ ] TICKET-104 — bug — Podcast TINA : images identiques, ordre incohérent, navigation bloquée en fin de saison (2026-07-09)
-      - Symptômes rapportés par Thomas (généralisables à tous les podcasts RSS, pas seulement TINA — ex. Professeur Caillou) :
-          • Toutes les images affichées sur l'écran lecteur sont identiques, alors que des images différentes existent par saison
-          • Les épisodes s'affichent à l'envers (on veut ep1 → dernier de la saison 1, puis saison 2 ep1 → ..., etc.)
-          • Impossible de passer du dernier épisode d'une saison au premier épisode de la saison suivante (bouton suivant)
-      - Diagnostic :
-          • **Images** — `web/lecteur/index.html` : l'écran lecteur (`playTrack()` + `syncNowPlaying()`) fixait `player-art.src` sur `currentPodcast.image` (la jaquette du podcast entier), jamais sur `ch.image` (l'image de l'épisode/saison en cours) — la liste d'épisodes (`renderChapters()`), elle, utilisait déjà correctement `ch.image`. Les images par saison étaient donc correctement téléchargées sur disque (vérifié : 4 tailles de fichiers distinctes pour les 4 saisons TINA) mais jamais affichées sur l'écran principal.
-          • **Ordre + doublons** — `scripts/rss_ingest/parser.py` (`parse_rss`) n'appliquait aucun tri ni déduplication : il renvoyait les épisodes tels que le flux RSS les liste. Or le flux RSS de TINA (et vérifié aussi sur Professeur Caillou) n'est **pas** strictement du plus récent au plus ancien sur toute sa longueur (saisons multiples, republications en lot avec des dates incohérentes) — 2 des 4 saisons TINA étaient même dupliquées intégralement dans le flux (rediffusion republiée avec le même titre/id, mais un `published` différent). L'affichage (`getDisplayItems()` en JS, `podcast_display_items()` en PHP) se contentait d'inverser cet ordre brut (`reverse()`), ce qui ne pouvait pas corriger un ordre déjà incohérent à la source.
-          • **Navigation next/prev bloquée en fin de saison** — pas de bug dédié dans `radio.php` (le `±1`/bornes de `next_episode`/`prev_episode` est déjà générique, pas limité à une saison) : c'est la conséquence directe des doublons/ordre incohérent ci-dessus — une fois l'ingestion corrigée, la liste `chapitres` d'un podcast est un seul flux chronologique propre, donc `next_episode` passe naturellement au premier épisode de la saison suivante.
-      - **Fix implémenté** :
-          • `web/lecteur/index.html` : `player-art.src` utilise maintenant `ch.image || podcast.image` dans `playTrack()` et `syncNowPlaying()` (au lieu de toujours `podcast.image`)
-          • `scripts/rss_ingest/parser.py` (`parse_rss`) : déduplication par id (garde la 1re occurrence rencontrée dans le flux) + tri chronologique explicite par date de publication (`published_parsed` de feedparser, pas l'ordre brut du flux) — générique à tous les podcasts RSS, pas spécifique à TINA
-          • `scripts/rss_ingest/parser.py` : filtre les items "Bande-annonce"/"Bande annonce" (regex, insensible à la casse) — ne sont plus téléchargés ni ingérés du tout (demande explicite de Thomas, 2026-07-09)
-          • `scripts/rss_ingest/ingest.py` : le tri étant désormais croissant (ancien → récent), le troncage `max_episodes` prend la fin de la liste (`[-max:]`) au lieu du début, pour garder les épisodes les plus récents en cas de dépassement
-          • `web/lecteur/index.html` (`getDisplayItems()`) et `web/lecteur/radio.php` (`podcast_display_items()`) : suppression du `reverse()`/`array_reverse()` devenu inutile (et faux) puisque l'ingest fournit déjà l'ordre chronologique dans `data.json`
-      - ✅ **Suite du diagnostic en conditions réelles (2026-07-09, après premier déploiement)** :
-          • **Jaquette du podcast toujours fausse** : `download_file()` ne retélécharge jamais un fichier déjà présent — il fallait supprimer `web/lecteur/images/*.jpg` avant de relancer l'ingest pour que le fix (image de `<channel>`) prenne effet. Fait par Thomas, confirmé résolu.
-          • **Images d'épisode qui ne s'affichaient jamais (ni liste, ni lecteur)** : bug distinct, plus grave — `/podcasts/...` (chemin web utilisé pour les images/audio par épisode) renvoyait 404 partout. Cause : `DocumentRoot` Apache = `/var/www/html`, lui-même un lien symbolique vers `~/hechicero/web` — mais `~/hechicero/web/podcasts` n'existait pas (les fichiers réels sont dans `~/hechicero/podcasts/`, un dossier voisin de `web/`, jamais exposé). Probablement cassé depuis toujours, invisible car la liste d'épisodes bascule silencieusement sur la jaquette du podcast en cas d'échec (`onerror`) — c'était donc aussi une partie de la cause originelle de "toutes les images identiques". **Fix (infra, pas du code)** : `ln -s ~/hechicero/podcasts ~/hechicero/web/podcasts`. Confirmé résolu par Thomas.
-          • **Bandes-annonces toujours présentes** : le filtre ne couvrait que "Bande-annonce...". Deux items d'auto-promo Radio France ("Retrouvez tous les épisodes sur l'appli Radio France", "Voyagez dans le temps avec Tina, en avant-première sur l'application Radio France" — vus aussi sur La Discomobile, donc génériques Radio France) passaient encore. **Fix** : `is_filler()` (ex-`is_trailer()`) dans `parser.py` filtre maintenant aussi tout titre contenant "appli(cation) Radio France".
-          • **Épisode 2 affiché avant l'épisode 1 dans une saison** (saison "ceinture d'Alexandre le Grand") : cause du doublon déjà identifiée — l'épisode 2 n'existe que dans la republication en lot avec une date `published` incohérente (antérieure à l'épisode 1 "réel"), donc le tri par date seule le plaçait à tort en premier. **Fix** : tri à deux niveaux dans `parse_rss()` — les saisons sont ordonnées entre elles par leur date la plus ancienne, mais **à l'intérieur d'une saison**, le tri utilise le numéro d'épisode extrait du titre ("N/M"), fiable, plutôt que la date individuelle. Comportement inchangé pour les podcasts sans saison détectable (Professeur Caillou, Bestioles).
-      - ⏳ Reste à faire : relancer une ingestion complète (`python3 scripts/rss_ingest/ingest.py`) pour appliquer le filtre promo élargi et le nouveau tri intra-saison ; vérifier ensuite que la saison "ceinture d'Alexandre le Grand" affiche bien 1→10 et que les 2 items promo ont disparu. Puis vérifier l'intégrité (`scripts/rss_ingest/check_integrity.py`) pour les fichiers audio/image de bandes-annonces/promo devenus orphelins.
-      - Fichiers modifiés : `web/lecteur/index.html`, `web/lecteur/radio.php`, `scripts/rss_ingest/parser.py`, `scripts/rss_ingest/ingest.py`
-
-- [ ] TICKET-105 — bug — Synchronisation admin en échec : "Permission denied" sur meta.json.tmp, plante toute la synchro (2026-07-09)
-      - Symptôme rapporté par Thomas (capture d'écran page admin) : la synchro s'arrête en erreur fatale à 10/22 podcasts avec `ERREUR FATALE : [Errno 13] Permission denied: '.../podcasts/lesodysseesduchateaudeversailles/meta.json.tmp'`
-      - Cause : la synchro déclenchée depuis l'admin web tourne en `www-data` (Apache), alors que l'ingestion nocturne (cron, `docs/20-SETUP_SYSTEME.md` §7.3) tourne en `thomas` avec `umask 002` pour que le groupe `www-data` reste en écriture. Le dossier/fichier de ce podcast précis n'a probablement pas (ou plus) la bonne permission de groupe — `write_meta()` (`scripts/rss_ingest/writer.py`) plante avec `PermissionError`, non rattrapée, ce qui interrompait **toute** la synchro (les 12 podcasts restants n'étaient jamais traités).
-      - **Fix implémenté (robustesse)** dans `scripts/rss_ingest/ingest.py` : chaque podcast est maintenant traité dans son propre bloc `try/except` — un podcast en échec (permission, réseau, etc.) est loggé comme erreur de progression et n'interrompt plus les suivants. `data.json` est ensuite reconstruit à partir de **tous** les `meta.json` sur disque (pas seulement ceux traités avec succès dans cette session), donc un podcast en échec garde sa dernière version valide au lieu de disparaître du lecteur.
-      - ⚠️ **Cause racine (permission filesystem) pas corrigée par ce fix** — il rend juste la synchro résiliente à ce genre d'échec. Reste à corriger côté Pi via SSH, ex. aligner les permissions du dossier fautif sur celles des podcasts qui synchronisent sans problème :
-        ```
-        ls -la ~/hechicero/podcasts/lesodysseesduchateaudeversailles/  # comparer avec un podcast qui marche
-        sudo chgrp -R www-data ~/hechicero/podcasts/lesodysseesduchateaudeversailles
-        sudo chmod -R g+w ~/hechicero/podcasts/lesodysseesduchateaudeversailles
-        ```
-      - ⏳ Reste à faire : Thomas vérifie/corrige la permission sur ce dossier (et idéalement audite les 21 autres pour éviter la récidive), puis relance une synchro admin complète pour confirmer que les 22 podcasts passent
-      - Fichier modifié : `scripts/rss_ingest/ingest.py`
-
----
-
 # 🟡 Priorité moyenne
 
 - [ ] TICKET-079 — UX/saisonnier — Mode Noël (décembre uniquement)
@@ -149,21 +27,6 @@
       - Traîneau du Père Noël qui passe de temps en temps en fond d'écran
       - Actif uniquement du 1er au 31 décembre (`new Date().getMonth() === 11`)
       - Aucune dépendance réseau, aucun CDN
-
-- [ ] TICKET-068 — content — Typo ID podcast `bestiolesossiles` (manque le 'f')
-      - ID actuel dans `podcasts.json` : `bestiolesossiles`
-      - Label : "Les Bestioles fossiles"
-      - ⚠️ Dossier audio sur disque créé avec cet ID → ne pas renommer sans migration manuelle
-      - À corriger lors d'une maintenance : renommer dossier + mettre à jour `podcasts.json`
-
-- [ ] TICKET-087 — feature/parental — Limiteur d'exposition sonore
-      - `play_events.volume_pct` (moyenne MPD par session) est enregistré depuis session 9
-      - Dashboard : afficher volume moyen par jour / par podcast
-      - Config : seuil max volume dans `config.json` + avertissement si dépassé (IHM enfant)
-
-- [ ] TICKET-057 — UX/infra — Démarrage rapide de l'IHM enfant
-      - Chromium met plusieurs secondes à démarrer après le boot
-      - Piste : optimiser les flags Chromium, splash screen système
 
 ---
 
@@ -197,6 +60,65 @@
       - Traceur (`sleep_log`/`logSleepEvent()`) laissé en place pour l'instant, à retirer une fois le fix confirmé stable dans la durée
       - Fichiers modifiés : `scripts/screen_dpms.sh`, `web/lecteur/radio.php` (action `sleep_log`), `web/lecteur/index.html` (`logSleepEvent()` + fix `applySleepConfig()`), `docs/30-LECTEUR.md`, `docs/70-SERVICES_SYSTEMD.md` (§6, wlopm→wlr-randr + table des services)
       - Découverte annexe (pas liée au bug, séparée en TICKET-106) : un objet git corrompu dans `~/hechicero`
+
+- [x] TICKET-103 — bug — Coupure du flux webradio après une pause/reprise (2026-07-09)
+      - Symptôme : sur une webradio, pause puis reprise relançait bien le son, mais le flux finissait par se couper peu après — MPD bufferisait en arrière-plan pendant la pause, `play` rejouait un buffer devenu obsolète.
+      - **Fix** : action `pause` de `radio.php` distingue webradio/podcast — `stop` complet + mémorisation de l'URL sur pause webradio, reconnexion fraîche (`mpd_add_and_play()`) à la reprise au lieu de rejouer le buffer figé. Podcasts inchangés (pause/reprise à la même position).
+      - ✅ Clos le 2026-07-17 (confirmé par Thomas)
+      - Fichier modifié : `web/lecteur/radio.php`
+
+- [x] TICKET-107 — bug/feature — Ingestion RSS : conserver les épisodes qui sortent du flux (surtout "Les Odyssées")
+      - Trouvé le 2026-07-17 en auditant les orphelins post-ingestion (suite TICKET-104/105) : `ingest.py` reconstruisait `meta.json` **entièrement** à partir du flux RSS courant à chaque passage (pas de fusion avec l'historique). Résultat : tout épisode que le diffuseur (Radio France notamment) retire ou retitre dans son flux disparaissait silencieusement de `data.json`, alors même que le fichier audio/image restait sur le disque (jamais supprimé, invariant 1.5) — inaccessible depuis le lecteur.
+      - Décision Thomas (2026-07-17) : conserver les épisodes déjà téléchargés en priorité, tant pis si ça garde occasionnellement une bande-annonce déjà présente dans un ancien `meta.json`.
+      - ✅ Implémenté : `scripts/rss_ingest/parser.py::merge_episodes()` fusionne l'historique local (`meta.json` existant) avec le flux frais avant toute troncature `max_episodes` — la version fraîche l'emporte en cas de même id (métadonnées à jour), le reste est conservé tel quel et re-trié (même logique saison/numéro/date que `parse_rss()`). Câblé dans `ingest.py::ingest()`.
+      - ✅ **Validé en conditions réelles le 2026-07-17** : ingestion complète relancée sur le Pi. Découverte en creusant les orphelins restants (`aladinetlesorciermalfique`, `shhrazadeconteusedegnie`, `lesincroyablesaventuresdesindbadlemarin`, `lestroisprincesamoureux`) : ces épisodes n'étaient déjà plus dans `meta.json` **avant** ce correctif (perdus lors d'une ingestion antérieure) — la fusion ne peut pas les récupérer rétroactivement, seulement empêcher que ça se reproduise désormais. Mais bonne surprise : Radio France les a en fait **republiés sous un nouveau titre/id** dans une saison "Les 1001 nuits" (`Les 1001 nuits 1/4 : Shéhérazade conteuse de génie`, `2/4 : Aladin et le sorcier maléfique`, `3/4 : Les incroyables aventures de Sindbad le marin`, `4/4 : Les trois princes amoureux`) et "Peter Pan et Wendy" → "Wendy & Peter Pan" — donc bien présents dans `data.json`/le lecteur, juste sous un id différent. Seuls restent introuvables : `odysesdudimanche03aot2025`/`odysesdudimanche20juillet2025` (rediffusions "best of" du dimanche, probablement non republiées telles quelles) — fichiers conservés sur disque, pas de perte, juste plus référencés.
+      - Anciens fichiers orphelins (`aladinetlesorciermalfique.mp3` etc., doublons de contenu maintenant présent sous un nouvel id) : nettoyage disque optionnel, pas urgent.
+      - ⚠️ Effet de bord accepté : plus de purge automatique, l'archive locale ne fait que grossir avec le temps (pas de souci d'espace disque identifié à ce stade, mais à surveiller si un flux change radicalement d'un coup)
+      - Fichiers modifiés : `scripts/rss_ingest/parser.py`, `scripts/rss_ingest/ingest.py`, `docs/40-BACKEND_RSS.md`
+
+- [x] TICKET-085 — infra — Sauvegarde de la carte SD (ghost durci, manuel uniquement)
+      - Doc complète : `docs/85-SAUVEGARDE_RESTAURATION.md` (restauration Windows pas-à-pas + mise en place système)
+      - Conçu et implémenté le 2026-07-03 — étendu en cours de session d'un simple script manuel vers un système complet, puis **simplifié le même jour** : pas de sauvegarde quotidienne automatique ("on ne sauvegarde que les évolutions majeures, soyons économes") — **durcie uniquement**, déclenchée à la main via l'admin :
+          • Une seule sauvegarde vers NAS Freebox (SMB/CIFS) : **durcie**, remplacée quand Thomas valide un état stable via l'admin (bascule atomique — jamais d'état sans version durcie valide)
+          • `scripts/backup_manager.py` — orchestration complète (montage NAS, `dd | gzip`, état JSON, bascule atomique)
+          • `data/backup_config.json` (non-secret, versionné) + `/etc/hechicero-nas-credentials` (secret, root uniquement, hors dépôt)
+          • Règle sudoers dédiée pour laisser l'admin web déclencher une validation durcie (root requis pour lire `/dev/mmcblk0` et monter le NAS) sans donner un accès root complet à www-data
+          • Page admin `web/admin/backup_dashboard.php` : version durcie actuelle, taille, bouton de validation — lien visible **seulement en mode Expert** de l'admin principale (persona parent geek, pas l'autre parent)
+          • `README.md` régénéré automatiquement sur le NAS à chaque sauvegarde (secours si le dépôt n'est pas accessible)
+          • **Aucun SSH requis à l'usage** : clic sur "Valider une nouvelle version durcie" dans l'admin → `index.php` déclenche `backup_manager.py validate` en tâche de fond via la règle sudoers → montage NAS, ghost, bascule atomique, tout est géré côté serveur. SSH n'est nécessaire qu'une seule fois, à la mise en place initiale (§3 de la doc : fichier d'identifiants, paquets, règle sudoers) — jamais ensuite.
+      - Scripts manuels créés initialement (`scripts/ghost_sd_prepare.sh`, `scripts/ghost_sd_backup.sh`) conservés pour un usage ponctuel/disque externe, mais le flux normal passe désormais par `backup_manager.py`
+      - Notes réseau utiles pour la suite : `mafreebox.freebox.fr` résout vers une IP publique Free depuis le Pi (pas la Freebox locale) → utiliser l'IP de la passerelle locale (`ip route`, voir `data/backup_config.json` pour la valeur retenue — pas republiée ici, dépôt public) ; montage CIFS anonyme (`guest`) suffit pour lister les partages mais pas pour écrire, un compte Freebox est nécessaire
+      - ⚠️ `dd` lit le disque système pendant qu'il tourne (pas d'arrêt des services) — snapshot pas garanti parfaitement cohérent
+      - ✅ Déploiement sur le Pi réel terminé le 2026-07-03 : fichier d'identifiants, règles sudoers (www-data + thomas), paquets, hook git installé. Premier ghost réel fait (~107 GiB), enregistré comme durcie initiale. Testé de bout en bout sans montage manuel préalable (`sync_private` remonte le NAS tout seul via les identifiants).
+      - ⏳ Reste : premier clic "valider durcie" *depuis l'admin web* (le tout premier a été fait en ligne de commande faute de bouton pas encore cliqué) — sinon le système est pleinement opérationnel
+      - Fichiers systemd `hechicero-backup-daily.service`/`.timer` créés puis abandonnés (design quotidien annulé) — à supprimer du dépôt (`git rm etc/systemd/system/hechicero-backup-daily.*`)
+      - **Ajout 2026-07-03 (même session)** : `private/` (hors git, jamais sur GitHub — réflexion perso, futurs contenus non publics type easter egg) synchronisé vers un dossier dédié du NAS, automatiquement à chaque `git commit` via un hook `.git/hooks/post-commit` (template versionné : `scripts/git_hooks_post_commit.sh`) — nouvelle commande `backup_manager.py sync_private`, règle sudoers dédiée pour l'utilisateur `thomas` (voir `docs/85-SAUVEGARDE_RESTAURATION.md` §3.3, §3.6, §5). Zéro SSH à l'usage, comme pour la durcie. `rsync` sans `--delete` : n'efface jamais rien côté NAS.
+      - Penser à vérifier/documenter aussi les configs système hors git avant tout (cf. [[project_backups]] en mémoire : UPower.conf, mpd.conf, kiosk.sh, Apache vhosts, Plymouth theme) — capturées dans le ghost complet, mais bon à savoir si restauration partielle
+
+- [x] TICKET-104 — bug — Podcast TINA : images identiques, ordre incohérent, navigation bloquée en fin de saison (2026-07-09)
+      - Symptômes rapportés par Thomas (généralisables à tous les podcasts RSS, pas seulement TINA — ex. Professeur Caillou) : images toujours identiques sur l'écran lecteur, épisodes affichés à l'envers, navigation suivant/précédent bloquée en fin de saison
+      - Diagnostic : `web/lecteur/index.html` fixait `player-art.src` sur la jaquette du podcast entier au lieu de `ch.image` (image de l'épisode/saison) ; `parser.py` ne triait ni dédupliquait les épisodes (flux RSS pas fiable, saisons dupliquées avec dates incohérentes) ; navigation bloquée en conséquence directe de l'ordre incohérent
+      - **Fix implémenté** : `ch.image || podcast.image` dans `index.html` ; dédup par id + tri chronologique à deux niveaux (saison puis numéro de titre/date) dans `parser.py` ; filtre des bandes-annonces et auto-promo Radio France ; troncature `max_episodes` par la fin (`[-max:]`) ; suppression des `reverse()` devenus inutiles
+      - ✅ Suite du diagnostic (2026-07-09) : jaquette fausse (résolu, images à retélécharger), lien symbolique `web/podcasts` manquant vers `~/hechicero/podcasts` créé (404 corrigés), filtre promo élargi à "appli(cation) Radio France", tri intra-saison par numéro de titre (résout l'ordre 2 avant 1)
+      - ✅ **Validé le 2026-07-17** : ingestion complète relancée sur les 23 podcasts, `check_integrity.py` confirme 0 erreur — dédup/tri/filtre tous corrects, plus de doublons ni d'ordre incohérent
+      - Fichiers modifiés : `web/lecteur/index.html`, `web/lecteur/radio.php`, `scripts/rss_ingest/parser.py`, `scripts/rss_ingest/ingest.py`
+
+- [x] TICKET-105 — bug — Synchronisation admin en échec : "Permission denied" sur meta.json.tmp, plante toute la synchro (2026-07-09)
+      - Symptôme : la synchro déclenchée depuis l'admin web (tourne en `www-data`) s'arrêtait en erreur fatale à 10/22 podcasts, `PermissionError` sur `lesodysseesduchateaudeversailles/meta.json.tmp` — permission de groupe manquante sur ce dossier précis vs l'ingestion cron (tourne en `thomas`, `umask 002`)
+      - **Fix implémenté (robustesse)** : chaque podcast traité dans son propre bloc `try/except` dans `ingest.py` — un podcast en échec n'interrompt plus les suivants ; `data.json` reconstruit à partir de tous les `meta.json` sur disque
+      - ✅ **Cause racine corrigée le 2026-07-17** : `chgrp -R www-data` + `chmod -R g+w` sur le dossier fautif, confirmé par `check_integrity.py` (le podcast passe en `[OK]`) et une synchronisation complète des 23 podcasts sans erreur de permission
+      - Fichier modifié : `scripts/rss_ingest/ingest.py`
+
+- [x] TICKET-057 — UX/infra — Démarrage rapide de l'IHM enfant
+      - Chromium mettait plusieurs secondes à démarrer après le boot
+      - ✅ Clos le 2026-07-17 (confirmé par Thomas)
+
+- [x] TICKET-068 — content — Typo ID podcast `bestiolesossiles` (manque le 'f')
+      - ID interne dans `podcasts.json` : `bestiolesossiles` (manque le 'f' de "fossiles")
+      - ✅ Clos le 2026-07-17 (décision Thomas) : accepté tel quel — le `label` affiché ("Les Bestioles fossiles") est correct, seul l'`id` technique (jamais visible par l'enfant ni dans l'admin) a la coquille. Renommer impliquerait de migrer le dossier audio sur disque pour un bénéfice nul, pas fait.
+
+- [x] TICKET-087 — feature/parental — Limiteur d'exposition sonore
+      - ✅ Clos le 2026-07-17 (décision Thomas) : le tracking `play_events.volume_pct` (moyenne MPD par session, enregistré depuis session 9) est jugé suffisant tel quel. Portée réduite : pas de dashboard "volume moyen par jour/podcast" ni d'avertissement de dépassement dans l'IHM enfant — abandonnés, pas nécessaires.
 
 - [x] TICKET-001 — infra — Structure projet + liens Apache
 - [x] TICKET-002 — infra — Monitoring batterie (INA219 + service systemd)
@@ -365,6 +287,45 @@
           • maintien du bouton volume ne répétait pas : rebond mécanique pendant le maintien lu à tort comme un relâchement (bloqué ensuite par le garde-fou anti-rebond) → hystérésis dédiée (`RELEASE_CONFIRM_S`), relâchement confirmé seulement après 50ms de HIGH continu
       - ✅ **Nouveau (2026-07-08)** : suivant/précédent passent en tap-ou-maintien (`TAP_OR_HOLD` dans `buttons_daemon.py`) — tap bref = épisode suivant/précédent (inchangé), maintien > `HOLD_THRESHOLD_S` (0.4s) = recherche par à-coups de `SEEK_STEP_S` (5s) dans l'épisode en cours. Nouvelle action `seek_relative` dans `radio.php` (`seekcur ±N` MPD, recherche relative à la position actuelle). Recherche en secondes fixes (pas en % de la durée) — pratique standard des lecteurs de podcasts (Apple Podcasts, YouTube). Pas encore testé en conditions réelles par Thomas — valeurs `SEEK_STEP_S`/`HOLD_THRESHOLD_S` à ajuster si besoin
       - ⏳ Reste à faire : Thomas teste le tap/maintien suivant-précédent ; décider plus tard de GPIO16 (réserve) et coder TICKET-046 pour GPIO23 (favori)
+
+- [x] TICKET-031 — hardware/feature — Sortie casque avec bouton physique de bascule HP/casque
+      - Contrainte : HiFiBerry Amp4 conservé (pas de sortie casque native)
+      - Solution retenue :
+          • DAC USB : KT USB Audio — branché, fonctionnel ✅
+          • Jack : XMSJSIY TRS 3.5mm panel mount ∅22mm chromé — monté dans le boîtier ✅
+          • MPD : 2 sorties configurées — `My ALSA Device` (HiFiBerry, HP) + `Casque USB` (DAC USB) ✅
+          • ⚠️ Référencer les cartes par **nom** (`hw:CARD=sndrpihifiberry,DEV=0` / `hw:CARD=Audio,DEV=0`), jamais par numéro (`hw:N,0`) — le numéro de carte ALSA n'est pas stable d'un boot à l'autre sur ce Pi (cf. bug ci-dessous)
+      - ✅ Implémenté session 14 (partiel) — bascule manuelle depuis l'IHM enfant :
+          • Bouton pill dans la statusbar (toujours visible sur tous les écrans)
+          • Volume mémorisé par mode (HP / casque) en localStorage
+          • Séquence bascule : volume d'abord, sortie ensuite (évite pic sonore)
+          • `radio.php` : get_output / set_output (MPD enableoutput/disableoutput)
+          • `currentVolumeMax()` : VOLUME_MAX_SPEAKERS ou VOLUME_MAX_HEADPHONES selon mode
+      - 🐛 Bug corrigé le 2026-07-03 — son sorti par le casque au boot alors que HP affiché/attendu :
+          • Cause : `/etc/mpd.conf` référençait les cartes par numéro (`hw:2,0`/`hw:3,0`) ; ce numéro a dérivé entre le setup initial et aujourd'hui (HiFiBerry et DAC USB ont échangé leurs numéros) → corrigé en référençant par nom
+          • `radio.php` `set_output` répondait `ok:true` même quand la commande n'atteignait pas MPD (socket pas prêt au boot) → corrigé pour vérifier la vraie réponse
+          • `~/kiosk.sh` force désormais HP + volume 20% IHM avant Chromium, avec retry qui vérifie le vrai `ok:true`
+          • ✅ Confirmé fonctionnel par Thomas après reboot complet
+      - 🎨 Widget dashboard fatigue auditive (session 2026-07-03) — `dashboard.php` :
+          • Icône oreille : silhouette tracée depuis `web/oreille.svg` (référence déposée par Thomas), couleur dynamique selon fatigue (vert/jaune/orange/rouge)
+          • Zone concha/canal interne en blanc 90% opacité (le noir était invisible sur le fond bleu nuit)
+          • Jauge verticale à côté (100% en haut → 0% en bas, dot qui descend avec la fatigue)
+      - ❌ **Détection automatique du branchement casque abandonnée définitivement** (décision Thomas, confirmée le 2026-07-08 puis re-confirmée le 2026-07-17) : comparateur d'impédance LM393 testé sur plaque d'essai, ne fonctionne pas (tension ~1,1V que le casque soit branché ou débranché, le DAC USB pilote activement sa sortie). Piste de repli — jack à contact mécanique switché câblé sur GPIO — également irréalisable en pratique. **Le bouton physique manuel est la solution définitive**, pas une étape transitoire. Détail schéma/essais dans `docs/80-hardware.md` §"Sortie casque + détection".
+      - ✅ **Test de mise en route bouton GPIO validé le 2026-07-06** (`scripts/button_toggle_test.py`, bring-up TICKET-091) :
+          • Bouton physique (pull-up, appui = LOW) bascule HP↔casque de bout en bout, testé après reboot complet
+          • Détection par **polling** (10ms), pas par `add_event_detect()` — peu fiable sur Pi 5/RP1
+          • Antirebond à 3 niveaux (polling rapproché + confirmation logicielle + garde-fou global 400ms)
+          • 🐛 Bug critique trouvé et corrigé en même temps : `radio.php` action `get_output` utilisait une regex qui supposait `outputenabled` juste après `outputname` — MPD 0.24 insère une ligne `plugin: alsa` entre les deux, donc la detection retombait toujours sur "hp", jamais "casque". Remplacé par un vrai parsing par bloc `outputid` (`mpd_output_enabled()`)
+          • 🔄 **Volume mémorisé par mode déplacé côté serveur** (`data/audio_output_state.json`, plus seulement `localStorage` navigateur) — `set_output` gère lui-même la mémoire de volume et la séquence "volume d'abord, sortie ensuite", quel que soit l'appelant (IHM, GPIO)
+          • Le "mode qu'on quitte" est déterminé par l'état réel MPD (`outputs`), jamais par une valeur mémorisée seule
+          • Écran resynchronisé sur l'état réel toutes les 300ms (`syncAudioMode()`)
+      - ✅ **Montage physique terminé** (confirmé par Thomas le 2026-07-17) : jack XMSJSIY monté dans le boîtier (simple passe-plat, pas de contact switché à exploiter), DAC USB câblé, bouton "source" GPIO25 câblé et fonctionnel en conditions réelles (mapping final TICKET-101), service `buttons_daemon.service` actif — plus rien en attente côté matériel pour ce ticket.
+      - Le code IHM (bouton pill, logo, volumes mémorisés) reste définitif et cohabite avec le bouton physique GPIO.
+
+- [x] TICKET-106 — infra — Objet git corrompu dans `~/hechicero` (`git log`/`git fsck` cassés)
+      - Découvert le 2026-07-09 en marge du diagnostic TICKET-102 : `git log`/`git fsck --full` échouaient avec `error: garbage at end of loose object ... fatal: ... is corrupt` (objet `4236ac6e...`)
+      - `git show HEAD:<fichier>` et `git commit`/`git push` fonctionnaient malgré tout (l'objet corrompu n'était pas un blob HEAD courant)
+      - ✅ Clos le 2026-07-17 : `git log` refonctionne normalement (vérifié), et Thomas confirme que git se comporte normalement à l'usage (commits/push réguliers sans souci depuis). Cause jamais identifiée avec certitude — pas de `git fsck --full` complet re-exécuté pour confirmation formelle, mais accepté comme non bloquant vu l'usage normal prolongé.
 
 ---
 
