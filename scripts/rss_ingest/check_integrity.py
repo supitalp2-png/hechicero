@@ -21,6 +21,7 @@ def resolve_project_root() -> Path:
 PROJECT_ROOT = resolve_project_root()
 PODCASTS_DIR = PROJECT_ROOT / "podcasts"
 DATA_JSON_PATH = PROJECT_ROOT / "web" / "lecteur" / "data.json"
+PODCASTS_CONFIG_PATH = PROJECT_ROOT / "data" / "podcasts.json"
 
 
 def load_json(path: Path) -> Any:
@@ -232,6 +233,30 @@ def load_meta_by_podcast(podcast_filter: str | None) -> dict[str, dict[str, Any]
     return result
 
 
+def load_disabled_podcast_ids() -> set[str]:
+    """Podcasts avec enabled:false dans data/podcasts.json.
+
+    ingest.py les exclut volontairement de data.json — leur meta.json peut
+    rester sur disque (ingestion antérieure, avant désactivation). Sans ce
+    filtre, check_podcast() les signale à tort en erreur (podcast/épisodes
+    "absents de data.json") alors que c'est le comportement attendu.
+    """
+    try:
+        raw = load_json(PODCASTS_CONFIG_PATH)
+    except Exception:
+        return set()
+
+    entries = raw.get("podcasts", []) if isinstance(raw, dict) else []
+    disabled: set[str] = set()
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        podcast_id = entry.get("id")
+        if podcast_id and entry.get("enabled") is False:
+            disabled.add(str(podcast_id))
+    return disabled
+
+
 def load_data_by_podcast(podcast_filter: str | None) -> dict[str, dict[str, Any]]:
     if not DATA_JSON_PATH.exists():
         return {}
@@ -259,6 +284,7 @@ def main() -> int:
 
     meta_by_podcast = load_meta_by_podcast(args.podcast)
     data_by_podcast = load_data_by_podcast(args.podcast)
+    disabled_ids = load_disabled_podcast_ids()
 
     podcast_ids = sorted(set(meta_by_podcast) | set(data_by_podcast))
     if not podcast_ids:
@@ -269,8 +295,14 @@ def main() -> int:
     total_ok = 0
     total_warn = 0
     total_err = 0
+    skipped_disabled = 0
 
     for podcast_id in podcast_ids:
+        if podcast_id in disabled_ids and not args.podcast:
+            print(format_issue("OK", podcast_id, podcast_id, "podcast désactivé (enabled:false) — ignoré"))
+            skipped_disabled += 1
+            total_ok += 1
+            continue
         level, lines = check_podcast(
             podcast_id,
             meta_by_podcast.get(podcast_id),
@@ -285,7 +317,8 @@ def main() -> int:
         total_err += sum(1 for line in lines if line.startswith("[ERR]"))
 
     print(
-        f"[OK] global - integrity: resume ok={total_ok} warn={total_warn} err={total_err} podcasts={len(podcast_ids)}"
+        f"[OK] global - integrity: resume ok={total_ok} warn={total_warn} err={total_err} "
+        f"podcasts={len(podcast_ids)} desactives_ignores={skipped_disabled}"
     )
     return 2 if worst_level == "ERR" else 1 if worst_level == "WARN" else 0
 
