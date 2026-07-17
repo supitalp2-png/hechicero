@@ -55,7 +55,8 @@ En cas d’erreur → conserver l’ancien.
 - zéro configuration visible  
 
 ### 🔹 2.3 Volume logiciel limité
-Volume max = 80% pour sécurité enfant.
+- Haut-parleurs : volume max = 80% pour sécurité enfant (`speakers_max` dans `config.json`).
+- Casque : plafond logiciel à 100% assumé (`headphones_max` dans `config.json`) — décision Thomas (2026-07-17) : le casque de l'enfant a une impédance plus élevée que les haut-parleurs, ce qui limite lui-même la puissance d'écoute réelle même à 100% logiciel. Pas besoin d'un plafond logiciel plus bas côté casque.
 
 ### 🔹 2.4 Aucune action dangereuse
 Le lecteur ne doit jamais :
