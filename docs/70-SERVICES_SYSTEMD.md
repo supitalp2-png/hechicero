@@ -325,9 +325,9 @@ sudo systemctl daemon-reload
 
 ---
 
-## 7ter. Script boutons GPIO définitif — buttons_daemon.py (pas encore un service, TICKET-091)
+## 7ter. Script boutons GPIO définitif — buttons_daemon.py (service actif, TICKET-091/101)
 
-Fichier : `scripts/buttons_daemon.py`
+Fichier : `scripts/buttons_daemon.py` — service : `scripts/buttons_daemon.service`
 
 Successeur de `button_toggle_test.service` (§7bis) : un seul daemon qui poll les
 9 broches GPIO (17, 23, 27, 5, 6, 13, 16, 12, 25) dans une seule boucle et
@@ -335,33 +335,38 @@ dispatche chaque appui vers un handler dédié, au lieu d'un script scopé à un
 seule broche. Polling (pas `add_event_detect()`, peu fiable sur Pi 5/RP1),
 anti-rebond à trois niveaux, indépendant par broche.
 
-**État au 2026-07-07 :** bring-up validé sur le Pi (les 9 broches détectent
-correctement les appuis, anti-rebond confirmé). ⚠️ `button_toggle_test.service`
-doit être arrêté (`sudo systemctl stop button_toggle_test`) avant de lancer
-`buttons_daemon.py` — les deux ne peuvent pas tenir GPIO17 en même temps
-(`lgpio.error: GPIO busy`).
+**État au 2026-07-08 (TICKET-101, mapping final confirmé bouton par bouton sur
+le boîtier réel) :**
+- GPIO25 = source (HP/casque, `handle_hp_casque`) — **pas GPIO17** comme sur la
+  breadboard de bring-up du 2026-07-06, sans impact (dispatch logiciel)
+- GPIO13 = vol−, GPIO17 = précédent, GPIO12 = play/pause (fusionné), GPIO27 =
+  suivant, GPIO5 = vol+
+- GPIO16 = réserve, pas de fonction décidée
+- GPIO23 = favori (bouton isolé antenne) — assigné logiquement mais pas câblé
+  côté logiciel, TICKET-046 (favoris) jamais codé
+- GPIO6 = non câblé
 
-Seul GPIO17 a un handler définitif assigné (`handle_hp_casque`, repris de
-`button_toggle_test.py`). Les handlers phase 2 (`handle_play`, `handle_pause`,
-`handle_vol_up`, `handle_vol_down`, `handle_next`, `handle_prev`) sont prêts
-dans le script mais pas encore assignés aux 8 autres broches — **bloqué sur le
-mapping GPIO ↔ bouton physique**, que Thomas fera une fois les boutons montés
-dans le boîtier. Pas de handler favori : TICKET-046 (favoris) n'est pas codé,
-reporté.
+Suivant/précédent gèrent le tap-ou-maintien (`TAP_OR_HOLD`) : tap = épisode
+suivant/précédent, maintien > `HOLD_THRESHOLD_S` (0.4s) = recherche par pas de
+`SEEK_STEP_S` (5s) dans l'épisode en cours (`seek_relative` côté `radio.php`).
+Valeurs de départ, **pas encore confirmées par Thomas en usage réel prolongé**.
 
-Pas encore de fichier `.service` : lancé manuellement pour l'instant.
+Service `buttons_daemon.service` créé, installé et actif sur le Pi (confirmé
+2026-07-08) — remplace `button_toggle_test.service`, qui doit rester arrêté
+(`sudo systemctl stop button_toggle_test`, ne pas réactiver : conflit GPIO
+sinon, `lgpio.error: GPIO busy`).
 
-### Usage manuel (bring-up / test)
+### Installation
 ```bash
-sudo systemctl stop button_toggle_test   # libère GPIO17
-sudo python3 scripts/buttons_daemon.py --debug
+sudo cp scripts/buttons_daemon.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now buttons_daemon.service
 ```
 
-### Reste à faire avant de devenir le service définitif
-- Mapping GPIO ↔ bouton physique (Thomas, après montage boîtier)
-- Assigner les handlers phase 2 dans `HANDLERS`
-- Tester en conditions réelles (play/pause/vol/next/prev physiques)
-- Créer `buttons_daemon.service` (remplace `button_toggle_test.service`), documenter ici en §7bis mis à jour ou nouvelle section dédiée
+### Reste à faire
+- Valider en usage réel prolongé `SEEK_STEP_S`/`HOLD_THRESHOLD_S` (suivant/précédent en maintien)
+- Décider de l'usage de GPIO16 (réserve)
+- Coder TICKET-046 (favoris) pour activer GPIO23
 
 ---
 

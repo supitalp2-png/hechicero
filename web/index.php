@@ -602,11 +602,16 @@ section { margin-bottom:24px; }
 .lang-cols > div .card { flex:1; }
 /* Grille "Ajouter" (expert) */
 .add-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+/* ── Administration avancée (cards + mode veille) */
+.adv-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+.sleep-mode-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; font-size:13px; }
 /* ── Responsive mobile (≤900 px) */
 @media(max-width:900px){
   .lang-cols  { grid-template-columns:1fr; }
   .add-grid   { grid-template-columns:1fr; }
   .sys-grid   { grid-template-columns:1fr; }
+  .adv-grid   { grid-template-columns:1fr; }
+  .sleep-mode-grid { grid-template-columns:1fr; }
   .card       { padding:12px; }
   /* Sur mobile l'URL brute n'est pas lisible — on la masque même en mode expert */
   .item-url   { display:none !important; }
@@ -851,7 +856,7 @@ input:checked + .slider:before { transform:translateX(20px); }
     <h2>Administration avancée</h2>
     <button class="btn btn-primary btn-sm" id="btn-save-adv" onclick="saveConfig()">Enregistrer</button>
   </div>
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+  <div class="adv-grid">
 
     <!-- Volume max -->
     <div class="card">
@@ -921,7 +926,7 @@ input:checked + .slider:before { transform:translateX(20px); }
           </select>
         </label>
       </div>
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;font-size:13px">
+      <div class="sleep-mode-grid">
         <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="radio" name="sleep-mode" value="classic"> Classique</label>
         <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="radio" name="sleep-mode" value="classic_clock"> Classique + horloge</label>
         <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="radio" name="sleep-mode" value="retro" checked> Rétro Or</label>
