@@ -1,7 +1,7 @@
 # Backlog Hechicero
 
 > Convention : `TICKET-### — [type] — Titre — (prio) — owner`
-> Dernière mise à jour : 2026-07-18 (TICKET-108 clos et déplacé en Terminé — clic épisode jouait le mauvais podcast)
+> Dernière mise à jour : 2026-07-18 (TICKET-010 clos — rotation logrotate pour hechicero_ingest.log et sleep_debug.log)
 
 ---
 
@@ -44,7 +44,6 @@
 - [ ] TICKET-046 — UX — Favoris (cœur) accessibles rapidement
 - [ ] TICKET-047 — UX — Défilement automatique (carrousel) arrêtable par l'enfant
 - [ ] TICKET-056 — R&D — Exploration client lourd natif (PyQt5/Kivy) — décision projet 2.0
-- [ ] TICKET-010 — infra — Rotation logs
 - [ ] TICKET-011 — sec — Durcir unités systemd (`ProtectSystem`, `NoNewPrivileges`)
 - [ ] TICKET-017 — monitoring — Export Prometheus (métriques batterie/écoute)
 
@@ -101,6 +100,14 @@
       - **Fix** : `renderChapters()` capture le podcast réellement parcouru dans une variable locale (`browsedPodcast`, figée à l'affichage, immune à la resynchro en arrière-plan) et la réaffirme sur `currentPodcast` juste avant `playTrack()`, dans le handler de clic de chaque ligne.
       - ✅ Clos le 2026-07-18 (confirmé par Thomas)
       - Fichier modifié : `web/lecteur/index.html` (`renderChapters()`)
+
+- [x] TICKET-010 — infra — Rotation logs (2026-07-18)
+      - Deux fichiers grossissaient sans limite : `/tmp/hechicero_ingest.log` (cron RSS nocturne) et `data/sleep_debug.log` (traceur TICKET-102, toujours actif — un ajout par événement écran de veille côté lecteur).
+      - Les logs des services systemd (`battery_tracker`, `battery_watchdog`, `play_tracker`, `buttons_daemon`, `hechicero-idle`) ne sont pas concernés : ils passent par `journalctl`, qui a sa propre rétention (`journald.conf`).
+      - **Fix** : `scripts/hechicero-logrotate.conf` (nouveau, versionné) — rotation quotidienne, `copytruncate` (pas de signal process nécessaire), 7 jours pour le log d'ingestion, 14 jours pour le traceur veille.
+      - ✅ Clos le 2026-07-18
+      - Fichiers modifiés : `scripts/hechicero-logrotate.conf` (nouveau), `docs/70-SERVICES_SYSTEMD.md` (§7quater)
+      - À installer côté Pi : `sudo cp scripts/hechicero-logrotate.conf /etc/logrotate.d/hechicero`
 
 - [x] TICKET-104 — bug — Podcast TINA : images identiques, ordre incohérent, navigation bloquée en fin de saison (2026-07-09)
       - Symptômes rapportés par Thomas (généralisables à tous les podcasts RSS, pas seulement TINA — ex. Professeur Caillou) : images toujours identiques sur l'écran lecteur, épisodes affichés à l'envers, navigation suivant/précédent bloquée en fin de saison

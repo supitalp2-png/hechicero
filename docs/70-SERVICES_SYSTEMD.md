@@ -370,6 +370,73 @@ sudo systemctl enable --now buttons_daemon.service
 
 ---
 
+## 7quater. Rotation des logs — logrotate (TICKET-010, 2026-07-18)
+
+Deux fichiers de logs applicatifs grossissent indéfiniment sans rotation
+native et ne sont pas couverts par journald (car pas issus d'un service
+systemd) :
+
+- `/tmp/hechicero_ingest.log` — sortie du cron d'ingestion RSS (§5), un
+  ajout par nuit
+- `~/hechicero/data/sleep_debug.log` — traceur temporaire écran de veille
+  (TICKET-102, `radio.php?action=sleep_log`), un ajout à chaque événement
+  côté lecteur (checkParentalTime, resynchro admin…) — toujours en place,
+  voir `docs/30-LECTEUR.md`
+
+> Les logs des services systemd (`battery_tracker`, `battery_watchdog`,
+> `play_tracker`, `buttons_daemon`, `hechicero-idle`) passent par
+> `journalctl` et ont leur propre rétention (`SystemMaxUse` dans
+> `/etc/systemd/journald.conf`) — pas concernés par ce ticket, à vérifier
+> séparément si l'espace disque de la carte SD devient un jour un problème.
+
+Fichier : `scripts/hechicero-logrotate.conf` (versionné dans le dépôt).
+
+```
+/tmp/hechicero_ingest.log {
+    daily
+    rotate 7
+    compress
+    delaycompress
+    missingok
+    notifempty
+    copytruncate
+    create 0664 thomas www-data
+}
+
+/home/thomas/hechicero/data/sleep_debug.log {
+    daily
+    rotate 14
+    compress
+    delaycompress
+    missingok
+    notifempty
+    copytruncate
+    create 0664 www-data www-data
+}
+```
+
+`copytruncate` évite d'avoir à signaler le processus écrivain (cron déjà
+terminé pour l'un, PHP sans handle persistant pour l'autre) — logrotate
+copie puis vide le fichier en place, aucun redémarrage nécessaire.
+
+### Installation
+```bash
+sudo cp scripts/hechicero-logrotate.conf /etc/logrotate.d/hechicero
+sudo logrotate -d /etc/logrotate.d/hechicero   # test à blanc
+```
+
+### Debug / forcer une rotation
+```bash
+sudo logrotate -f /etc/logrotate.d/hechicero
+ls -la /tmp/hechicero_ingest.log* /home/thomas/hechicero/data/sleep_debug.log*
+```
+
+logrotate est déjà exécuté quotidiennement par le cron.daily standard de
+Raspberry Pi OS (paquet `logrotate`, préinstallé) — aucun timer/service
+supplémentaire à créer.
+
+---
+
 ## 8. Règles de sécurité systemd
 Pour garantir la robustesse :
 
