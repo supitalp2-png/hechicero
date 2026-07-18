@@ -1,11 +1,18 @@
 # Backlog Hechicero
 
 > Convention : `TICKET-### — [type] — Titre — (prio) — owner`
-> Dernière mise à jour : 2026-07-17 (TICKET-031/057/068/087/103/104/105/106/107 clos)
+> Dernière mise à jour : 2026-07-18 (TICKET-108 trouvé et corrigé — clic épisode joue le mauvais podcast)
 
 ---
 
 # 🔥 Priorité haute
+
+- [ ] TICKET-108 — bug — Clic sur un épisode joue un épisode d'un autre podcast (2026-07-18)
+      - Symptôme rapporté par Thomas : dans la liste d'épisodes de "Tina", cliquer sur un épisode lance un épisode des "Odyssées du Louvre".
+      - Cause : `currentPodcast` (variable globale JS) sert à deux choses distinctes — le podcast dont la liste est affichée (posé par `openPodcast()`) ET le podcast réellement en cours de lecture sur MPD (resynchronisé toutes les 3s par `syncNowPlaying()`, via la boucle `refreshStatus()`/`startPoll()` — nécessaire pour refléter les changements faits par bouton physique GPIO, TICKET-091). Cette boucle de poll n'est jamais arrêtée en quittant l'écran lecteur (`stopPoll()` n'est appelé que depuis `startPoll()` lui-même) : elle continue de tourner en fond même en navigant vers la liste d'épisodes d'un autre podcast, et réécrit silencieusement `currentPodcast` pour qu'il corresponde à ce qui joue *réellement* sur MPD. Un tap sur une ligne pendant cette fenêtre utilise alors le mauvais `currentPodcast`, avec l'index de la ligne cliquée — d'où un épisode d'un tout autre podcast.
+      - **Fix** : `renderChapters()` capture désormais le podcast réellement parcouru dans une variable locale (`browsedPodcast`, figée à l'affichage, immune à la resynchro en arrière-plan) et la réaffirme sur `currentPodcast` juste avant `playTrack()`, dans le handler de clic de chaque ligne.
+      - Fichier modifié : `web/lecteur/index.html` (`renderChapters()`)
+      - ⏳ Reste à faire : confirmer en usage réel que le clic sur un épisode joue bien le bon épisode, y compris juste après avoir laissé une lecture en pause en arrière-plan
 
 - [ ] TICKET-058 — feature/UX — Série podcast "Décisions Prises" + easter egg
       - Première découverte : 3 taps sur "Hechicero" à l'écran d'accueil → déverrouille + lance l'épisode 0 automatiquement

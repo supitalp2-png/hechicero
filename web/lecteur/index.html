@@ -1336,7 +1336,16 @@ function openPodcast(id) {
 function renderChapters() {
   const list  = el('ep-list');
   list.innerHTML = '';
-  const displayItems = getDisplayItems(currentPodcast);
+  // Capture le podcast réellement parcouru ici (TICKET-108, 2026-07-18) :
+  // currentPodcast est aussi utilisé par syncNowPlaying() (toutes les 3s, cf.
+  // refreshStatus) pour refléter ce qui joue *réellement* sur MPD — si cette
+  // resynchro tombe pendant que l'enfant regarde la liste d'épisodes d'un
+  // autre podcast, currentPodcast est silencieusement réécrit et un tap sur
+  // une ligne lance alors le mauvais épisode (bug : clic sur un épisode de
+  // Tina qui lance un épisode des Odyssées). On fige donc la référence ici,
+  // au moment du rendu, et on la réaffirme juste avant playTrack().
+  const browsedPodcast = currentPodcast;
+  const displayItems = getDisplayItems(browsedPodcast);
   if (!displayItems.length) {
     list.innerHTML = '<div style="padding:12px;color:var(--muted)">Aucun épisode disponible.</div>';
     return;
@@ -1357,14 +1366,17 @@ function renderChapters() {
 
     const row = document.createElement('div');
     row.className = 'ep-row';
-    const fallback = currentPodcast.image || '';
+    const fallback = browsedPodcast.image || '';
     row.innerHTML = `
       <img class="ep-thumb" src="${ch.image || fallback}" onerror="this.onerror=null;this.src='${fallback}'" alt="" loading="lazy" draggable="false">
       <div class="ep-meta">
         <div class="ep-titre">${ch.titre}</div>
         <div class="ep-duree">${fmtDur(ch.duree)}</div>
       </div>`;
-    row.addEventListener('click', () => playTrack(idx));
+    row.addEventListener('click', () => {
+      currentPodcast = browsedPodcast; // réaffirme la cible au clic (voir note ci-dessus)
+      playTrack(idx);
+    });
     list.appendChild(row);
   });
 }
