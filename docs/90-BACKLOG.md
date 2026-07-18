@@ -1,7 +1,7 @@
 # Backlog Hechicero
 
 > Convention : `TICKET-### — [type] — Titre — (prio) — owner`
-> Dernière mise à jour : 2026-07-18 (TICKET-110 ouvert — ventilateur GPIO/PWM, en attente du montage physique)
+> Dernière mise à jour : 2026-07-18 (TICKET-017 livré — export Prometheus ; TICKET-037/047/056 annulés)
 
 ---
 
@@ -69,12 +69,8 @@
       - Loudness : compensation graves/aigus à bas volume (courbe Fletcher-Munson) — vrai loudness dynamique = complexe ; version simplifiée envisagée = preset EQ activé sous un seuil de volume donné
       - Estimation : ~45 min config système (asound.conf/mpd.conf, hors dépôt, à tester en live comme TICKET-031) + ~45 min page admin + sauvegarde par profil + ~20-30 min pour le loudness simplifié — total ~1h30-2h + itérations d'écoute
       - ⚠️ Comme pour TICKET-031, la configuration système ne peut être testée qu'en conditions réelles sur le Pi (pas de test à distance possible)
-- [ ] TICKET-037 — UX — Animations simples (fade/slide) dans l'IHM enfant
 - [ ] TICKET-046 — UX — Favoris (cœur) accessibles rapidement
-- [ ] TICKET-047 — UX — Défilement automatique (carrousel) arrêtable par l'enfant
-- [ ] TICKET-056 — R&D — Exploration client lourd natif (PyQt5/Kivy) — décision projet 2.0
 - [ ] TICKET-011 — sec — Durcir unités systemd (`ProtectSystem`, `NoNewPrivileges`)
-- [ ] TICKET-017 — monitoring — Export Prometheus (métriques batterie/écoute)
 - [ ] TICKET-110 — hardware — Ventilateur GPIO/PWM pour dissipation thermique (2026-07-18)
       - Demande de Thomas : boîtier chaud, ventilateur silencieux souhaité. Corroboré par TICKET-109 (`vcgencmd get_throttled = 0xe0000` le 2026-07-18 : capping fréquence + throttling + limite thermique constatés depuis le dernier boot)
       - Ventilateur déjà acheté par Thomas — **en attente qu'il soit mis en place physiquement** avant de configurer/tester quoi que ce soit côté logiciel
@@ -106,6 +102,20 @@
       - Zéro dépendance réseau/CDN, tout inline dans `web/lecteur/index.html`
       - ⏳ Non testé en conditions réelles sur le Pi par Thomas
       - Fichier modifié : `web/lecteur/index.html`
+
+- [x] TICKET-037 — ❌ Annulé (2026-07-18) — UX — Animations simples (fade/slide) dans l'IHM enfant
+- [x] TICKET-047 — ❌ Annulé (2026-07-18) — UX — Défilement automatique (carrousel) arrêtable par l'enfant
+- [x] TICKET-056 — ❌ Annulé (2026-07-18) — R&D — Exploration client lourd natif (PyQt5/Kivy) — décision projet 2.0
+
+- [x] TICKET-017 — monitoring — Export Prometheus (métriques batterie/écoute) (2026-07-18)
+      - Nouvel endpoint `web/metrics.php` (format d'exposition texte Prometheus, sur le modèle de `health.php` — pas d'authentification, réseau local uniquement)
+      - Batterie (source `data/battery_stats.json`, déjà écrit par `battery_tracker.py`) : `hechicero_battery_level_percent`, `_charging`, `_voltage_volts`, `_current_milliamps`, `_power_watts`, `_screen_on`, `_estimated_autonomy_minutes[_live]`, `_cycles_recorded`, `_stats_age_seconds` (fraîcheur de la mesure)
+      - Santé système (mêmes checks que `health.php`) : `hechicero_disk_used_percent`, `hechicero_disk_free_bytes`, `hechicero_mpd_up`, `hechicero_up`
+      - Écoute (source `data/tracking.db`, déjà écrit par `play_tracker.py`) : compteurs cumulés `hechicero_listen_seconds_total{langue,type}` (podcast/radio × fr/es), `hechicero_episodes_completed_total`, `hechicero_play_sessions_total` ; gauge `hechicero_headphone_seconds_today` (remise à zéro quotidienne, cohérent avec le dashboard fatigue auditive existant)
+      - Aucune nouvelle collecte : réutilise entièrement les données déjà produites par `battery_tracker.py`/`play_tracker.py` — le ticket portait sur l'export, pas sur de nouvelles métriques
+      - Résilience : une erreur SQLite (base verrouillée/absente) n'empêche pas l'export des métriques batterie/santé (`try/catch` isolé, expose `hechicero_tracking_db_error` à la place)
+      - ⏳ Non testé en conditions réelles (pas de `php-cli` disponible dans cette session pour lint/exécuter — à vérifier par Thomas : `curl http://<rpi>/metrics.php` et éventuellement scrape config Prometheus si un serveur Prometheus existe déjà chez Thomas, sinon ticket purement "l'endpoint existe, prêt à être scrapé")
+      - Fichier créé : `web/metrics.php`
 
 - [x] TICKET-102 — bug — Écran de veille et coupure d'écran cassés après l'intégration hardware finale (2026-07-08 → corrigé 2026-07-09)
       - Épisode 1 (2026-07-08 matin) : port HDMI en dur (`HDMI-A-2`) alors que l'écran était sur `HDMI-A-1` après l'intégration → `scripts/screen_dpms.sh` corrigé. Puis rendu Chromium figé (glitch au changement de port) → résolu par relance kiosk

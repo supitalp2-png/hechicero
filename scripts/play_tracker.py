@@ -446,7 +446,14 @@ def run() -> None:
                     if open_id:
                         status, _ = mpd.status_and_song()
                         if status.get("state") == "play":
-                            elapsed = float(status.get("elapsed", 0) or 0) - open_elapsed_offset
+                            # max(0.0, ...) : MPD peut renvoyer un elapsed < open_elapsed_offset
+                            # (ex: repeat/single qui boucle sur le même fichier, elapsed retombe
+                            # à ~0 avant que l'event "player" du bouclage soit traité) — sans ce
+                            # clamp, un listened_s négatif est écrit tel quel en base et fausse
+                            # tous les totaux qui en dépendent (dashboard fatigue auditive,
+                            # export Prometheus TICKET-017). Même pattern que la bascule de
+                            # sortie HP/casque ci-dessous, qui était déjà clampée.
+                            elapsed = max(0.0, float(status.get("elapsed", 0) or 0) - open_elapsed_offset)
                             vol = parse_volume(status)
                             if vol is not None:
                                 vol_samples.append(vol)
@@ -500,7 +507,7 @@ def run() -> None:
                     vol = parse_volume(status)
                     if vol is not None and open_id:
                         vol_samples.append(vol)
-                        elapsed = float(status.get("elapsed", 0) or 0) - open_elapsed_offset
+                        elapsed = max(0.0, float(status.get("elapsed", 0) or 0) - open_elapsed_offset)
                         db_heartbeat(conn, open_id, elapsed, vol_avg())
                         LOGGER.info("Volume changé : %d%% (moy session : %s%%)", vol, vol_avg())
                     continue
@@ -528,7 +535,7 @@ def run() -> None:
                 if open_id and (new_state == "stop" or file_changed):
                     if vol is not None:
                         vol_samples.append(vol)
-                    listened_final = elapsed - open_elapsed_offset
+                    listened_final = max(0.0, elapsed - open_elapsed_offset)
                     db_close_session(conn, open_id, now, listened_final, vol_avg())
                     LOGGER.info("Session fermée id=%d listened=%.0fs vol_avg=%s%%", open_id, listened_final, vol_avg())
                     open_id = None
