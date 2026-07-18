@@ -267,7 +267,11 @@ if (isset($_GET['action'])) {
         $ok = write_json_atomic(PODCASTS_JSON, $cfg);
         // Déclenche immédiatement un ingest ciblé sur ce podcast en arrière-plan
         if ($ok && !pid_alive(INGEST_PID)) {
-            $cmd = 'python3 ' . escapeshellarg(INGEST_SCRIPT)
+            // umask 002 (comme le cron thomas, TICKET-027) : sans ça, www-data crée le
+            // dossier du podcast en 755 (non group-writable), et toute ingestion
+            // ultérieure lancée par thomas (SSH manuel ou cron) échoue en Permission
+            // denied sur les .tmp — bug trouvé le 2026-07-18 sur "lesexplorateursdelunivers".
+            $cmd = 'umask 002 && python3 ' . escapeshellarg(INGEST_SCRIPT)
                  . ' --podcast ' . escapeshellarg($id)
                  . ' >> ' . escapeshellarg(INGEST_LOG) . ' 2>&1 & echo $!';
             $pid = trim((string)shell_exec($cmd));
@@ -470,7 +474,8 @@ if (isset($_GET['action'])) {
     // ── Ingestion
     if ($a === 'run_ingest') {
         if (pid_alive(INGEST_PID)) { echo json_encode(['ok'=>false,'msg'=>'Déjà en cours']); exit; }
-        $cmd = 'python3 ' . escapeshellarg(INGEST_SCRIPT) . ' >> ' . escapeshellarg(INGEST_LOG) . ' 2>&1 & echo $!';
+        // umask 002 : même raison que add_podcast ci-dessus.
+        $cmd = 'umask 002 && python3 ' . escapeshellarg(INGEST_SCRIPT) . ' >> ' . escapeshellarg(INGEST_LOG) . ' 2>&1 & echo $!';
         $pid = trim((string)shell_exec($cmd));
         file_put_contents(INGEST_PID, $pid);
         echo json_encode(['ok'=>true,'pid'=>$pid]);
