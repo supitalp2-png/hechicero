@@ -1,0 +1,14 @@
+[Unit]
+Description=Hechicero Wifi Roam (bascule auto vers le signal le plus fort, hors DFS) - TICKET-110
+After=network.target NetworkManager.service
+Requires=NetworkManager.service
+
+[Service]
+Type=simple
+User=root
+ExecStart=/usr/bin/python3 /home/thomas/hechicero/scripts/wifi_roam.py
+Restart=always
+RestartSec=15
+
+[Install]
+WantedBy=multi-user.target

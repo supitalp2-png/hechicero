@@ -24,6 +24,8 @@ Objectif : garantir un système **robuste**, **prévisible**, **auto‑récupér
 | `hechicero-kiosk.service` | `~/.config/systemd/user/` | Relancer Chromium (optionnel) | non activé, décision Thomas (débug manuel préféré) |
 | `button_toggle_test.service` | `scripts/button_toggle_test.service` | Bring-up bouton GPIO test (bascule HP/casque) — TEMPORAIRE | ❌ désactivé, remplacé par `buttons_daemon.service` |
 | `buttons_daemon.service` | `scripts/buttons_daemon.service` | Daemon définitif des 9 boutons GPIO (TICKET-091/101) | ✅ |
+| `wifi_watch.service` | `scripts/wifi_watch.service` | Logger diagnostic coupures Wi-Fi (TICKET-109) — TEMPORAIRE | ✅ |
+| `wifi_roam.service` | `scripts/wifi_roam.service` | Roaming auto multi-AP box/répéteur, hors DFS (TICKET-110) | à installer |
 
 > `hechicero-monitor.service` (ancien service batterie basé sur `get_status.py`) — **désactivé session 11**. Remplacé par `battery_tracker.service`. Ne pas réactiver.
 
@@ -372,7 +374,7 @@ sudo systemctl enable --now buttons_daemon.service
 
 ## 7quater. Rotation des logs — logrotate (TICKET-010, 2026-07-18)
 
-Deux fichiers de logs applicatifs grossissent indéfiniment sans rotation
+Ces fichiers de logs applicatifs grossissent indéfiniment sans rotation
 native et ne sont pas couverts par journald (car pas issus d'un service
 systemd) :
 
@@ -382,6 +384,9 @@ systemd) :
   (TICKET-102, `radio.php?action=sleep_log`), un ajout à chaque événement
   côté lecteur (checkParentalTime, resynchro admin…) — toujours en place,
   voir `docs/30-LECTEUR.md`
+- `~/hechicero/data/wifi_watch.log` — traceur temporaire coupures Wi-Fi
+  (TICKET-109, `wifi_watch.service`), une ligne toutes les 30s — ajouté
+  2026-07-18, voir §7quinquies
 
 > Les logs des services systemd (`battery_tracker`, `battery_watchdog`,
 > `play_tracker`, `buttons_daemon`, `hechicero-idle`) passent par
@@ -413,6 +418,18 @@ Fichier : `scripts/hechicero-logrotate.conf` (versionné dans le dépôt).
     copytruncate
     create 0664 www-data www-data
 }
+
+# TICKET-109 — logger diagnostic Wi-Fi (wifi_watch.service), temporaire
+/home/thomas/hechicero/data/wifi_watch.log {
+    daily
+    rotate 7
+    compress
+    delaycompress
+    missingok
+    notifempty
+    copytruncate
+    create 0664 thomas thomas
+}
 ```
 
 `copytruncate` évite d'avoir à signaler le processus écrivain (cron déjà
@@ -434,6 +451,128 @@ ls -la /tmp/hechicero_ingest.log* /home/thomas/hechicero/data/sleep_debug.log*
 logrotate est déjà exécuté quotidiennement par le cron.daily standard de
 Raspberry Pi OS (paquet `logrotate`, préinstallé) — aucun timer/service
 supplémentaire à créer.
+
+---
+
+## 7quinquies. Logger Wi-Fi — wifi_watch (diagnostic temporaire, TICKET-109)
+
+⚠️ **Service de diagnostic, pas définitif.** Instrumentation ajoutée le
+2026-07-18 suite aux coupures Wi-Fi récurrentes (épisodes des 15-16-18/07,
+voir `docs/90-BACKLOG.md` TICKET-109) — à retirer une fois la cause
+confirmée et le correctif validé dans la durée (même logique que le traceur
+`sleep_debug.log` de TICKET-102).
+
+Fichier : `scripts/wifi_watch.sh` — service : `scripts/wifi_watch.service`
+
+Toutes les 30 secondes, interroge `iw dev wlan0 link` et ajoute une ligne à
+`data/wifi_watch.log` :
+- si connecté : horodatage, BSSID, fréquence, signal (dBm), débits rx/tx
+- si déconnecté : horodatage + `DISCONNECTED`
+
+Objectif : distinguer une dégradation progressive (atténuation RF /
+interférence) d'une chute sèche depuis un signal stable (décision box ou
+bug driver) au prochain décrochage, sans dépendre d'un diagnostic a
+posteriori basé sur des suppositions.
+
+```ini
+[Unit]
+Description=Hechicero Wifi Watch (diagnostic temporaire coupures Wi-Fi, TICKET-109)
+After=network.target
+
+[Service]
+Type=simple
+User=thomas
+ExecStart=/bin/bash /home/thomas/hechicero/scripts/wifi_watch.sh
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+```
+
+### Installation
+```bash
+sudo cp scripts/wifi_watch.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now wifi_watch
+```
+
+### Debug
+```bash
+systemctl status wifi_watch
+tail -f /home/thomas/hechicero/data/wifi_watch.log
+```
+
+### Désinstallation (une fois la cause confirmée et le fix stable)
+```bash
+sudo systemctl disable --now wifi_watch
+sudo rm /etc/systemd/system/wifi_watch.service
+sudo systemctl daemon-reload
+```
+
+Note : le script cible `wlan0` en dur. En cas de bascule vers un dongle
+Wi-Fi USB (`wlan1`, voir TICKET-109), modifier la variable d'interface
+dans `wifi_watch.sh` avant de relancer le service.
+
+---
+
+## 7sexies. Roaming automatique multi-AP — wifi_roam (TICKET-110, 2026-07-18)
+
+Hechicero est mobile (bureau/salon). Un répéteur Wi-Fi officiel Free a été
+installé — même SSID "El CORAL GOURMET" diffusé par la box ET le répéteur,
+chacun avec plusieurs BSSID (2.4GHz + 5GHz). Sans intervention, le Pi reste
+figé sur le BSSID épinglé au démarrage (nécessaire depuis TICKET-109
+épisode 2 pour éviter le roaming vers un BSSID 5GHz DFS de la box, qui
+échoue systématiquement — CAC radar, pas un problème de signal).
+
+Fichier : `scripts/wifi_roam.py` — service : `scripts/wifi_roam.service`
+
+Toutes les 60 secondes : scanne les BSSID diffusant le SSID du projet,
+**exclut ceux sur fréquence DFS** (~5250-5725 MHz, canaux 52-140 ETSI —
+c'est spécifiquement cette plage qui posait problème, pas la force du
+signal), garde le plus fort du reste. Si un autre BSSID que celui en cours
+est meilleur d'au moins 8 dB, confirmé sur 2 scans consécutifs (anti-
+flapping en zone limite entre pièces), rebascule le BSSID épinglé de la
+connexion NetworkManager et reconnecte. Log dans `data/wifi_roam.log`.
+
+```ini
+[Unit]
+Description=Hechicero Wifi Roam (bascule auto vers le signal le plus fort, hors DFS) - TICKET-110
+After=network.target NetworkManager.service
+Requires=NetworkManager.service
+
+[Service]
+Type=simple
+User=root
+ExecStart=/usr/bin/python3 /home/thomas/hechicero/scripts/wifi_roam.py
+Restart=always
+RestartSec=15
+
+[Install]
+WantedBy=multi-user.target
+```
+
+### Installation
+```bash
+sudo cp scripts/wifi_roam.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now wifi_roam
+```
+
+### Debug
+```bash
+systemctl status wifi_roam
+tail -f /home/thomas/hechicero/data/wifi_roam.log
+```
+
+### Paramètres ajustables (en tête de `wifi_roam.py`)
+- `MARGIN_DB` (8) : gain minimum requis pour basculer
+- `CONFIRM_COUNT` (2) : scans consécutifs avant bascule
+- `INTERVAL_S` (60) : fréquence de scan
+
+Tourne en root (le scan actif `iw scan` nécessite `CAP_NET_ADMIN`).
+Coexiste sans conflit avec `wifi_watch.service` (lecture seule, pas
+d'action) — les deux peuvent tourner en parallèle.
 
 ---
 
