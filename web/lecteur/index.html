@@ -325,6 +325,94 @@
     }
 
     /* ══════════════════════════════ */
+    /* MODE ANNIVERSAIRE (TICKET-079bis) */
+    /* Actif le 20 novembre uniquement (getMonth()===10 && getDate()===20),  */
+    /* override ?anniv=1/0. Zéro dépendance réseau/CDN.                     */
+    /* Réutilise la même courbe en chaînette que la guirlande de Noël       */
+    /* (fonctions catenaryY/catenaryPoint, génériques).                     */
+    /* ══════════════════════════════ */
+    /* Confettis : overlay global, visible partout y compris l'écran de veille */
+    #anniv-confetti {
+      position: fixed; inset: 0; overflow: hidden;
+      pointer-events: none; z-index: 10050;
+    }
+    .anniv-confetti-piece {
+      position: absolute; top: -16px;
+      opacity: 0.9; border-radius: 1px;
+      animation-name: anniv-confetti-fall;
+      animation-timing-function: linear;
+      animation-iteration-count: infinite;
+      will-change: transform;
+    }
+    @keyframes anniv-confetti-fall {
+      from { transform: translate3d(0, -16px, 0) rotate(0deg); }
+      to   { transform: translate3d(var(--drift, 0px), 110vh, 0) rotate(var(--spin, 360deg)); }
+    }
+    /* Chapeau de fête — même principe que le bonnet de Noël (coin incliné des jaquettes) */
+    .anniv-hat {
+      position: absolute; top: 0; left: 0;
+      width: 62px; height: 62px;
+      transform: rotate(-42deg);
+      transform-origin: 65% 65%;
+      pointer-events: none; z-index: 2;
+      filter: drop-shadow(0 2px 4px rgba(0,0,0,.55));
+    }
+    .anniv-hat.anniv-hat-sm { width: 46px; height: 46px; }
+    /* Banderole "Joyeux Anniversaire / Feliz Cumpleaños" — traverse l'écran de temps en
+       temps, cachée pendant la veille (même logique que le traîneau de Noël) */
+    #anniv-banner {
+      position: fixed; top: 14%; left: -820px;
+      width: max-content; white-space: nowrap;
+      pointer-events: none; z-index: 9000;
+      opacity: 0;
+    }
+    #anniv-banner.anniv-banner-run {
+      animation: anniv-banner-fly 10s linear;
+    }
+    @keyframes anniv-banner-fly {
+      0%   { opacity: 0; transform: translateX(0); }
+      6%   { opacity: 1; }
+      94%  { opacity: 1; }
+      100% { opacity: 0; transform: translateX(calc(100vw + 820px)); }
+    }
+    .anniv-banner-ribbon {
+      position: relative;
+      background: linear-gradient(135deg, #8b2fa0, #c23fae 55%, #8b2fa0);
+      border: 2px solid #f0cc58;
+      border-radius: 10px;
+      padding: 16px 40px;
+      box-shadow: 0 8px 24px rgba(0,0,0,.45);
+    }
+    .anniv-banner-ribbon::before, .anniv-banner-ribbon::after {
+      content: ''; position: absolute; top: 0; width: 0; height: 0;
+      border-top: 26px solid transparent; border-bottom: 26px solid transparent;
+    }
+    .anniv-banner-ribbon::before { left: -20px; border-right: 20px solid #6f2380; }
+    .anniv-banner-ribbon::after  { right: -20px; border-left: 20px solid #6f2380; }
+    .anniv-banner-text {
+      font-family: 'Great Vibes', 'Palatino Linotype', Palatino, serif;
+      font-size: 46px; font-weight: 400; white-space: nowrap;
+    }
+    /* Guirlande de fanions — même câble en chaînette que la guirlande de Noël, avec des
+       petits drapeaux triangulaires à la place des ampoules. overflow:visible car les
+       fanions pendent sous la courbe et dépassent légèrement la hauteur du viewBox. */
+    #anniv-garland {
+      position: fixed; top: var(--sb-h); left: 0; right: 0;
+      width: 100%; height: 34px; overflow: visible;
+      pointer-events: none; z-index: 10040;
+    }
+    .anniv-flag {
+      transform-box: fill-box; transform-origin: 50% 0%;
+      animation-name: anniv-flag-sway;
+      animation-timing-function: ease-in-out;
+      animation-iteration-count: infinite;
+    }
+    @keyframes anniv-flag-sway {
+      0%, 100% { transform: rotate(-5deg); }
+      50%      { transform: rotate(5deg); }
+    }
+
+    /* ══════════════════════════════ */
     /* SCREEN 3a — RADIO CATALOG     */
     /* ══════════════════════════════ */
     .radio-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; width: 100%; box-sizing: border-box; }
@@ -858,6 +946,25 @@
     <path d="M273 30 L268 14 M273 30 L278 18 M278 18 L283 12" stroke="#c8a050" stroke-width="1.8" fill="none" stroke-linecap="round"/>
     <circle cx="283" cy="40" r="2.2" fill="#e24b4a"/>
   </svg>
+</div>
+
+<!-- Confettis (mode anniversaire, TICKET-079bis) — overlay global, pièces injectées en JS -->
+<div id="anniv-confetti"></div>
+
+<!-- Guirlande de fanions (mode anniversaire) — même câble en chaînette que la guirlande de
+     Noël, drapeaux triangulaires injectés en JS (initAnnivGarland) -->
+<svg id="anniv-garland" viewBox="0 0 1000 34" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+  <path id="anniv-garland-wire" d="" fill="none" stroke="#1c140b" stroke-width="3.5" stroke-linecap="round"/>
+  <path id="anniv-garland-wire-hl" d="" fill="none" stroke="#5a4326" stroke-width="1.1" stroke-linecap="round"/>
+  <g id="anniv-garland-flags"></g>
+</svg>
+
+<!-- Banderole "Joyeux Anniversaire / Feliz Cumpleaños" (mode anniversaire) — traverse
+     l'écran de temps en temps, texte alterné FR/ES à chaque passage (initAnnivBanner) -->
+<div id="anniv-banner">
+  <div class="anniv-banner-ribbon">
+    <span class="anniv-banner-text gv-gold">Joyeux Anniversaire !</span>
+  </div>
 </div>
 
 <script>
@@ -1398,15 +1505,30 @@ function initNoelSled() {
 // viewBox volontairement faible (34) par rapport à la largeur (1000) pour un rendu
 // "tendu" plutôt qu'un gros U mou.
 const NOEL_GARLAND_COLORS = ['#3dba6a', '#f5c842', '#f5a623', '#00c8ff', '#e24b4a'];
-const NOEL_GARLAND_W = 1000;
-const NOEL_GARLAND_H = 26; // affaissement max en unités de viewBox (viewBox total: 34)
+// Chaînette (câble tendu entre deux points, y = cosh(x)) — géométrie générique
+// partagée par la guirlande de Noël (ampoules) et la guirlande anniversaire (fanions).
+const GARLAND_W = 1000;
+const GARLAND_H = 26; // affaissement max en unités de viewBox (viewBox total: 34)
 
-function noelCatenaryY(xNorm) {
+function catenaryY(xNorm) {
   const coshMax = Math.cosh(1);
-  return NOEL_GARLAND_H * (coshMax - Math.cosh(xNorm)) / (coshMax - 1);
+  return GARLAND_H * (coshMax - Math.cosh(xNorm)) / (coshMax - 1);
 }
-function noelCatenaryPoint(xNorm) {
-  return { x: (xNorm + 1) / 2 * NOEL_GARLAND_W, y: noelCatenaryY(xNorm) };
+function catenaryPoint(xNorm) {
+  return { x: (xNorm + 1) / 2 * GARLAND_W, y: catenaryY(xNorm) };
+}
+// Construit le tracé (attribut "d") du câble : nombreux points échantillonnés le long
+// de la chaînette reliés par des segments (courbe assez plate pour rester lisse même
+// en lignes droites). Partagé par les deux guirlandes.
+function catenaryWireD() {
+  const SAMPLES = 60;
+  let d = '';
+  for (let i = 0; i < SAMPLES; i++) {
+    const xNorm = -1 + (2 * i) / (SAMPLES - 1);
+    const p = catenaryPoint(xNorm);
+    d += (i === 0 ? 'M' : ' L') + p.x.toFixed(1) + ',' + p.y.toFixed(1);
+  }
+  return d;
 }
 
 function initNoelGarland() {
@@ -1415,15 +1537,7 @@ function initNoelGarland() {
   const wireHl = document.getElementById('noel-garland-wire-hl');
   if (!bulbsGroup || !wire || bulbsGroup.childElementCount) return;
 
-  // Câble : nombreux points échantillonnés le long de la chaînette, reliés par des
-  // segments (courbe assez plate pour rester lisse même en lignes droites).
-  const SAMPLES = 60;
-  let d = '';
-  for (let i = 0; i < SAMPLES; i++) {
-    const xNorm = -1 + (2 * i) / (SAMPLES - 1);
-    const p = noelCatenaryPoint(xNorm);
-    d += (i === 0 ? 'M' : ' L') + p.x.toFixed(1) + ',' + p.y.toFixed(1);
-  }
+  const d = catenaryWireD();
   wire.setAttribute('d', d);
   if (wireHl) wireHl.setAttribute('d', d);
 
@@ -1432,7 +1546,7 @@ function initNoelGarland() {
   const BULBS = 24;
   for (let i = 0; i < BULBS; i++) {
     const xNorm = -0.94 + (1.88 * i) / (BULBS - 1);
-    const p = noelCatenaryPoint(xNorm);
+    const p = catenaryPoint(xNorm);
     const c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
     c.setAttribute('cx', p.x.toFixed(1));
     c.setAttribute('cy', p.y.toFixed(1));
@@ -1456,6 +1570,119 @@ function initNoelPlayerHat() {
   box.insertAdjacentHTML('beforeend', noelHatMarkup(''));
 }
 
+// ═══════════════════════════════════════
+// MODE ANNIVERSAIRE (TICKET-079bis) — 20 novembre uniquement
+// Override de test via l'URL : ?anniv=1 (forcer actif) / ?anniv=0 (forcer inactif)
+// Même architecture que le mode Noël : overlay confettis, chapeau sur les jaquettes,
+// guirlande en chaînette (fanions au lieu d'ampoules), banderole qui traverse l'écran.
+// ═══════════════════════════════════════
+function isAnnivActive() {
+  const override = new URLSearchParams(window.location.search).get('anniv');
+  if (override === '1') return true;
+  if (override === '0') return false;
+  const now = new Date();
+  return now.getMonth() === 10 && now.getDate() === 20; // 20 novembre (mois 0-indexé)
+}
+const ANNIV_ACTIVE = isAnnivActive();
+const ANNIV_COLORS = ['#ff5da2', '#8b5cf6', '#22c1c9', '#ffce54', '#ff8a3d'];
+
+// Chapeau de fête — cône simple + confettis (pois) + pompon, incliné comme le bonnet
+// de Noël pour rester cohérent visuellement entre les deux skins.
+function annivHatMarkup(sizeClass) {
+  return `<svg class="anniv-hat ${sizeClass || ''}" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+  <path d="M50 8 L82 80 L18 80 Z" fill="#8b2fa0" stroke="#5e1d6e" stroke-width="2.5" stroke-linejoin="round"/>
+  <circle cx="40" cy="60" r="5" fill="#ffce54"/>
+  <circle cx="60" cy="45" r="4" fill="#22c1c9"/>
+  <circle cx="46" cy="35" r="3.5" fill="#ff5da2"/>
+  <circle cx="62" cy="66" r="4.5" fill="#ff8a3d"/>
+  <rect x="10" y="74" width="80" height="14" rx="7" fill="#ffce54" stroke="#c9922e" stroke-width="1"/>
+  <circle cx="50" cy="8" r="9" fill="#ffce54" stroke="#c9922e" stroke-width="1"/>
+</svg>`;
+}
+const ANNIV_HAT_SVG = annivHatMarkup('');
+
+function initAnnivConfetti() {
+  const container = el('anniv-confetti');
+  if (!container || container.childElementCount) return;
+  const PIECES = 40;
+  for (let i = 0; i < PIECES; i++) {
+    const p = document.createElement('span');
+    p.className = 'anniv-confetti-piece';
+    const color = ANNIV_COLORS[i % ANNIV_COLORS.length];
+    const w = 6 + Math.random() * 5;
+    const h = w * (1.3 + Math.random() * 0.6);
+    const duration = 6 + Math.random() * 8;
+    p.style.left = (Math.random() * 100) + '%';
+    p.style.width = w + 'px';
+    p.style.height = h + 'px';
+    p.style.background = color;
+    p.style.setProperty('--drift', (Math.random() * 80 - 40) + 'px');
+    p.style.setProperty('--spin', ((Math.random() > 0.5 ? 1 : -1) * (240 + Math.random() * 400)) + 'deg');
+    p.style.animationDuration = duration + 's';
+    p.style.animationDelay = '-' + (Math.random() * duration) + 's';
+    container.appendChild(p);
+  }
+}
+
+// Banderole "Joyeux Anniversaire" / "¡Feliz Cumpleaños!" — comme le traîneau de Noël,
+// déclenchée à intervalle aléatoire (60-90s) et cachée pendant la veille (z-index sous
+// #sleep-overlay). Le texte alterne FR/ES à chaque passage.
+const ANNIV_BANNER_MESSAGES = ['Joyeux Anniversaire !', '¡Feliz Cumpleaños!'];
+function initAnnivBanner() {
+  const banner = el('anniv-banner');
+  const textEl = banner ? banner.querySelector('.anniv-banner-text') : null;
+  if (!banner || !textEl) return;
+  function scheduleNext() {
+    const delay = 60000 + Math.random() * 30000; // 60-90s
+    setTimeout(() => {
+      textEl.textContent = ANNIV_BANNER_MESSAGES[Math.floor(Math.random() * ANNIV_BANNER_MESSAGES.length)];
+      banner.classList.add('anniv-banner-run');
+      banner.addEventListener('animationend', function onEnd() {
+        banner.classList.remove('anniv-banner-run');
+        banner.removeEventListener('animationend', onEnd);
+        scheduleNext();
+      });
+    }, delay);
+  }
+  scheduleNext();
+}
+
+function initAnnivGarland() {
+  const flagsGroup = document.getElementById('anniv-garland-flags');
+  const wire   = document.getElementById('anniv-garland-wire');
+  const wireHl = document.getElementById('anniv-garland-wire-hl');
+  if (!flagsGroup || !wire || flagsGroup.childElementCount) return;
+
+  const d = catenaryWireD();
+  wire.setAttribute('d', d);
+  if (wireHl) wireHl.setAttribute('d', d);
+
+  // Fanions : petits triangles suspendus sous la courbe, répartis comme les ampoules
+  // de la guirlande de Noël.
+  const FLAGS = 22;
+  for (let i = 0; i < FLAGS; i++) {
+    const xNorm = -0.92 + (1.84 * i) / (FLAGS - 1);
+    const p = catenaryPoint(xNorm);
+    const poly = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+    const pts = (p.x - 9).toFixed(1) + ',' + p.y.toFixed(1) + ' ' +
+                (p.x + 9).toFixed(1) + ',' + p.y.toFixed(1) + ' ' +
+                p.x.toFixed(1) + ',' + (p.y + 15).toFixed(1);
+    poly.setAttribute('points', pts);
+    poly.setAttribute('fill', ANNIV_COLORS[i % ANNIV_COLORS.length]);
+    poly.classList.add('anniv-flag');
+    poly.style.animationDuration = (2.2 + Math.random() * 1.2) + 's';
+    poly.style.animationDelay = '-' + (Math.random() * 2) + 's';
+    flagsGroup.appendChild(poly);
+  }
+}
+
+// Chapeau sur la grosse jaquette de l'écran lecteur — même logique que initNoelPlayerHat.
+function initAnnivPlayerHat() {
+  const box = el('art-box');
+  if (!box || box.querySelector('.anniv-hat')) return;
+  box.insertAdjacentHTML('beforeend', annivHatMarkup(''));
+}
+
 function renderPodcasts() {
   const grid = el('pod-grid');
   grid.innerHTML = '';
@@ -1473,7 +1700,7 @@ function renderPodcasts() {
   list.forEach(p => {
     const c = document.createElement('div');
     c.className = 'pod-card';
-    c.innerHTML = `<img src="${p.image}" alt="${p.titre}" loading="lazy" draggable="false"><div class="pod-label">${p.titre}</div>${NOEL_ACTIVE ? NOEL_HAT_SVG : ''}`;
+    c.innerHTML = `<img src="${p.image}" alt="${p.titre}" loading="lazy" draggable="false"><div class="pod-label">${p.titre}</div>${NOEL_ACTIVE ? NOEL_HAT_SVG : ''}${ANNIV_ACTIVE ? ANNIV_HAT_SVG : ''}`;
     c.addEventListener('click', () => openPodcast(p.id));
     grid.appendChild(c);
   });
@@ -1631,6 +1858,7 @@ function renderChapters() {
       <div class="ep-thumb-wrap">
         <img class="ep-thumb" src="${ch.image || fallback}" onerror="this.onerror=null;this.src='${fallback}'" alt="" loading="lazy" draggable="false">
         ${NOEL_ACTIVE ? noelHatMarkup('noel-hat-sm') : ''}
+        ${ANNIV_ACTIVE ? annivHatMarkup('anniv-hat-sm') : ''}
       </div>
       <div class="ep-meta">
         <div class="ep-titre">${ch.titre}</div>
@@ -2159,6 +2387,7 @@ loadParentalConfig();
 loadData();
 initAudioMode();
 if (NOEL_ACTIVE) { initNoelSnow(); initNoelSled(); initNoelGarland(); initNoelPlayerHat(); }
+if (ANNIV_ACTIVE) { initAnnivConfetti(); initAnnivBanner(); initAnnivGarland(); initAnnivPlayerHat(); }
 // Resynchro rapide et globale (pas seulement écran lecteur) — un
 // basculement déclenché ailleurs (bouton physique GPIO) doit se refléter
 // à l'écran quasi instantanément, pas au bout de plusieurs secondes.

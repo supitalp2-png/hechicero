@@ -1,7 +1,7 @@
 # Backlog Hechicero
 
 > Convention : `TICKET-### — [type] — Titre — (prio) — owner`
-> Dernière mise à jour : 2026-07-18 (TICKET-010 clos — rotation logrotate pour hechicero_ingest.log et sleep_debug.log)
+> Dernière mise à jour : 2026-07-18 (TICKET-109 ouvert — diagnostic Wi-Fi épisode 3)
 
 ---
 
@@ -17,16 +17,29 @@
       - Ton : léger mais sérieux (blagues assumées, sans exclure le sérieux)
       - Production : voix papa + voix IA (Descript/ElevenLabs)
 
+- [ ] TICKET-109 — bug/hardware — Coupures Wi-Fi récurrentes + signal anormalement faible à 30cm de la Freebox
+      - **Épisode 1 (2026-07-15/16, résolu)** : Freebox en "WPA 2/3 - Compatibilité" → association Wi-Fi en boucle (faux message "Secrets were required"). Fix : Freebox basculée en WPA2-AES pur. Aussi fait : power management Wi-Fi désactivé définitivement (`wifi-powersave-off.conf`, `wifi.powersave=2`), MAC remise permanente (`2c:cf:67:cc:4a:2d`, le random cassait le bail DHCP), firmware `brcm80211` blanchi après re-test.
+      - **Épisode 2 (2026-07-16, résolu)** : récidive, cause différente — même SSID "El CORAL GOURMET" diffusé en 2.4GHz (BSSID `3A:07:16:3C:3D:80`, canal 11) ET 5GHz DFS (BSSID `...:88`, canal 128) ; sans BSSID épinglé, le Pi retentait le 5GHz DFS et échouait. Fix : BSSID épinglé sur le 2.4GHz (`nmcli connection modify "El CORAL GOURMET" 802-11-wireless.bssid 3A:07:16:3C:3D:80`).
+      - **Épisode 3 (2026-07-18, en cours)** : nouvelle coupure à 12:29:46 (reconnexion auto en 10s, même BSSID — le fix BSSID tient, donc pas du roaming). Anomalie centrale : **signal -59 à -71 dBm et débits parfois plancher (rx jusqu'à 1-2 Mbit/s) à 30cm de la borne**, attendu ≈ -35/-40 dBm. Hypothèse principale : atténuation RF par le boîtier Grundig terminé (Pi enfermé avec batterie, ampli, aimants HP, châssis métallique).
+      - Instrumentation posée le 2026-07-18 : `scripts/wifi_watch.sh` + `wifi_watch.service` (voir `docs/70-SERVICES_SYSTEMD.md` §7quinquies), 1 ligne/30s dans `data/wifi_watch.log`. Première capture (12:33–13:22, 99 lignes) : signal **oscille en continu entre -59 et -71 dBm alors que le Pi est immobile**, avec des creux de débit corrélés (rx 1-2 Mbit/s vers 13:14-13:17) — cette variance de 10-12 dB en quelques minutes est plus caractéristique d'interférence/multi-trajet sur le canal 11 (2.4GHz, bande souvent encombrée) que d'un blindage fixe de type cage de Faraday, qui produirait plutôt un plancher stable. Un effet boîtier reste possible en supplément (offset constant), mais pas isolé par cette seule capture.
+      - Test discriminant proposé (à faire par Thomas, boîtier vs autre cause) : comparer le signal moyen boîtier fermé vs façade ouverte (mesures répétées, pas un seul point, vu la variance naturelle observée), et `nmcli device wifi list` sur place pour voir si le canal 11 est encombré par des réseaux voisins.
+      - Option envisagée si le Wi-Fi intégré ne peut pas mieux faire dans ce boîtier : dongle Wi-Fi USB à antenne externe déportable hors du boîtier (chipset mainline Bookworm, ex. MediaTek MT7612U/MT7921AU ou Atheros AR9271), bascule propre dans NetworkManager en désactivant `wlan0` interne.
+      - **Re-vérification 2026-07-18 (même jour)** : BSSID épinglé ✅, powersave off ✅, MAC permanente ✅ — les 3 fixes précédents tiennent toujours. Logger tournait déjà en manuel (`wifi_watch.sh`, PID direct, pas de service) depuis 12:33, donc pas persistant à un reboot — installation du service systemd tentée mais échouée (mauvais répertoire courant, `scripts/wifi_watch.service` relatif alors que le shell était dans `~` et non `~/hechicero`) : **à refaire avec le chemin absolu** `/home/thomas/hechicero/scripts/wifi_watch.service`.
+      - Spot-check signal (10 échantillons/30s, capot fermé état normal) : -61 à -64 dBm, plus resserré que la première capture (-59/-71) — la variance semble donc elle-même variable dans le temps, pas un régime fixe.
+      - `nmcli device wifi list` (scan sur place) : **une seule et unique entrée** — le réseau de la Freebox lui-même, canal 11, aucun réseau voisin détecté. Ça affaiblit l'hypothèse "canal 11 encombré par le voisinage" : pas de pollution externe visible. Renforce en creux soit l'hypothèse boîtier, soit une source d'interférence interne au Pi/boîtier (piste non explorée : interférence USB3↔2.4GHz, phénomène documenté sur Raspberry Pi quand un périphérique USB3 est actif à proximité de l'antenne Wi-Fi — le DAC USB casque du projet est un candidat).
+      - Test discriminant capot ouvert/fermé **reporté par Thomas** (besoin de garder la liaison filaire disponible pendant que le Wi-Fi est instable, pas le bon moment pour manipuler le boîtier). Reste à faire quand possible.
+      - Piste alternative sans ouvrir le boîtier : corréler les horodatages des creux de signal dans `data/wifi_watch.log` avec l'activité USB (bascule casque/DAC USB, `dmesg | grep -i usb`) pour voir si les creux coïncident avec l'usage du DAC USB plutôt qu'avec un état fixe.
+      - **Balayage 2026-07-18 (suite)** :
+          • `iw dev wlan0 survey dump` → aucune sortie. Limitation connue du driver `brcmfmac` (Broadcom, Pi), ne supporte pas cette commande — piste abandonnée, pas exploitable sur ce matériel.
+          • Bluetooth actif depuis le boot (`bluetoothd`, endpoints A2DP enregistrés) — service par défaut de Raspberry Pi OS, non utilisé par le projet (audio via HiFiBerry/DAC USB). `rfkill block bluetooth` lancé — **à confirmer** (`rfkill list`) et à laisser tourner pour voir si `wifi_watch.log` se stabilise.
+          • `vcgencmd get_throttled` = `0xe0000` → **pas de sous-tension** (bit 16 absent) mais capping fréquence + throttling + limite thermique **se sont produits depuis le dernier boot** (bits 17/18/19). Piste thermique, pas électrique — le boîtier (Pi5 + ampli + batterie, peu de ventilation) chauffe peut-être trop. Lien avec le Wi-Fi pas évident a priori (le throttling CPU n'affecte pas la réception radio en théorie), à corréler avec l'horodatage exact des throttles (`dmesg -T | grep -iE "throttl|temp"`) vs les creux de `wifi_watch.log` et la coupure de 12:29:46.
+          • `iw reg get` / txpower : domaine FR normal (20dBm max 2.4GHz, conforme). Le txpower 31dBm affiché sur `phy#0` est très probablement un artefact de reporting du driver Broadcom (irréaliste pour cette puce) — et de toute façon ce champ concerne l'émission du Pi, pas le signal reçu de la Freebox (`iw link` mesure le RX). **Piste écartée**, pas le bon axe pour ce symptôme.
+          • Bluetooth confirmé soft-blocked (`rfkill list` : `hci0 Soft blocked: yes`) — test en cours, à comparer avec `wifi_watch.log` après un temps d'observation.
+          • **`vcgencmd measure_temp` = 77.9°C** — proche du seuil de throttling soft du Pi5 (~80°C), cohérent avec le bit thermique de `get_throttled`. Aucun message kernel explicite "throttl"/"Undervoltage" trouvé dans `dmesg` (les throttles Pi ne sont pas systématiquement logués côté kernel sans outil dédié). **Nouvelle hypothèse à privilégier** : pas forcément un blindage RF pur du boîtier, mais une dérive de performance de la puce Wi-Fi liée à la chaleur (Pi5 + ampli + batterie enfermés, ventilation limitée) — expliquerait mieux l'oscillation du signal qu'une atténuation fixe.
+          • `scripts/wifi_watch.sh` mis à jour pour logger la température à chaque ligne (`vcgencmd measure_temp`) en plus du signal — corrélation directe possible dès la prochaine capture. **À relancer côté Pi** (le process manuel tourne encore avec l'ancienne version sans température) : `kill <PID wifi_watch.sh>` puis réinstaller/relancer le service (`systemctl status wifi_watch` pour voir si déjà installé).
+      - Lié à [[reference_samba]] (l'instabilité affecte l'accès Q:\) et mémoire `project_hechicero_wifi_dropouts`.
+
 ---
-
-# 🟡 Priorité moyenne
-
-- [ ] TICKET-079 — UX/saisonnier — Mode Noël (décembre uniquement)
-      - Neige animée sur la page d'accueil
-      - Chapeau de Noël sur le coin des jaquettes podcast
-      - Traîneau du Père Noël qui passe de temps en temps en fond d'écran
-      - Actif uniquement du 1er au 31 décembre (`new Date().getMonth() === 11`)
-      - Aucune dépendance réseau, aucun CDN
 
 ---
 
@@ -50,6 +63,27 @@
 ---
 
 # ✔️ Terminé
+
+- [x] TICKET-079 — UX/saisonnier — Mode Noël (décembre uniquement) (2026-07-18, ajusté le même jour après retours Thomas)
+      - Neige animée (`#noel-snow`, flocons générés en JS, animation CSS `noel-fall`) — overlay global fixed, visible sur tous les écrans (accueil, grilles, lecteur) **et sur l'écran de veille** (`z-index:10050`, au-dessus de `#sleep-overlay` à `9999`)
+      - Chapeau de Noël (SVG inline, `noelHatMarkup()`) sur le coin des jaquettes podcast (`renderPodcasts()`) **et** des jaquettes d'épisodes (`renderChapters()`, variante `.noel-hat-sm`) — forme conique fléchie + pompon, incliné à -42°, plus marqué qu'à l'origine
+      - Traîneau du Père Noël (2 rennes + traîneau + Père Noël, SVG inline, coloré) traversant l'écran toutes les 60-90s — rennes repositionnés **devant** le traîneau dans le sens du déplacement (bug initial : rennes derrière, donc poussaient le traîneau), `z-index:9000` (sous l'overlay de veille, volontairement absent pendant la veille)
+      - Guirlande lumineuse (`#noel-garland`) : câble en chaînette réelle (`y = cosh(x)`, x ∈ [-1,1], converti en coordonnées SVG dans `catenaryY()`/`catenaryPoint()`, fonctions génériques réutilisées par le mode anniversaire ci-dessous), pas des scallops répétés comme au premier essai — câble visible (double trait sombre + liseré clair) avec 24 ampoules multicolores clignotant en asynchrone, positionnée en haut de tous les écrans **et de l'écran de veille** (`z-index:10040`)
+      - Garde `new Date().getMonth() === 11` + override de test `?noel=1` / `?noel=0` dans l'URL (`isNoelActive()`)
+      - Zéro dépendance réseau/CDN, tout inline dans `web/lecteur/index.html`
+      - ⏳ Non testé en conditions réelles sur le Pi par Thomas (ajustements validés par retours sur captures d'écran uniquement)
+      - Fichier modifié : `web/lecteur/index.html`
+
+- [x] TICKET-079bis — UX/saisonnier — Mode Anniversaire (20 novembre uniquement) (2026-07-18)
+      - Même architecture que TICKET-079 (mode Noël), réutilise les fonctions génériques `catenaryY()`/`catenaryPoint()`/`catenaryWireD()` pour la guirlande
+      - Confettis colorés qui tombent en continu (`#anniv-confetti`, rotation aléatoire), overlay global visible sur tous les écrans et sur l'écran de veille (`z-index:10050`)
+      - Chapeau de fête (cône + pois + pompon, `annivHatMarkup()`) sur les jaquettes podcast, les jaquettes d'épisodes (`.anniv-hat-sm`) et la grande jaquette de l'écran lecteur
+      - Guirlande de fanions triangulaires sur la même courbe en chaînette que la guirlande de Noël (`#anniv-garland`), qui ondulent légèrement (`anniv-flag-sway`), visible aussi sur l'écran de veille (`z-index:10040`)
+      - Banderole "Joyeux Anniversaire !" / "¡Feliz Cumpleaños!" (texte alterné FR/ES à chaque passage) qui traverse l'écran toutes les 60-90s, style ruban avec pointes + texte en dégradé or (`.gv-gold`, même style que le logo Hechicero) — cachée pendant la veille comme le traîneau de Noël
+      - Garde `getMonth()===10 && getDate()===20` (20 novembre) + override de test `?anniv=1` / `?anniv=0` dans l'URL (`isAnnivActive()`)
+      - Zéro dépendance réseau/CDN, tout inline dans `web/lecteur/index.html`
+      - ⏳ Non testé en conditions réelles sur le Pi par Thomas
+      - Fichier modifié : `web/lecteur/index.html`
 
 - [x] TICKET-102 — bug — Écran de veille et coupure d'écran cassés après l'intégration hardware finale (2026-07-08 → corrigé 2026-07-09)
       - Épisode 1 (2026-07-08 matin) : port HDMI en dur (`HDMI-A-2`) alors que l'écran était sur `HDMI-A-1` après l'intégration → `scripts/screen_dpms.sh` corrigé. Puis rendu Chromium figé (glitch au changement de port) → résolu par relance kiosk
