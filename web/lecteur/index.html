@@ -237,6 +237,7 @@
       gap: 16px;
     }
     .pod-card {
+      position: relative;
       background: var(--surface); border: 1.5px solid var(--border);
       border-radius: 16px; overflow: hidden; cursor: pointer;
       transition: border-color 130ms, transform 130ms;
@@ -254,6 +255,73 @@
       width: 100%; aspect-ratio: 1/1;
       display: flex; align-items: center; justify-content: center;
       background: #120d04;
+    }
+
+    /* ══════════════════════════════ */
+    /* MODE NOËL (TICKET-079)        */
+    /* Actif décembre uniquement (getMonth()===11), override ?noel=1/0.   */
+    /* Zéro dépendance réseau/CDN — tout est inline (CSS/SVG/JS).         */
+    /* ══════════════════════════════ */
+    /* Neige : overlay global (fixed), visible sur tous les écrans y compris l'écran de veille
+       (z-index au-dessus de #sleep-overlay, 9999) */
+    #noel-snow {
+      position: fixed; inset: 0; overflow: hidden;
+      pointer-events: none; z-index: 10050;
+    }
+    .noel-flake {
+      position: absolute; top: -24px;
+      color: #eef6ff; opacity: 0.85; line-height: 1;
+      text-shadow: 0 0 4px rgba(180,220,255,0.6);
+      animation-name: noel-fall;
+      animation-timing-function: linear;
+      animation-iteration-count: infinite;
+      will-change: transform;
+    }
+    @keyframes noel-fall {
+      from { transform: translate3d(0, -24px, 0); }
+      to   { transform: translate3d(var(--drift, 0px), 110vh, 0); }
+    }
+    /* Bonnet de Noël — plus grand, franchement incliné (coin haut-gauche des jaquettes) */
+    .noel-hat {
+      position: absolute; top: 0; left: 0;
+      width: 62px; height: 62px;
+      transform: rotate(-42deg);
+      transform-origin: 65% 65%;
+      pointer-events: none; z-index: 2;
+      filter: drop-shadow(0 2px 4px rgba(0,0,0,.55));
+    }
+    .noel-hat.noel-hat-sm { width: 46px; height: 46px; }
+    /* Traîneau : rennes en tête (x haut, sens du déplacement), traîneau tiré derrière */
+    #noel-sled {
+      position: fixed; top: 8%; left: -340px;
+      width: 320px; pointer-events: none; z-index: 9000;
+      opacity: 0;
+    }
+    #noel-sled.noel-sled-run {
+      animation: noel-sled-fly 10s linear;
+    }
+    @keyframes noel-sled-fly {
+      0%   { opacity: 0; transform: translateX(0); }
+      6%   { opacity: 1; }
+      94%  { opacity: 1; }
+      100% { opacity: 0; transform: translateX(calc(100vw + 340px)); }
+    }
+    /* Guirlande lumineuse — câble en chaînette (cosh) + ampoules clignotantes, en haut de tous
+       les écrans y compris l'écran de veille (z-index au-dessus de #sleep-overlay, 9999) */
+    #noel-garland {
+      position: fixed; top: var(--sb-h); left: 0; right: 0;
+      width: 100%; height: 34px;
+      pointer-events: none; z-index: 10040;
+    }
+    .noel-bulb {
+      filter: drop-shadow(0 0 3px currentColor) drop-shadow(0 0 6px currentColor);
+      animation-name: noel-twinkle;
+      animation-timing-function: ease-in-out;
+      animation-iteration-count: infinite;
+    }
+    @keyframes noel-twinkle {
+      0%, 100% { opacity: 0.4; }
+      50%      { opacity: 1; }
     }
 
     /* ══════════════════════════════ */
@@ -304,6 +372,7 @@
        toute la largeur de la grille 2 colonnes, sinon la marge ne s'aligne pas
        proprement selon la colonne où tombe le changement de saison. */
     .ep-season-divider { grid-column: 1 / -1; height: 14px; }
+    .ep-thumb-wrap { position: relative; flex-shrink: 0; }
     .ep-thumb      { width: 143px; min-width: 143px; height: 143px; object-fit: cover; display: block; flex-shrink: 0; }
     .ep-meta       { flex: 1; min-width: 0; padding: 12px 14px; display: flex; flex-direction: column; justify-content: center; }
     .ep-titre      { font-weight: 600; font-size: 1rem; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
@@ -725,6 +794,70 @@
     <button id="resume-dismiss" class="resume-btn">Plus tard</button>
     <button id="resume-continue" class="resume-btn primary">Reprendre</button>
   </div>
+</div>
+
+<!-- Neige (TICKET-079) — overlay global, flocons injectés en JS -->
+<div id="noel-snow"></div>
+
+<!-- Guirlande lumineuse (TICKET-079) — câble en chaînette (y = cosh(x), x ∈ [-1,1]) + ampoules,
+     tout calculé en JS (initNoelGarland) et injecté dans ces deux groupes. -->
+<svg id="noel-garland" viewBox="0 0 1000 34" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+  <path id="noel-garland-wire" d="" fill="none" stroke="#1c140b" stroke-width="3.5" stroke-linecap="round"/>
+  <path id="noel-garland-wire-hl" d="" fill="none" stroke="#5a4326" stroke-width="1.1" stroke-linecap="round"/>
+  <g id="noel-garland-bulbs"></g>
+</svg>
+
+<!-- Traîneau du Père Noël (TICKET-079) — traverse l'écran de temps en temps.
+     Rennes positionnés devant (x plus grand = sens du déplacement vers la droite),
+     traîneau tiré derrière. -->
+<div id="noel-sled">
+  <svg viewBox="0 0 300 80" xmlns="http://www.w3.org/2000/svg">
+    <!-- poussière magique derrière le traîneau -->
+    <g fill="#f0cc58" opacity=".55">
+      <circle cx="2" cy="52" r="2"/>
+      <circle cx="10" cy="62" r="1.4"/>
+      <circle cx="18" cy="46" r="1.7"/>
+    </g>
+    <!-- traîneau -->
+    <path d="M15 62 Q20 36 55 36 L100 36 Q115 36 115 50 L115 62 Q115 66 108 66 L21 66 Q13 66 15 62 Z"
+          fill="#c8102e" stroke="#8a0a1e" stroke-width="2" stroke-linejoin="round"/>
+    <path d="M4 62 Q10 72 24 62" fill="none" stroke="#8a0a1e" stroke-width="2.5" stroke-linecap="round"/>
+    <path d="M20 40 L98 40" stroke="#f0cc58" stroke-width="1.5" opacity=".8"/>
+    <!-- père noël -->
+    <rect x="68" y="30" width="26" height="20" rx="8" fill="#c8102e" stroke="#8a0a1e" stroke-width="1.5"/>
+    <ellipse cx="81" cy="27" rx="7" ry="5" fill="#ffffff"/>
+    <path d="M73 18 Q81 4 90 15 Z" fill="#c8102e" stroke="#8a0a1e" stroke-width="1.5" stroke-linejoin="round"/>
+    <rect x="71" y="16" width="20" height="6" rx="3" fill="#ffffff"/>
+    <circle cx="90" cy="15" r="3" fill="#ffffff"/>
+    <!-- harnais -->
+    <line x1="115" y1="48" x2="148" y2="48" stroke="#c8a050" stroke-width="2"/>
+    <!-- renne 1 (le plus proche du traîneau) -->
+    <g fill="#2a1e08" stroke="#c8a050" stroke-width="1.5" stroke-linejoin="round">
+      <ellipse cx="165" cy="50" rx="20" ry="11"/>
+      <circle cx="190" cy="38" r="8"/>
+      <ellipse cx="200" cy="40" rx="4" ry="3"/>
+      <rect x="150" y="58" width="3.5" height="16"/>
+      <rect x="160" y="58" width="3.5" height="16"/>
+      <rect x="175" y="58" width="3.5" height="16"/>
+      <rect x="183" y="58" width="3.5" height="16"/>
+    </g>
+    <path d="M193 30 L188 14 M193 30 L198 18 M198 18 L203 12" stroke="#c8a050" stroke-width="1.8" fill="none" stroke-linecap="round"/>
+    <circle cx="203" cy="40" r="2.2" fill="#e24b4a"/>
+    <!-- longe entre les deux rennes -->
+    <line x1="185" y1="48" x2="225" y2="48" stroke="#c8a050" stroke-width="1.5"/>
+    <!-- renne 2 (en tête) -->
+    <g fill="#2a1e08" stroke="#c8a050" stroke-width="1.5" stroke-linejoin="round">
+      <ellipse cx="245" cy="50" rx="20" ry="11"/>
+      <circle cx="270" cy="38" r="8"/>
+      <ellipse cx="280" cy="40" rx="4" ry="3"/>
+      <rect x="230" y="58" width="3.5" height="16"/>
+      <rect x="240" y="58" width="3.5" height="16"/>
+      <rect x="255" y="58" width="3.5" height="16"/>
+      <rect x="263" y="58" width="3.5" height="16"/>
+    </g>
+    <path d="M273 30 L268 14 M273 30 L278 18 M278 18 L283 12" stroke="#c8a050" stroke-width="1.8" fill="none" stroke-linecap="round"/>
+    <circle cx="283" cy="40" r="2.2" fill="#e24b4a"/>
+  </svg>
 </div>
 
 <script>
@@ -1196,6 +1329,133 @@ async function syncNowPlaying() {
 // ═══════════════════════════════════════
 // SCREEN 2 — PODCASTS GRID
 // ═══════════════════════════════════════
+// ═══════════════════════════════════════
+// MODE NOËL (TICKET-079) — décembre uniquement
+// Override de test via l'URL : ?noel=1 (forcer actif) / ?noel=0 (forcer inactif)
+// Aucune dépendance réseau/CDN — tout est inline.
+// ═══════════════════════════════════════
+function isNoelActive() {
+  const override = new URLSearchParams(window.location.search).get('noel');
+  if (override === '1') return true;
+  if (override === '0') return false;
+  return new Date().getMonth() === 11; // décembre
+}
+const NOEL_ACTIVE = isNoelActive();
+
+// Bonnet plus marqué : forme de cône fléchi + gros pompon, incliné via CSS (.noel-hat).
+// noelHatMarkup(sizeClass) permet une variante plus petite pour les jaquettes d'épisodes
+// (.noel-hat-sm, cf. renderChapters) en plus des jaquettes podcast (renderPodcasts).
+function noelHatMarkup(sizeClass) {
+  return `<svg class="noel-hat ${sizeClass || ''}" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+  <path d="M20 78 C15 40 35 8 68 14 C85 17 90 32 78 40 C82 46 80 55 70 56 L28 62 C22 63 20 70 20 78 Z"
+        fill="#d4172f" stroke="#8a0a1e" stroke-width="2.5" stroke-linejoin="round"/>
+  <rect x="10" y="70" width="72" height="20" rx="10" fill="#ffffff" stroke="#d8d8d8" stroke-width="1"/>
+  <circle cx="80" cy="34" r="13" fill="#ffffff" stroke="#d8d8d8" stroke-width="1"/>
+</svg>`;
+}
+const NOEL_HAT_SVG = noelHatMarkup('');
+
+function initNoelSnow() {
+  const container = el('noel-snow');
+  if (!container || container.childElementCount) return;
+  const FLAKES = 34;
+  for (let i = 0; i < FLAKES; i++) {
+    const f = document.createElement('span');
+    f.className = 'noel-flake';
+    f.textContent = '❆';
+    const duration = 8 + Math.random() * 10;
+    f.style.left = (Math.random() * 100) + '%';
+    f.style.fontSize = (10 + Math.random() * 16) + 'px';
+    f.style.setProperty('--drift', (Math.random() * 60 - 30) + 'px');
+    f.style.animationDuration = duration + 's';
+    f.style.animationDelay = '-' + (Math.random() * duration) + 's';
+    container.appendChild(f);
+  }
+}
+
+function initNoelSled() {
+  const sled = el('noel-sled');
+  if (!sled) return;
+  function scheduleNext() {
+    const delay = 60000 + Math.random() * 30000; // 60-90s
+    setTimeout(() => {
+      sled.classList.add('noel-sled-run');
+      sled.addEventListener('animationend', function onEnd() {
+        sled.classList.remove('noel-sled-run');
+        sled.removeEventListener('animationend', onEnd);
+        scheduleNext();
+      });
+    }, delay);
+  }
+  scheduleNext();
+}
+
+// Guirlande lumineuse — câble tendu entre deux points = une chaînette, y = cosh(x)
+// (Thomas s'en souvenait bien). x normalisé entre -1 et 1 sur toute la largeur,
+// y = cosh(x) est minimal au centre (0 → cosh(0)=1, point le plus bas du câble) et
+// maximal aux bords (±1 → cosh(1)≈1.543, points d'accroche) — converti en coordonnées
+// SVG (y vers le bas) puis mis à l'échelle sur la hauteur du viewBox. Hauteur de
+// viewBox volontairement faible (34) par rapport à la largeur (1000) pour un rendu
+// "tendu" plutôt qu'un gros U mou.
+const NOEL_GARLAND_COLORS = ['#3dba6a', '#f5c842', '#f5a623', '#00c8ff', '#e24b4a'];
+const NOEL_GARLAND_W = 1000;
+const NOEL_GARLAND_H = 26; // affaissement max en unités de viewBox (viewBox total: 34)
+
+function noelCatenaryY(xNorm) {
+  const coshMax = Math.cosh(1);
+  return NOEL_GARLAND_H * (coshMax - Math.cosh(xNorm)) / (coshMax - 1);
+}
+function noelCatenaryPoint(xNorm) {
+  return { x: (xNorm + 1) / 2 * NOEL_GARLAND_W, y: noelCatenaryY(xNorm) };
+}
+
+function initNoelGarland() {
+  const bulbsGroup = document.getElementById('noel-garland-bulbs');
+  const wire   = document.getElementById('noel-garland-wire');
+  const wireHl = document.getElementById('noel-garland-wire-hl');
+  if (!bulbsGroup || !wire || bulbsGroup.childElementCount) return;
+
+  // Câble : nombreux points échantillonnés le long de la chaînette, reliés par des
+  // segments (courbe assez plate pour rester lisse même en lignes droites).
+  const SAMPLES = 60;
+  let d = '';
+  for (let i = 0; i < SAMPLES; i++) {
+    const xNorm = -1 + (2 * i) / (SAMPLES - 1);
+    const p = noelCatenaryPoint(xNorm);
+    d += (i === 0 ? 'M' : ' L') + p.x.toFixed(1) + ',' + p.y.toFixed(1);
+  }
+  wire.setAttribute('d', d);
+  if (wireHl) wireHl.setAttribute('d', d);
+
+  // Ampoules : réparties le long de la même courbe, légèrement en retrait des deux
+  // points d'accroche (x = ±1 exactement).
+  const BULBS = 24;
+  for (let i = 0; i < BULBS; i++) {
+    const xNorm = -0.94 + (1.88 * i) / (BULBS - 1);
+    const p = noelCatenaryPoint(xNorm);
+    const c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    c.setAttribute('cx', p.x.toFixed(1));
+    c.setAttribute('cy', p.y.toFixed(1));
+    c.setAttribute('r', 4.5);
+    const color = NOEL_GARLAND_COLORS[i % NOEL_GARLAND_COLORS.length];
+    c.setAttribute('fill', color);
+    c.style.color = color; // pour currentColor dans le filter drop-shadow (glow)
+    c.classList.add('noel-bulb');
+    c.style.animationDuration = (1.6 + Math.random() * 0.9) + 's';
+    c.style.animationDelay = '-' + (Math.random() * 2) + 's';
+    bulbsGroup.appendChild(c);
+  }
+}
+
+// Chapeau sur la grosse jaquette de l'écran lecteur (#art-box, déjà position:relative
+// pour ep-num-badge) — élément statique dans le DOM (le lecteur ne se re-render pas à
+// chaque changement d'épisode), donc une seule insertion à l'init suffit.
+function initNoelPlayerHat() {
+  const box = el('art-box');
+  if (!box || box.querySelector('.noel-hat')) return;
+  box.insertAdjacentHTML('beforeend', noelHatMarkup(''));
+}
+
 function renderPodcasts() {
   const grid = el('pod-grid');
   grid.innerHTML = '';
@@ -1213,7 +1473,7 @@ function renderPodcasts() {
   list.forEach(p => {
     const c = document.createElement('div');
     c.className = 'pod-card';
-    c.innerHTML = `<img src="${p.image}" alt="${p.titre}" loading="lazy" draggable="false"><div class="pod-label">${p.titre}</div>`;
+    c.innerHTML = `<img src="${p.image}" alt="${p.titre}" loading="lazy" draggable="false"><div class="pod-label">${p.titre}</div>${NOEL_ACTIVE ? NOEL_HAT_SVG : ''}`;
     c.addEventListener('click', () => openPodcast(p.id));
     grid.appendChild(c);
   });
@@ -1368,7 +1628,10 @@ function renderChapters() {
     row.className = 'ep-row';
     const fallback = browsedPodcast.image || '';
     row.innerHTML = `
-      <img class="ep-thumb" src="${ch.image || fallback}" onerror="this.onerror=null;this.src='${fallback}'" alt="" loading="lazy" draggable="false">
+      <div class="ep-thumb-wrap">
+        <img class="ep-thumb" src="${ch.image || fallback}" onerror="this.onerror=null;this.src='${fallback}'" alt="" loading="lazy" draggable="false">
+        ${NOEL_ACTIVE ? noelHatMarkup('noel-hat-sm') : ''}
+      </div>
       <div class="ep-meta">
         <div class="ep-titre">${ch.titre}</div>
         <div class="ep-duree">${fmtDur(ch.duree)}</div>
@@ -1895,6 +2158,7 @@ show('home');
 loadParentalConfig();
 loadData();
 initAudioMode();
+if (NOEL_ACTIVE) { initNoelSnow(); initNoelSled(); initNoelGarland(); initNoelPlayerHat(); }
 // Resynchro rapide et globale (pas seulement écran lecteur) — un
 // basculement déclenché ailleurs (bouton physique GPIO) doit se refléter
 // à l'écran quasi instantanément, pas au bout de plusieurs secondes.
