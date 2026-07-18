@@ -142,6 +142,193 @@ mpc add "https://icecast.radiofrance.fr/monpetitfranceinter-midfi.mp3"
 mpc play
 ```
 
+### 6.4 Égaliseur audio (TICKET-030, alsaequal)
+
+✅ **Validé en conditions réelles le 2026-07-18** — cette procédure est celle
+qui a réellement fonctionné après plusieurs incidents en direct (voir
+`docs/90-BACKLOG.md` TICKET-030 pour le récit complet). **Suivre l'ordre
+exact ci-dessous**, deux pièges sinon :
+1. Ne **jamais** pré-créer les fichiers `controls` avec `touch` — un fichier
+   vide fait planter alsaequal en `SIGBUS` (mmap sur fichier de taille 0),
+   et si ça arrive pendant que MPD tourne, **ça peut faire planter MPD
+   lui-même** et griller le disjoncteur anti-boucle de `mpd.socket` (cf.
+   §6.4.1 ci-dessous pour la procédure de récupération si ça arrive quand
+   même).
+2. `www-data` doit être dans le groupe `audio` **avant** de tester la page
+   admin, sinon `Operation not permitted` / `Mixer attach ... error`.
+
+La HiFiBerry Amp4 est un DAC pur, sans égaliseur matériel — traitement
+logiciel via le plugin ALSA "equal" (paquet `libasound2-plugin-equal`),
+suivant le guide officiel HiFiBerry :
+https://www.hifiberry.com/docs/software/guide-adding-equalization-using-alsaeq/
+
+Deux instances **indépendantes** sont nécessaires (une par sortie HP/casque
+existante, cf. §6.1) :
+
+```bash
+sudo apt-get install -y libasound2-plugin-equal
+sudo usermod -aG audio www-data
+sudo systemctl restart apache2
+```
+
+⚠️ **Le paramètre `controls` ci-dessous est indispensable, pas optionnel.**
+Sans lui, alsaequal stocke son état dans `$HOME/.alsaequal.bin` — **par
+utilisateur, pas par instance nommée**. Constaté en conditions réelles :
+`eqhp` et `eqcasque` semblaient partager le même état (régler l'un
+changeait l'autre) simplement parce que tous les tests tournaient sous
+`thomas`, donc les deux écrivaient dans le même fichier. Côté web,
+`www-data` a `$HOME=/var/www` qu'il ne peut pas écrire → `Failed to open
+controls file:/var/www/.alsaequal.bin`. Un `controls` distinct par bloc
+règle les deux problèmes (indépendance réelle + permissions).
+
+Ajouter à `/etc/asound.conf` (noms de cartes à vérifier avec `aplay -l`,
+mêmes noms que §6.1) :
+```
+ctl.eqhp {
+  type equal;
+  controls "/home/thomas/hechicero/data/alsaequal_hp.bin";
+}
+pcm.plugequal_hp {
+  type equal;
+  slave.pcm "plughw:CARD=sndrpihifiberry,DEV=0";
+  controls "/home/thomas/hechicero/data/alsaequal_hp.bin";
+}
+pcm.eqhp {
+  type plug;
+  slave.pcm plugequal_hp;
+}
+
+ctl.eqcasque {
+  type equal;
+  controls "/home/thomas/hechicero/data/alsaequal_casque.bin";
+}
+pcm.plugequal_casque {
+  type equal;
+  slave.pcm "plughw:CARD=Audio,DEV=0";
+  controls "/home/thomas/hechicero/data/alsaequal_casque.bin";
+}
+pcm.eqcasque {
+  type plug;
+  slave.pcm plugequal_casque;
+}
+```
+
+Créer le dossier d'état (mais **PAS** les fichiers eux-mêmes, cf. piège #1
+en tête de §6.4) :
+```bash
+mkdir -p ~/hechicero/data
+```
+
+Modifier `/etc/mpd.conf` (§6.1) pour pointer sur les nouveaux devices
+virtuels au lieu du hardware direct :
+```
+audio_output {
+    type        "alsa"
+    name        "My ALSA Device"
+    device      "eqhp"
+    mixer_type  "software"
+}
+audio_output {
+    type        "alsa"
+    name        "Casque USB"
+    device      "eqcasque"
+    mixer_type  "software"
+}
+```
+
+Puis :
+```bash
+sudo systemctl restart mpd
+mpc status   # doit encore jouer normalement à ce stade
+```
+
+**Laisser alsaequal créer lui-même les deux fichiers d'état** (taille et
+contenu corrects), puis seulement ajuster les permissions :
+```bash
+amixer -D eqhp sset '00. 31 Hz' 50
+amixer -D eqcasque sset '00. 31 Hz' 50
+ls -la ~/hechicero/data/alsaequal_hp.bin ~/hechicero/data/alsaequal_casque.bin   # doit afficher une taille non nulle (~840 octets)
+sudo chgrp audio ~/hechicero/data/alsaequal_hp.bin ~/hechicero/data/alsaequal_casque.bin
+chmod 664 ~/hechicero/data/alsaequal_hp.bin ~/hechicero/data/alsaequal_casque.bin
+groups thomas   # vérifier qu'il est bien membre de audio (sinon: sudo usermod -aG audio thomas)
+```
+
+**Vérifier** (avant de toucher à l'admin web) que les deux instances
+répondent bien indépendamment :
+```bash
+amixer -D eqhp sset '00. 31 Hz' 20
+amixer -D eqcasque sset '00. 31 Hz' 90
+amixer -D eqhp sget '00. 31 Hz'      # doit rester ~20
+amixer -D eqcasque sget '00. 31 Hz'  # doit rester ~90
+```
+
+Noms de contrôle amixer confirmés le 2026-07-18 (paquet
+`libasound2-plugin-equal` 0.6-8+b4, Debian trixie arm64) — préfixe
+numérique + espace avant l'unité, ex. `'00. 31 Hz'`, `'05. 1 kHz'`,
+`'09. 16 kHz'` (déjà à jour dans `BAND_LABELS`, `scripts/audio_eq_apply.py`).
+Si un `apt-get upgrade` change un jour ce format, revérifier avec :
+```bash
+python3 ~/hechicero/scripts/audio_eq_apply.py --list-controls
+```
+
+Réglage manuel de secours (sans passer par l'admin) :
+```bash
+amixer -D eqhp sset '<bande>' <0-100>     # ex: amixer -D eqhp sset '00. 31 Hz' 70
+amixer -D eqcasque sset '<bande>' <0-100>
+```
+⚠️ Ne **pas** utiliser `amixer cset name=...` (interface "raw", incompatible
+avec ces contrôles "simples") ni taper les guillemets à la main sans
+échappement — en bash, `amixer -D eqhp sset '00. 31 Hz' 80` fonctionne
+(les apostrophes sont pour bash, pas pour amixer, ce qui est correct ici
+contrairement à `cset`).
+
+Service qui réapplique les gains sauvegardés à chaque boot (alsaequal ne
+persiste rien lui-même) — cf. `docs/70-SERVICES_SYSTEMD.md` :
+```bash
+sudo cp scripts/audio_eq_apply.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now audio_eq_apply
+```
+
+Réglage au quotidien : page admin dédiée `/admin/audio_eq.php` (mode
+Expert), 10 curseurs × 2 profils (HP/casque), applique en direct sans
+redémarrer MPD.
+
+#### 6.4.1 Récupération si MPD/le socket plante (vécu le 2026-07-18)
+
+Si l'IHM ne répond plus du tout (clics sans effet, `curl
+".../radio.php?action=status"` renvoie `MPD connection failed`), **ce
+n'est pas forcément un bug de l'IHM** — `radio.php` parle à MPD via le
+socket Unix `/run/mpd/socket` (`fsockopen('unix:///run/mpd/socket', ...)`),
+alors que `mpc` en ligne de commande sans `--host` passe par TCP
+(`localhost:6600`) : `mpc status` peut donc sembler fonctionner en SSH
+pendant que l'IHM est en réalité coupée de MPD.
+
+Cause vécue : plusieurs crashs MPD en `SIGBUS` rapprochés (ex. suite à un
+fichier `controls` alsaequal vide, cf. piège #1) font sauter le disjoncteur
+anti-boucle de systemd sur **`mpd.socket`** (pas `mpd.service` — deux
+unités distinctes ici, MPD tourne en activation par socket). Un simple
+`systemctl restart mpd` ne suffit pas : `mpd.socket` reste `failed
+(service-start-limit-hit)` et personne n'écoute plus sur le socket, d'où
+`Connection refused` puis, si le fichier socket est supprimé à la main,
+`No such file or directory`.
+
+Diagnostic :
+```bash
+systemctl status mpd.socket   # chercher "failed" / "service-start-limit-hit"
+```
+
+Récupération (dans cet ordre exact — démarrer `mpd.socket` pendant que
+`mpd.service` tourne déjà donne "Socket service mpd.service already
+active, refusing") :
+```bash
+sudo systemctl stop mpd.service
+sudo systemctl reset-failed mpd.socket
+sudo systemctl start mpd.socket
+systemctl status mpd.socket   # doit afficher "active (listening)"
+curl -s "http://<rpi>/lecteur/radio.php?action=status"   # doit renvoyer du texte MPD, pas une erreur
+```
+
 ---
 
 ## 7. Installation du backend (RSS + batterie)

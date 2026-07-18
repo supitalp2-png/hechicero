@@ -26,6 +26,7 @@ Objectif : garantir un système **robuste**, **prévisible**, **auto‑récupér
 | `buttons_daemon.service` | `scripts/buttons_daemon.service` | Daemon définitif des 9 boutons GPIO (TICKET-091/101) | ✅ |
 | `wifi_watch.service` | `scripts/wifi_watch.service` | Logger diagnostic coupures Wi-Fi (TICKET-109) — TEMPORAIRE | ✅ |
 | `wifi_roam.service` | `scripts/wifi_roam.service` | Roaming auto multi-AP box/répéteur, hors DFS (TICKET-110) | à installer |
+| `audio_eq_apply.service` | `scripts/audio_eq_apply.service` | Réapplique l'égaliseur alsaequal au boot (TICKET-030) | à installer, jamais testé |
 
 > `hechicero-monitor.service` (ancien service batterie basé sur `get_status.py`) — **désactivé session 11**. Remplacé par `battery_tracker.service`. Ne pas réactiver.
 
@@ -573,6 +574,56 @@ tail -f /home/thomas/hechicero/data/wifi_roam.log
 Tourne en root (le scan actif `iw scan` nécessite `CAP_NET_ADMIN`).
 Coexiste sans conflit avec `wifi_watch.service` (lecture seule, pas
 d'action) — les deux peuvent tourner en parallèle.
+
+---
+
+## 7septies. Égaliseur audio — audio_eq_apply (TICKET-030, non testé)
+
+⚠️ **Jamais testé en conditions réelles** — écrit sans accès SSH au Pi. Voir
+`docs/20-SETUP_SYSTEME.md` §6.4 pour la config `asound.conf`/`mpd.conf`
+préalable (obligatoire, sinon ce service n'a rien à faire).
+
+Fichier : `scripts/audio_eq_apply.py` — service : `scripts/audio_eq_apply.service`
+
+alsaequal (plugin ALSA utilisé pour l'égaliseur, cf. §6.4) ne persiste pas
+son état entre deux démarrages — ce service le réapplique une fois au boot
+à partir de `data/audio_eq.json` (écrit par l'admin web
+`/admin/audio_eq.php`). `Type=oneshot` + `RemainAfterExit=yes` : il tourne
+une fois puis reste "actif" pour `systemctl status`, pas un daemon.
+
+```ini
+[Unit]
+Description=Hechicero Audio EQ Apply (alsaequal, TICKET-030)
+After=mpd.service
+Requires=mpd.service
+
+[Service]
+Type=oneshot
+User=thomas
+WorkingDirectory=/home/thomas/hechicero/scripts
+ExecStart=/usr/bin/python3 /home/thomas/hechicero/scripts/audio_eq_apply.py
+RemainAfterExit=yes
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+```
+
+### Installation
+```bash
+sudo cp scripts/audio_eq_apply.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now audio_eq_apply
+```
+
+### Debug
+```bash
+systemctl status audio_eq_apply
+journalctl -u audio_eq_apply
+python3 ~/hechicero/scripts/audio_eq_apply.py --list-controls
+python3 ~/hechicero/scripts/audio_eq_apply.py --dry-run
+```
 
 ---
 

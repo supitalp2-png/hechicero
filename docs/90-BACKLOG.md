@@ -1,7 +1,7 @@
 # Backlog Hechicero
 
 > Convention : `TICKET-### — [type] — Titre — (prio) — owner`
-> Dernière mise à jour : 2026-07-18 (TICKET-017 livré et validé en conditions réelles — export Prometheus + fix bug listened_s négatif dans play_tracker.py ; TICKET-037/047/056 annulés ; TICKET-109 et TICKET-110 roaming clos ; ticket ventilo renuméroté 110→111 pour lever la collision d'ID)
+> Dernière mise à jour : 2026-07-18 (TICKET-030 égaliseur alsaequal livré ET validé en conditions réelles, avec un incident mpd.socket en cours de route — voir §6.4.1 ; TICKET-017 livré et validé ; TICKET-037/047/056 annulés ; TICKET-109 et TICKET-110 roaming clos ; ticket ventilo renuméroté 110→111)
 
 ---
 
@@ -21,14 +21,6 @@
 
 # 🟢 Priorité basse / À décider
 
-- [ ] TICKET-030 — feature — Égaliseur audio paramétrable
-      - Spécifié le 2026-07-03 (pas codé — priorité donnée à TICKET-085) :
-      - Besoin : ajouter un peu de basses / son plus "rond", + clarté (compensation loudness). Deux profils indépendants : HP et casque.
-      - Nouvelle page d'admin dédiée pour régler et sauvegarder les deux profils
-      - Piste technique : le HiFiBerry Amp4 est un DAC pur (pas d'EQ matériel) → plugin ALSA logiciel (type `alsaequal`/LADSPA) inséré entre MPD et la carte son, une chaîne par sortie (HP / casque) dans `/etc/asound.conf` ; `/etc/mpd.conf` doit pointer vers ces devices virtuels au lieu du hardware direct
-      - Loudness : compensation graves/aigus à bas volume (courbe Fletcher-Munson) — vrai loudness dynamique = complexe ; version simplifiée envisagée = preset EQ activé sous un seuil de volume donné
-      - Estimation : ~45 min config système (asound.conf/mpd.conf, hors dépôt, à tester en live comme TICKET-031) + ~45 min page admin + sauvegarde par profil + ~20-30 min pour le loudness simplifié — total ~1h30-2h + itérations d'écoute
-      - ⚠️ Comme pour TICKET-031, la configuration système ne peut être testée qu'en conditions réelles sur le Pi (pas de test à distance possible)
 - [ ] TICKET-046 — UX — Favoris (cœur) accessibles rapidement
 - [ ] TICKET-011 — sec — Durcir unités systemd (`ProtectSystem`, `NoNewPrivileges`)
 - [ ] TICKET-111 — hardware — Ventilateur GPIO/PWM pour dissipation thermique (2026-07-18) (renuméroté depuis TICKET-110, en collision avec le ticket roaming — 2026-07-18)
@@ -94,6 +86,18 @@
         - `hechicero_headphone_seconds_today` à -30.452 (temps d'écoute casque négatif, impossible) : bug pré-existant dans `play_tracker.py`, 3 endroits calculaient `elapsed - open_elapsed_offset` sans le clamp à 0 déjà présent ailleurs dans le fichier (cas typique : repeat/single qui boucle sur le même fichier, l'`elapsed` MPD retombe à ~0 avant que l'event de bouclage soit traité par le tracker → `listened_s` négatif écrit tel quel en base). Ce bug corrompait déjà silencieusement le dashboard fatigue auditive existant (`dashboard.php`/`tracking.php`), pas seulement ce nouvel export. Fix : `max(0.0, ...)` aux 3 endroits (heartbeat, mixer-only, fermeture de session) + défense en profondeur `MAX(0, ...)` dans la requête SQL de `metrics.php`. Confirmé après fix : `16.913`
         - Correctif ponctuel donné à Thomas pour les lignes déjà corrompues en base : `sqlite3 data/tracking.db "UPDATE play_events SET listened_s = 0 WHERE listened_s < 0;"`
       - Fichiers modifiés : `web/metrics.php` (créé), `scripts/play_tracker.py` (fix clamp)
+
+- [x] TICKET-030 — feature — Égaliseur audio paramétrable (2026-07-18)
+      - Décisions prises avec Thomas avant codage (cf. [[project_hechicero_ticket030_eq]] en mémoire) : scope complet (page admin dédiée + 2 profils indépendants HP/casque), moteur **alsaequal** (plugin ALSA/LADSPA, `libasound2-plugin-equal` — solution native recommandée par HiFiBerry elle-même pour ce matériel, cf. guide officiel https://www.hifiberry.com/docs/software/guide-adding-equalization-using-alsaeq/), granularité **10 bandes natives** (31Hz→16kHz, pas de regroupement en 3 curseurs)
+      - Config système : deux instances alsaequal indépendantes dans `/etc/asound.conf` (`ctl.eqhp`/`ctl.eqcasque`, chacune enroulant respectivement `hw:CARD=sndrpihifiberry` et `hw:CARD=Audio`), `mpd.conf` pointé sur ces devices virtuels au lieu du hardware direct — détail complet et **validé** dans `docs/20-SETUP_SYSTEME.md` §6.4
+      - `scripts/audio_eq_apply.py` : lit `data/audio_eq.json` (gains en dB, -12..+12, par bande × par profil) et les applique via `amixer -D eqhp/eqcasque sset ...` — nécessaire car alsaequal ne persiste rien entre deux boots. `scripts/audio_eq_apply.service` réapplique au démarrage
+      - `web/admin/audio_eq.php` (page Expert) : 2 onglets HP/casque, 10 curseurs verticaux par onglet, 4 préréglages pré-chargeables (Plat, Basses renforcées, Voix claire, Chaud et rond)
+      - Loudness (compensation Fletcher-Munson à bas volume) **non implémenté** — hors du scope décidé avec Thomas, à traiter séparément si besoin
+      - ✅ **Validé en conditions réelles le 2026-07-18 — Thomas confirme : "l'équaliseur change vraiment, le son est agréable !"**. Trois bugs réels trouvés et corrigés en direct sur le Pi (post-mortem complet dans `docs/20-SETUP_SYSTEME.md` §6.4 et §6.4.1, à relire avant de retoucher cette config) :
+        1. **Noms de contrôle amixer** : pas `31Hz` comme deviné, mais `'00. 31 Hz'` (préfixe numérique + espace) — confirmé via `--list-controls`, corrigé dans `BAND_LABELS`. `cset name=...` (interface raw) ne fonctionne pas sur ces contrôles "simples" → `sset` obligatoire
+        2. **"Indépendance" cassée par un détail alsaequal non documenté ailleurs** : par défaut alsaequal stocke son état dans `$HOME/.alsaequal.bin` (par utilisateur, pas par ctl nommé) — `eqhp`/`eqcasque` semblaient partager leur état car tous les tests tournaient sous `thomas`. Fix : paramètre `controls` avec un chemin distinct par instance (`data/alsaequal_hp.bin`/`data/alsaequal_casque.bin`) — réglé ce même problème ET l'erreur de permission `www-data` (qui a `$HOME=/var/www`, non inscriptible) d'un coup. `www-data` ajouté au groupe `audio`
+        3. **Incident en cascade** : pré-créer les fichiers `controls` avec `touch` (fichier vide) fait planter alsaequal en `SIGBUS` — arrivé pendant que MPD tournait, ce qui a fait planter MPD 3× en rafale et grillé le disjoncteur anti-boucle de l'unité systemd **`mpd.socket`** (distincte de `mpd.service`, activation par socket). L'IHM tactile a été inutilisable ~20 min (`radio.php` parle à MPD via `/run/mpd/socket`, contrairement à `mpc` en CLI qui passe par TCP et semblait donc fonctionner) — récupéré via `systemctl reset-failed mpd.socket` + séquence stop/start précise, procédure documentée en §6.4.1 pour la prochaine fois
+      - Fichiers créés : `web/admin/audio_eq.php`, `scripts/audio_eq_apply.py`, `scripts/audio_eq_apply.service` ; modifiés : `web/index.php`, `web/dashboard.php`, `web/admin/battery_dashboard.php` (nav), `.gitignore` (`data/audio_eq.json`), `docs/20-SETUP_SYSTEME.md`, `docs/70-SERVICES_SYSTEMD.md`
 
 - [x] TICKET-102 — bug — Écran de veille et coupure d'écran cassés après l'intégration hardware finale (2026-07-08 → corrigé 2026-07-09)
       - Épisode 1 (2026-07-08 matin) : port HDMI en dur (`HDMI-A-2`) alors que l'écran était sur `HDMI-A-1` après l'intégration → `scripts/screen_dpms.sh` corrigé. Puis rendu Chromium figé (glitch au changement de port) → résolu par relance kiosk

@@ -29,6 +29,7 @@ prompts/
 data/battery_stats.json
 data/battery_history.json
 data/last_session.json
+data/audio_eq.json
 data/tracking.db
 data/tracking.db-shm
 data/tracking.db-wal

@@ -1,0 +1,16 @@
+[Unit]
+Description=Hechicero Audio EQ Apply (alsaequal, TICKET-030)
+After=mpd.service
+Requires=mpd.service
+
+[Service]
+Type=oneshot
+User=thomas
+WorkingDirectory=/home/thomas/hechicero/scripts
+ExecStart=/usr/bin/python3 /home/thomas/hechicero/scripts/audio_eq_apply.py
+RemainAfterExit=yes
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

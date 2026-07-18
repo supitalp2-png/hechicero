@@ -775,6 +775,9 @@ input:checked + .slider:before { transform:translateX(20px); }
       <a class="ha-btn expert-only" href="/admin/backup_dashboard.php" title="Visible seulement en mode Expert">
         <span class="ha-btn-icon">💾</span> Sauvegardes
       </a>
+      <a class="ha-btn expert-only" href="/admin/audio_eq.php" title="Visible seulement en mode Expert">
+        <span class="ha-btn-icon">🎚️</span> Audio
+      </a>
       <a class="ha-btn" href="/lecteur/" target="_blank" title="Ouvrir le lecteur enfant">
         <span class="ha-btn-icon">📻</span> Lecteur
       </a>
