@@ -14,9 +14,12 @@ bouton, gauche à droite sur la tranche supérieure du boîtier réel) :
   GPIO12 → play/pause
   GPIO27 → suivant (tap) / avance de SEEK_STEP_S s dans l'épisode (maintien)
   GPIO5  → volume + (maintien = répétition)
-  GPIO16 → réserve, pas de fonction pour l'instant
-  GPIO23 → favori (bouton isolé, emplacement antenne) — pas encore câblé côté
-           logiciel, TICKET-046 (fonctionnalité favoris) jamais codée
+  GPIO16 → favori (TICKET-046, tap = bascule le favori sur l'épisode en
+           cours / maintien = ouvre l'écran dédié favoris) — GPIO confirmé le
+           2026-07-19 via ce daemon en mode identification
+  GPIO23 → bouton isolé, emplacement antenne — réserve, PAS le favori
+           (explicitement écarté par Thomas le 2026-07-19), usage futur à
+           définir
   GPIO6  → non câblé à un bouton (broche libre inutilisée)
 
 Boutons "tap ou maintien" (2026-07-08, GPIO17/27) : un appui bref garde le
@@ -191,18 +194,37 @@ def handle_vol_down(pin: int) -> None:
     LOGGER.info("Volume - (GPIO%s) — réponse radio.php : %s", pin, result)
 
 
+def handle_favori_toggle(pin: int) -> None:
+    """Tap court sur le bouton favori (GPIO16, TICKET-046) — bascule le
+    favori sur l'épisode en cours d'écoute (action=toggle_favori, résolu côté
+    serveur à partir du fichier réellement joué par MPD, même principe que
+    next_episode/prev_episode). Sans effet sur une webradio ou si rien ne
+    joue : radio.php répond ok:false, pas une erreur en soi."""
+    result = http_get("action=toggle_favori")
+    LOGGER.info("Favori bascule (GPIO%s) — réponse radio.php : %s", pin, result)
+
+
+def handle_favori_screen(pin: int) -> None:
+    """Maintien du bouton favori (GPIO16, TICKET-046) — demande l'ouverture
+    de l'écran dédié favoris côté IHM tactile. Pas de canal direct entre ce
+    daemon et le navigateur : on écrit juste la demande (action=request_screen,
+    data/ui_request.json horodaté), c'est index.html qui la consomme par
+    polling."""
+    result = http_get("action=request_screen&screen=favoris")
+    LOGGER.info("Demande écran favoris (GPIO%s) — réponse radio.php : %s", pin, result)
+
+
 # Dispatch par broche. Les broches absentes de ce dict tombent sur
 # handle_unassigned via .get(pin, handle_unassigned) dans la boucle.
 #
 # Mapping confirmé le 2026-07-08 (test bouton par bouton, gauche à droite) —
 # voir docstring du module pour le détail complet par position physique.
-# GPIO17 et GPIO27 (précédent/suivant) n'utilisent PAS ce dict : ce sont des
-# boutons "tap ou maintien" (TAP_OR_HOLD ci-dessous), dispatchés à part.
-# GPIO16 (dernier bouton de la ligne) et GPIO23 (bouton isolé, emplacement
-# antenne, destiné au favori) restent volontairement en handle_unassigned :
-# GPIO16 est une vraie réserve ("on verra plus tard ce qu'on en fait", Thomas
-# 2026-07-08) ; GPIO23/favori attend TICKET-046 (fonctionnalité jamais codée
-# dans l'app — pas de champ côté serveur à faire basculer).
+# GPIO17, GPIO27 (précédent/suivant) et GPIO16 (favori, TICKET-046)
+# n'utilisent PAS ce dict : ce sont des boutons "tap ou maintien"
+# (TAP_OR_HOLD ci-dessous), dispatchés à part.
+# GPIO23 (bouton isolé, emplacement antenne) reste volontairement en
+# handle_unassigned : réserve, explicitement écartée du favori par Thomas le
+# 2026-07-19, usage futur pas encore défini.
 HANDLERS = {
     25: handle_hp_casque,   # source
     13: handle_vol_down,
@@ -224,9 +246,14 @@ RELEASE_CONFIRM_S = 0.05  # HIGH doit tenir ce temps pour confirmer un vrai rel�
 # recule de quelques secondes DANS l'épisode en cours à la place (best
 # practice podcast : pas fixe de progression, EN SECONDES, jamais en % de la
 # durée — un % serait incohérent d'un épisode de 5 min à un de 2h).
+# GPIO16 (favori, TICKET-046) rejoint ce dict le 2026-07-19 : tap = bascule
+# le favori, maintien = ouvre l'écran dédié favoris. Même hystérésis de
+# relâchement que next/précédent (RELEASE_CONFIRM_S), pas de raison de
+# dupliquer une logique dédiée.
 TAP_OR_HOLD = {
     27: (handle_next, handle_seek_forward),
     17: (handle_prev, handle_seek_back),
+    16: (handle_favori_toggle, handle_favori_screen),
 }
 HOLD_THRESHOLD_S = 0.4   # durée d'appui à partir de laquelle on bascule tap -> maintien
 SEEK_STEP_S = 5          # secondes avancées/reculées à chaque à-coup pendant le maintien

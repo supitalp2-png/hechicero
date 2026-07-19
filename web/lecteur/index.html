@@ -225,6 +225,34 @@
       border-radius: 6px; letter-spacing: -1px;
       pointer-events: none; backdrop-filter: blur(3px);
     }
+    /* Favoris (TICKET-046) — cœur qui se colle sur la jaquette/icône de
+       l'épisode mis en favori. Caché par défaut, affiché via .is-fav posé
+       sur le conteneur (.ep-thumb-wrap ou #art-box, tous deux déjà en
+       position:relative). Pas de son, confirmé par Thomas. Le petit "pop"
+       (favPop) ne rejoue que quand .is-fav passe de absent à présent — un
+       simple classList.toggle() qui ne change rien (déjà favori) ne remet
+       pas l'animation à zéro, donc pas de à-coup au polling périodique
+       (fetchFavoris, toutes les 4s).*/
+    .fav-heart {
+      position: absolute; top: 8px; left: 8px;
+      width: 46px; height: 46px; border-radius: 50%;
+      background: rgba(0,0,0,0.45); backdrop-filter: blur(3px);
+      display: none; align-items: center; justify-content: center;
+      font-size: 26px; line-height: 1; color: #ff5577;
+      text-shadow: 0 0 8px rgba(255,85,119,0.85);
+      pointer-events: none;
+    }
+    .is-fav .fav-heart {
+      display: flex;
+      animation: favPop 600ms cubic-bezier(.34,1.56,.64,1);
+    }
+    #art-box .fav-heart { width: 68px; height: 68px; font-size: 38px; top: 12px; left: 12px; }
+    @keyframes favPop {
+      0%   { transform: scale(0) rotate(-20deg);  opacity: 0; }
+      45%  { transform: scale(1.35) rotate(10deg); opacity: 1; }
+      70%  { transform: scale(0.88) rotate(-5deg); }
+      100% { transform: scale(1) rotate(0deg); }
+    }
     .flag-svg { width: 120px; height: 80px; border-radius: 8px; overflow: hidden; }
     .flag-svg svg { width: 100%; height: 100%; display: block; }
 
@@ -417,12 +445,14 @@
     /* ══════════════════════════════ */
     .radio-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; width: 100%; box-sizing: border-box; }
     .radio-row {
+      position: relative;
       display: flex; align-items: center; gap: 14px;
       background: var(--surface); border: 1.5px solid var(--border);
       border-radius: 14px; padding: 12px 14px;
       min-height: 80px; cursor: pointer;
       transition: border-color 120ms;
     }
+    .radio-row .fav-heart { width: 26px; height: 26px; font-size: 15px; top: 4px; left: 4px; }
     .radio-row:hover { border-color: var(--accent-radio); }
     .radio-dot {
       width: 10px; height: 10px; border-radius: 50%;
@@ -615,9 +645,10 @@
     /* ══════════════════════════════ */
     #rp-inner { flex: 1; display: flex; min-height: calc(100vh - var(--sb-h)); align-items: center; }
     .rp-art-box {
-      width: 100%; max-width: 310px;
+      position: relative; width: 100%; max-width: 310px;
       aspect-ratio: 1/1; border-radius: 16px; overflow: hidden;
     }
+    .rp-art-box .fav-heart { width: 68px; height: 68px; font-size: 38px; top: 12px; left: 12px; }
     .rp-art-box img { width: 100%; height: 100%; object-fit: cover; display: block; }
     .rp-art-fallback {
       width: 100%; height: 100%;
@@ -766,6 +797,19 @@
   </div>
 
   <!-- ─────────────────────────────── -->
+  <!-- SCREEN — FAVORIS (TICKET-046)  -->
+  <!-- ─────────────────────────────── -->
+  <div class="screen has-sb hidden" id="favoris">
+    <div class="s-header">
+      <button class="btn-back" id="back-favoris"><span class="chev">‹</span>Accueil</button>
+      <span class="s-title">Mes préférés</span>
+    </div>
+    <div class="s-body">
+      <div id="fav-list" class="ep-list"></div>
+    </div>
+  </div>
+
+  <!-- ─────────────────────────────── -->
   <!-- SCREEN 4 — LECTEUR             -->
   <!-- ─────────────────────────────── -->
   <div class="screen has-sb hidden" id="player">
@@ -781,6 +825,7 @@
             <div class="ov-icon" id="ov-icon">▶</div>
           </div>
           <span class="ep-num-badge" id="ep-num-badge"></span>
+          <span class="fav-heart">♥</span>
         </div>
       </div>
       <!-- Controls -->
@@ -821,9 +866,10 @@
     <div id="rp-inner">
       <!-- Left: station image -->
       <div class="art-wrap">
-        <div class="rp-art-box">
+        <div class="rp-art-box" id="rp-art-box">
           <img id="rp-art" src="" alt=""
             onerror="this.style.display='none';document.getElementById('rp-art-fallback').style.display='flex'">
+          <span class="fav-heart">♥</span>
           <div id="rp-art-fallback" class="rp-art-fallback" style="display:none">
             <svg width="110" height="110" viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
               <line x1="40" y1="8" x2="27" y2="28" stroke="#c8a050" stroke-width="2.5" stroke-linecap="round"/>
@@ -847,7 +893,12 @@
         <div class="rp-name" id="rp-name"></div>
         <div class="rp-desc" id="rp-desc"></div>
         <div class="ctrl-btns">
+          <!-- Précédent/suivant — cachés par défaut, affichés seulement en
+               navigation au sein des favoris (TICKET-046, favNavQueue) : une
+               webradio browsée normalement n'a pas de notion de "suivante". -->
+          <button class="btn-prev hidden" id="rp-btn-prev">⏮</button>
           <button class="btn-pp" id="rp-btn-pp">⏸</button>
+          <button class="btn-next hidden" id="rp-btn-next">⏭</button>
         </div>
         <div class="vol-row">
           <button class="btn-vol btn-vol-down" id="rp-vd">🔉 −</button>
@@ -973,7 +1024,7 @@
 // ═══════════════════════════════════════
 const el = id => document.getElementById(id);
 
-const ALL_SCREENS = ['home','podcasts','radio-catalog','chapters','player','radio-player'];
+const ALL_SCREENS = ['home','podcasts','radio-catalog','chapters','favoris','player','radio-player'];
 function show(id) {
   currentScreen = id;
   ALL_SCREENS.forEach(s => el(s).classList.add('hidden'));
@@ -1100,6 +1151,27 @@ let batterySnapshot = null;
 let activeBatteryAlertKey = null;
 let pendingResumeTarget = null;
 let resumePromptLoaded = false;
+
+// Favoris (TICKET-046) — Set de clés "podcastId/episodeId" pour un lookup
+// O(1) au rendu des badges cœur. LAST_FAVORIS_LIST garde la version enrichie
+// (titre/image/podcast) pour l'écran dédié, évite un aller-retour serveur
+// supplémentaire entre fetchFavoris() et renderFavoris().
+let FAVORIS_SET = new Set();
+let LAST_FAVORIS_LIST = [];
+let lastUiRequestTs = null;
+
+// Navigation "au sein des favoris" (dernière évolution TICKET-046) — quand
+// un morceau ou une webradio est lancé depuis l'écran favoris, suivant/
+// précédent doivent naviguer dans CETTE liste plutôt que dans le podcast
+// d'origine (ou pas du tout, pour une webradio hors de ce contexte, qui n'a
+// normalement pas de notion de suivant/précédent). favNavQueue = snapshot de
+// LAST_FAVORIS_LIST au moment du clic (ordre stable pendant la navigation,
+// même si la liste réelle change entre-temps) ; remis à null dès qu'on
+// relance quelque chose depuis un écran normal (chapitres, catalogue radio).
+// Ne concerne que les boutons suivant/précédent À L'ÉCRAN — les boutons
+// physiques GPIO gardent leur comportement actuel (scope podcast uniquement).
+let favNavQueue = null;
+let favNavIdx = -1;
 
 function applyBatteryStats(stats) {
   const pct = stats.current_level ?? stats.percent ?? stats.battery_percent ?? null;
@@ -1257,6 +1329,192 @@ async function checkResumePrompt() {
   } catch (_) {}
 }
 
+// ═══════════════════════════════════════
+// FAVORIS (TICKET-046)
+// ═══════════════════════════════════════
+// Format de clé aligné sur favori_key() côté radio.php — préfixé par type
+// ("episode:podcastId/episodeId" ou "radio:radioId") pour que les deux
+// espaces de noms ne puissent jamais entrer en collision.
+function episodeFavKey(podcastId, episodeId) { return 'episode:' + podcastId + '/' + episodeId; }
+function radioFavKey(radioId) { return 'radio:' + radioId; }
+
+function isFavoriEpisode(podcastId, episodeId) {
+  return FAVORIS_SET.has(episodeFavKey(podcastId, episodeId));
+}
+
+function isFavoriRadio(radioId) {
+  return FAVORIS_SET.has(radioFavKey(radioId));
+}
+
+// Applique/retire la classe .is-fav sur tous les éléments déjà rendus qui
+// portent un data-fav-key (jaquette lecteur, lignes de la liste d'épisodes,
+// écran favoris) — évite de devoir re-render toute la liste juste pour
+// rafraîchir un cœur après un appui sur le bouton physique.
+function applyFavoriBadges() {
+  document.querySelectorAll('[data-fav-key]').forEach(node => {
+    node.classList.toggle('is-fav', FAVORIS_SET.has(node.dataset.favKey));
+  });
+}
+
+async function fetchFavoris() {
+  try {
+    const r = await fetch('/lecteur/radio.php?action=get_favoris', { cache: 'no-store' });
+    const d = await r.json();
+    if (!d.ok) return;
+    LAST_FAVORIS_LIST = d.favoris || [];
+    // f.key vient tel quel du serveur (déjà au bon format préfixé par
+    // type) — pas de reconstruction côté client, une seule source de vérité
+    // pour le format de clé.
+    FAVORIS_SET = new Set(LAST_FAVORIS_LIST.map(f => f.key));
+    applyFavoriBadges();
+  } catch (_) {}
+}
+
+function renderFavoris() {
+  const list = el('fav-list');
+  list.innerHTML = '';
+  if (!LAST_FAVORIS_LIST.length) {
+    list.innerHTML = '<div style="padding:12px;color:var(--muted)">Pas encore de favoris — appuie sur le bouton ♥ pendant une histoire que tu adores !</div>';
+    return;
+  }
+  LAST_FAVORIS_LIST.forEach(f => {
+    const row = document.createElement('div');
+    row.className = 'ep-row';
+    row.innerHTML = `
+      <div class="ep-thumb-wrap is-fav" data-fav-key="${f.key}">
+        <img class="ep-thumb" src="${f.image || ''}" alt="" loading="lazy" draggable="false">
+        <span class="fav-heart">♥</span>
+      </div>
+      <div class="ep-meta">
+        <div class="ep-titre">${f.titre}</div>
+        <div class="ep-duree">${f.podcast_titre}</div>
+      </div>`;
+    row.addEventListener('click', () => {
+      favNavQueue = LAST_FAVORIS_LIST.slice();
+      favNavIdx = favNavQueue.findIndex(x => x.key === f.key);
+      playFavItem(f);
+    });
+    list.appendChild(row);
+  });
+}
+
+async function openFavoris() {
+  await fetchFavoris();
+  renderFavoris();
+  show('favoris');
+}
+
+// Montre/cache les boutons précédent/suivant du lecteur radio — inexistants
+// avant cette évolution (une webradio browsée normalement n'a pas de notion
+// de "suivant"), affichés seulement en navigation favoris.
+function updateFavNavButtons() {
+  const active = !!favNavQueue;
+  el('rp-btn-prev').classList.toggle('hidden', !active);
+  el('rp-btn-next').classList.toggle('hidden', !active);
+}
+
+// Lance un élément de favNavQueue (épisode ou webradio) — factorisé pour
+// être appelé aussi bien au clic initial sur l'écran favoris qu'au
+// suivant/précédent pendant la navigation dans cette liste.
+function playFavItem(f) {
+  updateFavNavButtons();
+  syncNavContextToServer(); // pour que le bouton physique reprenne au bon endroit ensuite
+  if (f.type === 'radio') {
+    const lang = (STATIONS.fr.find(s => s.url === f.url)) ? 'fr' : 'es';
+    const station = (STATIONS[lang] || []).find(s => s.url === f.url) || { id: f.radio_id, name: f.titre, url: f.url, image: f.image, desc: '' };
+    openRadioPlayer(station);
+    return;
+  }
+  const podcast = DATA?.podcasts?.find(p => p.id === f.podcast_id);
+  if (!podcast) return;
+  const items = getDisplayItems(podcast);
+  const idx = items.findIndex(ch => ch.id === f.episode_id);
+  if (idx < 0) return;
+  currentPodcast = podcast;
+  playTrack(idx);
+}
+
+// Pousse le contexte de navigation favoris côté serveur (data/nav_context.json)
+// — nécessaire pour que le bouton physique GPIO17/27 (qui appelle
+// next_episode/prev_episode directement, sans passer par ce JS) sache lui
+// aussi qu'on navigue dans les favoris plutôt que dans le podcast d'origine.
+// Sans ça, seul le tap écran aurait le comportement demandé.
+async function syncNavContextToServer() {
+  try {
+    if (!favNavQueue || favNavIdx < 0 || !favNavQueue[favNavIdx]) {
+      await fetch('/lecteur/radio.php?action=set_nav_context&mode=normal', { cache: 'no-store' });
+      return;
+    }
+    const params = new URLSearchParams();
+    params.set('action', 'set_nav_context');
+    params.set('mode', 'favoris');
+    params.set('active', favNavQueue[favNavIdx].key);
+    favNavQueue.forEach(f => params.append('keys[]', f.key));
+    await fetch('/lecteur/radio.php?' + params.toString(), { cache: 'no-store' });
+  } catch (_) {}
+}
+
+// Resynchronise favNavQueue/favNavIdx à partir de ce que le serveur renvoie
+// (now_playing) — nécessaire dans l'autre sens : si c'est le bouton
+// PHYSIQUE qui a avancé dans les favoris, ce JS doit le savoir pour que les
+// boutons à l'écran (et rp-btn-prev/next) continuent correctement depuis
+// cette position. Reconstruit les objets complets à partir de
+// LAST_FAVORIS_LIST (déjà tenu à jour par fetchFavoris, 1s) plutôt que de
+// dupliquer ici la logique d'enrichissement de get_favoris.
+function syncFavNavFromServer(d) {
+  if (d.nav_mode === 'favoris' && Array.isArray(d.nav_keys) && d.nav_keys.length) {
+    const queue = d.nav_keys.map(k => LAST_FAVORIS_LIST.find(f => f.key === k)).filter(Boolean);
+    if (queue.length === d.nav_keys.length) {
+      favNavQueue = queue;
+      favNavIdx = queue.findIndex(f => f.key === d.nav_active);
+    }
+  } else if (d.nav_mode === 'normal' && favNavQueue) {
+    favNavQueue = null;
+    favNavIdx = -1;
+  }
+  updateFavNavButtons();
+}
+
+// Resynchronise l'affichage du lecteur radio sans relancer la lecture (déjà
+// en cours) — utilisé quand le bouton physique navigue vers une webradio
+// pendant la navigation favoris, cf. syncNowPlaying().
+function syncRadioDisplay(radioId, titre) {
+  const station = (STATIONS.fr || []).find(s => s.id === radioId) || (STATIONS.es || []).find(s => s.id === radioId) || null;
+  currentPodcast = null;
+  currentIdx = -1;
+  currentStation = station || { id: radioId, name: titre || '', url: '', image: '', desc: '' };
+
+  if (station?.image) {
+    el('rp-art').style.display = 'block';
+    el('rp-art-fallback').style.display = 'none';
+    el('rp-art').src = station.image;
+    el('rp-art').alt = station.name;
+  }
+  el('rp-name').textContent = currentStation.name;
+  el('rp-desc').textContent = currentStation.desc || '';
+
+  const favKey = radioFavKey(radioId);
+  el('rp-art-box').dataset.favKey = favKey;
+  el('rp-art-box').classList.toggle('is-fav', FAVORIS_SET.has(favKey));
+}
+
+// Bouton favori GPIO16 (maintien) — écrit une demande d'ouverture d'écran
+// côté serveur (data/ui_request.json), pas de canal direct process Python ->
+// navigateur. lastUiRequestTs === null sert de garde au tout premier poll :
+// évite qu'une vieille demande déjà présente au démarrage (avant reboot,
+// etc.) ne rouvre l'écran favoris tout seule au chargement de la page.
+async function pollUiRequest() {
+  try {
+    const r = await fetch('/lecteur/radio.php?action=get_ui_request', { cache: 'no-store' });
+    const d = await r.json();
+    if (lastUiRequestTs === null) { lastUiRequestTs = d.ts || 0; return; }
+    if (d.ts && d.ts !== lastUiRequestTs) {
+      lastUiRequestTs = d.ts;
+      if (d.screen === 'favoris') openFavoris();
+    }
+  } catch (_) {}
+}
+
 async function loadParentalConfig() {
   try {
     const r = await fetch('/lecteur/radio.php?action=parental_status');
@@ -1409,7 +1667,23 @@ async function syncNowPlaying() {
   try {
     const r = await fetch('/lecteur/radio.php?action=now_playing', { cache: 'no-store' });
     const d = await r.json();
-    if (!d.ok || !DATA) return; // webradio en cours, MPD à l'arrêt, etc.
+    if (!d.ok || !DATA) return; // rien de reconnu en cours, MPD à l'arrêt, etc.
+
+    // Contexte favoris (TICKET-046) — dans les deux sens : que le suivant/
+    // précédent ait été déclenché par le bouton physique ou par ce JS, les
+    // deux doivent finir d'accord sur où on en est dans la liste.
+    syncFavNavFromServer(d);
+
+    if (d.type === 'radio') {
+      if (currentStation?.id === d.radio_id) return; // déjà synchro
+      syncRadioDisplay(d.radio_id, d.titre);
+      // Ne bascule l'écran que si on est déjà sur un des deux écrans de
+      // lecture (jamais depuis un écran de navigation/menu) — évite
+      // d'arracher l'enfant d'un écran qu'il est en train de parcourir.
+      if (currentScreen === 'player' || currentScreen === 'radio-player') show('radio-player');
+      return;
+    }
+
     if (currentPodcast?.id === d.podcast_id && currentIdx === d.idx) return; // déjà synchro
 
     const podcast = DATA.podcasts?.find(p => p.id === d.podcast_id);
@@ -1430,6 +1704,14 @@ async function syncNowPlaying() {
     el('t-total').textContent         = fmtDur(ch.duree);
     const epMatch = ch.titre && ch.titre.match(/\b(\d+)\b/);
     el('ep-num-badge').textContent = epMatch ? epMatch[1] : String(d.idx + 1);
+
+    // Cœur favori (TICKET-046) — piste changée par un bouton physique
+    // (next/précédent), même resynchro que le reste de cet écran.
+    const favKey = episodeFavKey(podcast.id, ch.id);
+    el('art-box').dataset.favKey = favKey;
+    el('art-box').classList.toggle('is-fav', FAVORIS_SET.has(favKey));
+
+    if (currentScreen === 'player' || currentScreen === 'radio-player') show('player');
   } catch (_) {}
 }
 
@@ -1741,15 +2023,21 @@ async function openRadioCatalog() {
   list.innerHTML = '';
   (STATIONS[lang] || []).forEach(st => {
     const row = document.createElement('div');
-    row.className = 'radio-row';
+    const favKey = radioFavKey(st.id);
+    row.className = 'radio-row' + (FAVORIS_SET.has(favKey) ? ' is-fav' : '');
+    row.dataset.favKey = favKey;
     row.innerHTML = `
       <img class="radio-thumb" src="${st.image || ''}" onerror="this.style.display='none'" alt="${st.name}" loading="lazy" draggable="false">
       <div class="radio-info">
         <div class="radio-name">${st.name}</div>
         <div class="radio-desc">${st.desc}</div>
       </div>
-      <span class="radio-dot"></span>`;
-    row.addEventListener('click', () => openRadioPlayer(st));
+      <span class="radio-dot"></span>
+      <span class="fav-heart">♥</span>`;
+    row.addEventListener('click', () => {
+      favNavQueue = null; favNavIdx = -1; updateFavNavButtons(); syncNavContextToServer(); // quitte la navigation favoris (voir plus haut)
+      openRadioPlayer(st);
+    });
     list.appendChild(row);
   });
   show('radio-catalog');
@@ -1768,6 +2056,12 @@ function openRadioPlayer(st) {
   img.alt = st.name;
   el('rp-name').textContent = st.name;
   el('rp-desc').textContent = st.desc;
+
+  // Cœur favori (TICKET-046) — favori de la station elle-même, pas d'un
+  // épisode (une webradio n'en a pas).
+  const rpFavKey = radioFavKey(st.id);
+  el('rp-art-box').dataset.favKey = rpFavKey;
+  el('rp-art-box').classList.toggle('is-fav', FAVORIS_SET.has(rpFavKey));
 
   if (!alreadySelected) {
     // Nouvelle station : état optimiste ⏸ immédiat, MPD démarre en arrière-plan
@@ -1854,17 +2148,20 @@ function renderChapters() {
     const row = document.createElement('div');
     row.className = 'ep-row';
     const fallback = browsedPodcast.image || '';
+    const favKey = episodeFavKey(browsedPodcast.id, ch.id);
     row.innerHTML = `
-      <div class="ep-thumb-wrap">
+      <div class="ep-thumb-wrap ${FAVORIS_SET.has(favKey) ? 'is-fav' : ''}" data-fav-key="${favKey}">
         <img class="ep-thumb" src="${ch.image || fallback}" onerror="this.onerror=null;this.src='${fallback}'" alt="" loading="lazy" draggable="false">
         ${NOEL_ACTIVE ? noelHatMarkup('noel-hat-sm') : ''}
         ${ANNIV_ACTIVE ? annivHatMarkup('anniv-hat-sm') : ''}
+        <span class="fav-heart">♥</span>
       </div>
       <div class="ep-meta">
         <div class="ep-titre">${ch.titre}</div>
         <div class="ep-duree">${fmtDur(ch.duree)}</div>
       </div>`;
     row.addEventListener('click', () => {
+      favNavQueue = null; favNavIdx = -1; updateFavNavButtons(); syncNavContextToServer(); // quitte la navigation favoris (voir plus haut)
       currentPodcast = browsedPodcast; // réaffirme la cible au clic (voir note ci-dessus)
       playTrack(idx);
     });
@@ -1907,6 +2204,12 @@ async function playTrack(idx) {
   const epMatch = ch.titre && ch.titre.match(/\b(\d+)\b/);
   const epNum = epMatch ? epMatch[1] : String(idx + 1);
   el('ep-num-badge').textContent = epNum;
+
+  // Cœur favori (TICKET-046) — data-fav-key permet à applyFavoriBadges() de
+  // le tenir à jour ensuite (ex: bouton physique appuyé pendant l'écoute).
+  const favKey = episodeFavKey(currentPodcast.id, ch.id);
+  el('art-box').dataset.favKey = favKey;
+  el('art-box').classList.toggle('is-fav', FAVORIS_SET.has(favKey));
 
   await sendRadio('playfile', { path: ch.audio });
 
@@ -2072,6 +2375,7 @@ el('back-pods-radio').addEventListener('click', () => show('podcasts'));
 el('back-pods-ch').addEventListener('click', () => { show('podcasts'); });
 el('back-ch').addEventListener('click', () => { show('chapters'); });
 el('back-radio-catalog').addEventListener('click', () => { show('radio-catalog'); });
+el('back-favoris').addEventListener('click', () => show('home'));
 el('rp-btn-pp').addEventListener('click', async () => { await sendRadio('pause'); refreshStatus(); });
 el('rp-vd').addEventListener('click', async () => { await setVolume(Math.max(0,   currentVolume - 5)); });
 el('rp-vu').addEventListener('click', async () => { await setVolume(Math.min(100, currentVolume + 5)); });
@@ -2166,6 +2470,7 @@ el('resume-continue').addEventListener('click', async () => {
     chapterId: chapter.id,
     position: session.mpd_elapsed || 0,
   }));
+  favNavQueue = null; favNavIdx = -1; updateFavNavButtons(); syncNavContextToServer(); // quitte la navigation favoris (voir plus haut)
   currentPodcast = podcast;
   await playTrack(idx);
   clearResumePrompt();
@@ -2180,12 +2485,26 @@ el('btn-pp').addEventListener('click', async () => {
   refreshStatus();
 });
 el('btn-prev').addEventListener('click', () => {
+  if (favNavQueue) {
+    if (favNavIdx > 0) { favNavIdx--; playFavItem(favNavQueue[favNavIdx]); }
+    return;
+  }
   if (currentPodcast && currentIdx > 0) playTrack(currentIdx - 1);
 });
 el('btn-next').addEventListener('click', () => {
+  if (favNavQueue) {
+    if (favNavIdx < favNavQueue.length - 1) { favNavIdx++; playFavItem(favNavQueue[favNavIdx]); }
+    return;
+  }
   if (!currentPodcast) return;
   const items = getDisplayItems(currentPodcast);
   if (currentIdx < items.length - 1) playTrack(currentIdx + 1);
+});
+el('rp-btn-prev').addEventListener('click', () => {
+  if (favNavQueue && favNavIdx > 0) { favNavIdx--; playFavItem(favNavQueue[favNavIdx]); }
+});
+el('rp-btn-next').addEventListener('click', () => {
+  if (favNavQueue && favNavIdx < favNavQueue.length - 1) { favNavIdx++; playFavItem(favNavQueue[favNavIdx]); }
 });
 el('btn-vd').addEventListener('click', async () => { await setVolume(Math.max(0,   currentVolume - 5)); });
 el('btn-vu').addEventListener('click', async () => { await setVolume(Math.min(100, currentVolume + 5)); });
@@ -2385,6 +2704,7 @@ logSleepEvent('page_load', `sleep_delay_default_ms=${SLEEP_DELAY}`);
 show('home');
 loadParentalConfig();
 loadData();
+fetchFavoris();
 initAudioMode();
 if (NOEL_ACTIVE) { initNoelSnow(); initNoelSled(); initNoelGarland(); initNoelPlayerHat(); }
 if (ANNIV_ACTIVE) { initAnnivConfetti(); initAnnivBanner(); initAnnivGarland(); initAnnivPlayerHat(); }
@@ -2396,6 +2716,16 @@ if (ANNIV_ACTIVE) { initAnnivConfetti(); initAnnivBanner(); initAnnivGarland(); 
 // mais à cette cadence la latence n'est plus perceptible à l'œil.
 setInterval(syncAudioMode, 100);
 setInterval(syncPlaybackState, 100);
+
+// Favoris (TICKET-046) — deux boucles globales, indépendantes de l'écran
+// affiché (un appui sur le bouton physique peut arriver de n'importe où) :
+// pollUiRequest (1s) détecte l'appui long -> ouverture écran favoris ;
+// fetchFavoris détecte le tap -> ajout/retrait d'un favori. Resserré à 1s
+// (au lieu de 4s au départ) — Thomas trouvait le délai d'apparition du cœur
+// trop long ; le bouton physique ne notifie pas directement le navigateur
+// (process séparé), donc le polling est la seule façon de le savoir.
+setInterval(pollUiRequest, 1000);
+setInterval(fetchFavoris, 1000);
 
 // ── Rafraîchissement périodique de la config admin (toutes les 5 min)
 // Répercute sans redémarrage les changements de veille, contrôle parental et radios ajoutées.

@@ -140,6 +140,9 @@ $currentPage = basename($_SERVER['PHP_SELF'] ?? 'battery_dashboard.php');
         <a class="ha-btn <?php echo $currentPage === 'battery_dashboard.php' ? 'active' : ''; ?>" href="/admin/battery_dashboard.php">
           <span class="ha-btn-icon">🔋</span> Batterie
         </a>
+        <a class="ha-btn <?php echo $currentPage === 'favoris.php' ? 'active' : ''; ?>" href="/admin/favoris.php">
+          <span class="ha-btn-icon">❤️</span> Favoris
+        </a>
         <a class="ha-btn <?php echo $currentPage === 'audio_eq.php' ? 'active' : ''; ?>" href="/admin/audio_eq.php">
           <span class="ha-btn-icon">🎚️</span> Audio
         </a>

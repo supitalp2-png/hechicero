@@ -7,6 +7,25 @@ const AUDIO_STATE_PATH = '/home/thomas/hechicero/data/audio_output_state.json';
 // TICKET pause/reprise webradio (2026-07-09) : mémorise l'URL du flux live
 // en cours quand on le coupe pour une "pause", cf. is_webradio_uri() plus bas.
 const RADIO_PAUSE_STATE_PATH = '/home/thomas/hechicero/data/radio_pause_state.json';
+// TICKET-046 (favoris) : favori par épisode, clé composite "podcastId/episodeId"
+// — les id d'épisode seuls (slug du titre, cf. rss_ingest/parser.py::normalize_id)
+// ne sont pas garantis uniques entre deux podcasts différents.
+const FAVORIS_PATH = '/home/thomas/hechicero/data/favoris.json';
+// TICKET-046 : demande d'ouverture d'écran depuis un bouton physique (appui
+// long GPIO16 → écran favoris). Pas de canal direct entre buttons_daemon.py
+// (process Python séparé) et le navigateur — le daemon écrit sa demande ici,
+// index.html la consomme par polling (même principe que now_playing pour
+// TICKET-091).
+const UI_REQUEST_PATH = '/home/thomas/hechicero/data/ui_request.json';
+// TICKET-046 (extension du 2026-07-19) : contexte de navigation partagé
+// entre l'écran tactile ET le bouton physique GPIO17/27, posé par
+// index.html (action=set_nav_context) quand un épisode/webradio est lancé
+// depuis l'écran favoris. Sans ce fichier, next_episode/prev_episode
+// n'auraient aucun moyen de savoir qu'on veut naviguer dans la liste des
+// favoris plutôt que dans le podcast d'origine — les deux déclencheurs
+// (tap écran, appui physique) appellent la même action serveur, donc un seul
+// contexte côté serveur suffit à couvrir les deux.
+const NAV_CONTEXT_PATH = '/home/thomas/hechicero/data/nav_context.json';
 
 function read_json_radio(string $path): array {
     if (!file_exists($path)) {
@@ -271,6 +290,114 @@ function find_current_episode(string $relativeAudio, array $data): ?array {
     return null;
 }
 
+// Favoris webradio (TICKET-046, extension du 2026-07-19) — les stations n'ont
+// pas d'épisode, on favorise la station elle-même. Match par URL exacte
+// (champ "file" de currentsong pour une webradio = l'URL du flux, pas de
+// chemin local à convertir contrairement à mpd_file_to_relative_audio()).
+function find_current_radio(string $url, array $data): ?array {
+    foreach ($data['radios'] ?? [] as $radio) {
+        if (($radio['url'] ?? null) === $url) {
+            return $radio;
+        }
+    }
+    return null;
+}
+
+// --- Contexte de navigation (TICKET-046, extension du 2026-07-19) ---
+function read_nav_context(): array {
+    $d = read_json_radio(NAV_CONTEXT_PATH);
+    if (!is_array($d) || ($d['mode'] ?? 'normal') !== 'favoris' || empty($d['keys']) || empty($d['active_key'])) {
+        return ['mode' => 'normal'];
+    }
+    return $d;
+}
+
+function write_nav_context(array $data): void {
+    $dir = dirname(NAV_CONTEXT_PATH);
+    if (!is_dir($dir)) {
+        @mkdir($dir, 0755, true);
+    }
+    $tmp = NAV_CONTEXT_PATH . '.tmp';
+    file_put_contents($tmp, json_encode($data, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+    rename($tmp, NAV_CONTEXT_PATH);
+}
+
+// Résout une clé favori ("episode:podcastId/episodeId" ou "radio:radioId")
+// en cible jouable, à partir de data.json (jamais d'un état mémorisé) —
+// même logique défensive que get_favoris : une clé qui ne correspond plus à
+// rien (podcast supprimé/ré-ingéré, radio retirée) renvoie null plutôt que
+// de planter la navigation.
+function resolve_favori_key(string $key, array $data): ?array {
+    if (str_starts_with($key, 'radio:')) {
+        $radioId = substr($key, strlen('radio:'));
+        foreach ($data['radios'] ?? [] as $r) {
+            if (($r['id'] ?? null) === $radioId) {
+                return ['type' => 'radio', 'radio_id' => $radioId, 'url' => $r['url'] ?? '', 'titre' => $r['name'] ?? ''];
+            }
+        }
+        return null;
+    }
+    if (str_starts_with($key, 'episode:')) {
+        $rest = substr($key, strlen('episode:'));
+        $parts = explode('/', $rest, 2);
+        $podcastId = $parts[0] ?? '';
+        $episodeId = $parts[1] ?? '';
+        foreach ($data['podcasts'] ?? [] as $podcast) {
+            if (($podcast['id'] ?? null) !== $podcastId) continue;
+            foreach (podcast_display_items($podcast) as $ch) {
+                if (($ch['id'] ?? null) === $episodeId) {
+                    return [
+                        'type'       => 'episode',
+                        'podcast_id' => $podcastId,
+                        'episode_id' => $episodeId,
+                        'audio'      => $ch['audio'] ?? '',
+                        'titre'      => $ch['titre'] ?? '',
+                    ];
+                }
+            }
+            break;
+        }
+        return null;
+    }
+    return null;
+}
+
+// --- Favoris (TICKET-046) ---
+// Clé composite préfixée par type ("episode:podcastId/episodeId" ou
+// "radio:radioId") — les webradios n'ont pas d'episode_id, et un id de radio
+// pourrait théoriquement entrer en collision avec un id de podcast sans ce
+// préfixe.
+function favori_key(string $type, string $a, string $b = ''): string {
+    return $type . ':' . $a . ($b !== '' ? '/' . $b : '');
+}
+
+function read_favoris(): array {
+    $d = read_json_radio(FAVORIS_PATH);
+    return is_array($d) ? $d : [];
+}
+
+function write_favoris(array $data): void {
+    $dir = dirname(FAVORIS_PATH);
+    if (!is_dir($dir)) {
+        @mkdir($dir, 0755, true);
+    }
+    $tmp = FAVORIS_PATH . '.tmp';
+    file_put_contents($tmp, json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+    rename($tmp, FAVORIS_PATH);
+}
+
+// --- Demande d'ouverture d'écran (TICKET-046, appui long bouton favori) ---
+function write_ui_request(string $screen): void {
+    $dir = dirname(UI_REQUEST_PATH);
+    if (!is_dir($dir)) {
+        @mkdir($dir, 0755, true);
+    }
+    $payload = ['screen' => $screen, 'ts' => (int) round(microtime(true) * 1000)];
+    $tmp = UI_REQUEST_PATH . '.tmp';
+    file_put_contents($tmp, json_encode($payload, JSON_UNESCAPED_SLASHES));
+    rename($tmp, UI_REQUEST_PATH);
+}
+
 function normalize_path(string $path, string $projectRoot): string {
     $path = trim($path);
     if ($path === '') {
@@ -519,39 +646,114 @@ if (isset($_GET['action'])) {
         exit;
     }
 
-    // Navigation épisode — TICKET-091 (boutons GPIO physiques next/précédent).
-    // 'now_playing' : lecture seule, utilisée par l'IHM (index.html) pour se
-    // resynchroniser périodiquement sur l'épisode réellement joué (utile si
-    // la piste a été changée par un bouton physique plutôt que par un tap
-    // écran). 'next_episode'/'prev_episode' : déclenchent la bascule réelle.
+    // Navigation épisode/webradio — TICKET-091 (boutons GPIO physiques
+    // next/précédent) puis étendu TICKET-046 le 2026-07-19 (navigation au
+    // sein des favoris) : quand data/nav_context.json indique le mode
+    // "favoris" (posé par index.html via set_nav_context lorsqu'un
+    // épisode/webradio est lancé depuis l'écran favoris), next/précédent
+    // avancent dans CETTE liste plutôt que dans le podcast d'origine — pour
+    // le bouton physique ET le tap écran, puisque les deux appellent cette
+    // même action serveur (le bouton physique n'a pas de canal direct vers
+    // le navigateur, donc un contexte côté serveur est la seule façon de
+    // lui faire connaître "on navigue dans les favoris").
+    // 'now_playing' : lecture seule, pour que l'IHM se resynchronise
+    // périodiquement — répond aussi pour une webradio désormais (avant
+    // TICKET-046 ça ne couvrait que les épisodes de podcast).
     if ($action === 'now_playing' || $action === 'next_episode' || $action === 'prev_episode') {
         header('Content-Type: application/json; charset=utf-8');
 
         $current = mpd_currentsong();
         $mpdFile = $current['file'] ?? '';
-        $relative = mpd_file_to_relative_audio($mpdFile, $projectRoot);
-        $data = read_json_radio($projectRoot . '/web/lecteur/data.json');
-        $found = find_current_episode($relative, $data);
-
-        if ($found === null) {
-            // Rien en cours qui corresponde à un épisode de podcast (webradio,
-            // MPD à l'arrêt, ou piste inconnue) — pas une erreur en soi.
-            echo json_encode(['ok' => false, 'reason' => 'no_current_episode']);
-            exit;
-        }
+        $data    = read_json_radio($projectRoot . '/web/lecteur/data.json');
+        $navCtx  = read_nav_context();
+        $navMode = $navCtx['mode'] ?? 'normal';
 
         if ($action === 'now_playing') {
+            if (is_webradio_uri($mpdFile)) {
+                $radio = find_current_radio($mpdFile, $data);
+                if ($radio === null) {
+                    echo json_encode(['ok' => false, 'reason' => 'no_current_radio']);
+                    exit;
+                }
+                echo json_encode([
+                    'ok'         => true,
+                    'type'       => 'radio',
+                    'radio_id'   => $radio['id'],
+                    'titre'      => $radio['name'] ?? null,
+                    'nav_mode'   => $navMode,
+                    'nav_keys'   => $navCtx['keys'] ?? [],
+                    'nav_active' => $navCtx['active_key'] ?? null,
+                ]);
+                exit;
+            }
+
+            $relative = mpd_file_to_relative_audio($mpdFile, $projectRoot);
+            $found = find_current_episode($relative, $data);
+            if ($found === null) {
+                // Rien en cours qui corresponde à un épisode de podcast ni une
+                // webradio connue (MPD à l'arrêt, piste inconnue) — pas une
+                // erreur en soi.
+                echo json_encode(['ok' => false, 'reason' => 'no_current_episode']);
+                exit;
+            }
             echo json_encode([
                 'ok'         => true,
+                'type'       => 'episode',
                 'podcast_id' => $found['podcast']['id']  ?? null,
                 'episode_id' => $found['chapter']['id']  ?? null,
                 'idx'        => $found['idx'],
                 'titre'      => $found['chapter']['titre'] ?? null,
+                'nav_mode'   => $navMode,
+                'nav_keys'   => $navCtx['keys'] ?? [],
+                'nav_active' => $navCtx['active_key'] ?? null,
             ]);
             exit;
         }
 
-        $delta     = $action === 'next_episode' ? 1 : -1;
+        // next_episode / prev_episode à partir d'ici.
+        $delta = $action === 'next_episode' ? 1 : -1;
+
+        if ($navMode === 'favoris') {
+            $keys = $navCtx['keys'];
+            $pos  = array_search($navCtx['active_key'], $keys, true);
+            if ($pos === false) {
+                echo json_encode(['ok' => false, 'reason' => 'invalid_nav_context']);
+                exit;
+            }
+            $targetPos = $pos + $delta;
+            if ($targetPos < 0 || $targetPos >= count($keys)) {
+                echo json_encode(['ok' => false, 'reason' => 'out_of_bounds', 'nav_mode' => 'favoris']);
+                exit;
+            }
+            $targetKey = $keys[$targetPos];
+            $target = resolve_favori_key($targetKey, $data);
+            if ($target === null) {
+                echo json_encode(['ok' => false, 'reason' => 'broken_favori', 'nav_mode' => 'favoris']);
+                exit;
+            }
+
+            if ($target['type'] === 'radio') {
+                clear_radio_pause_state();
+                mpd_add_and_play((string)$target['url']);
+            } else {
+                mpd_add_and_play(normalize_path((string)$target['audio'], $projectRoot));
+            }
+
+            $navCtx['active_key'] = $targetKey;
+            write_nav_context($navCtx);
+
+            echo json_encode(array_merge(['ok' => true, 'nav_mode' => 'favoris', 'idx' => $targetPos], $target));
+            exit;
+        }
+
+        // Mode normal — comportement historique, scope podcast uniquement.
+        $relative = mpd_file_to_relative_audio($mpdFile, $projectRoot);
+        $found = find_current_episode($relative, $data);
+        if ($found === null) {
+            echo json_encode(['ok' => false, 'reason' => 'no_current_episode']);
+            exit;
+        }
+
         $targetIdx = $found['idx'] + $delta;
         if ($targetIdx < 0 || $targetIdx >= count($found['items'])) {
             echo json_encode([
@@ -573,6 +775,207 @@ if (isset($_GET['action'])) {
             'idx'        => $targetIdx,
             'titre'      => $target['titre'] ?? null,
         ]);
+        exit;
+    }
+
+    // Pose/efface le contexte de navigation favoris (TICKET-046, extension
+    // du 2026-07-19) — appelé par index.html au clic initial sur l'écran
+    // favoris, à chaque suivant/précédent (pour garder active_key à jour),
+    // et remis à "normal" dès qu'on relance depuis un écran classique.
+    if ($action === 'set_nav_context') {
+        header('Content-Type: application/json; charset=utf-8');
+        $mode = ($_GET['mode'] ?? 'normal') === 'favoris' ? 'favoris' : 'normal';
+
+        if ($mode === 'normal') {
+            write_nav_context(['mode' => 'normal']);
+            echo json_encode(['ok' => true, 'mode' => 'normal']);
+            exit;
+        }
+
+        $keysRaw = $_GET['keys'] ?? [];
+        $keys = is_array($keysRaw) ? array_values(array_filter($keysRaw, fn($k) => is_string($k) && $k !== '')) : [];
+        $active = (string)($_GET['active'] ?? '');
+
+        if (!$keys || $active === '' || !in_array($active, $keys, true)) {
+            echo json_encode(['ok' => false, 'reason' => 'invalid_context']);
+            exit;
+        }
+
+        write_nav_context(['mode' => 'favoris', 'keys' => $keys, 'active_key' => $active]);
+        echo json_encode(['ok' => true, 'mode' => 'favoris']);
+        exit;
+    }
+
+    // Favoris (TICKET-046) — bascule le favori sur ce qui est réellement en
+    // cours d'écoute (résolu comme next_episode/prev_episode, jamais un état
+    // mémorisé). Deux cas : webradio (favori = la station elle-même, pas de
+    // notion d'épisode) ou épisode de podcast. Re-appuyer sur le même
+    // élément retire le favori (toggle symétrique, même code des deux côtés).
+    // Sans effet si rien ne joue ou si ni l'un ni l'autre ne correspond :
+    // ok:false, même convention que next_episode/prev_episode.
+    if ($action === 'toggle_favori') {
+        header('Content-Type: application/json; charset=utf-8');
+
+        $current = mpd_currentsong();
+        $mpdFile = $current['file'] ?? '';
+        $data = read_json_radio($projectRoot . '/web/lecteur/data.json');
+        $favoris = read_favoris();
+
+        if (is_webradio_uri($mpdFile)) {
+            $radio = find_current_radio($mpdFile, $data);
+            $radioId = $radio['id'] ?? '';
+            if ($radio === null || $radioId === '') {
+                echo json_encode(['ok' => false, 'reason' => 'no_current_radio']);
+                exit;
+            }
+
+            $key = favori_key('radio', $radioId);
+            if (isset($favoris[$key])) {
+                unset($favoris[$key]);
+                $isFavori = false;
+            } else {
+                $favoris[$key] = ['type' => 'radio', 'radio_id' => $radioId, 'added_at' => date('c')];
+                $isFavori = true;
+            }
+            write_favoris($favoris);
+
+            echo json_encode(['ok' => true, 'favori' => $isFavori, 'type' => 'radio', 'radio_id' => $radioId]);
+            exit;
+        }
+
+        $relative = mpd_file_to_relative_audio($mpdFile, $projectRoot);
+        $found = find_current_episode($relative, $data);
+        if ($found === null) {
+            echo json_encode(['ok' => false, 'reason' => 'no_current_episode']);
+            exit;
+        }
+
+        $podcastId = $found['podcast']['id'] ?? '';
+        $episodeId = $found['chapter']['id'] ?? '';
+        if ($podcastId === '' || $episodeId === '') {
+            echo json_encode(['ok' => false, 'reason' => 'no_current_episode']);
+            exit;
+        }
+
+        $key = favori_key('episode', $podcastId, $episodeId);
+        if (isset($favoris[$key])) {
+            unset($favoris[$key]);
+            $isFavori = false;
+        } else {
+            $favoris[$key] = [
+                'type'       => 'episode',
+                'podcast_id' => $podcastId,
+                'episode_id' => $episodeId,
+                'added_at'   => date('c'),
+            ];
+            $isFavori = true;
+        }
+        write_favoris($favoris);
+
+        echo json_encode([
+            'ok'         => true,
+            'favori'     => $isFavori,
+            'type'       => 'episode',
+            'podcast_id' => $podcastId,
+            'episode_id' => $episodeId,
+        ]);
+        exit;
+    }
+
+    // Retrait explicite (admin) — cible une clé précise plutôt que "ce qui
+    // joue en ce moment". La clé vient telle quelle de get_favoris (champ
+    // "key"), pas besoin de la reconstruire côté appelant.
+    if ($action === 'remove_favori' && isset($_GET['key'])) {
+        header('Content-Type: application/json; charset=utf-8');
+        $key = (string)$_GET['key'];
+        $favoris = read_favoris();
+        $existed = isset($favoris[$key]);
+        unset($favoris[$key]);
+        write_favoris($favoris);
+        echo json_encode(['ok' => true, 'removed' => $existed]);
+        exit;
+    }
+
+    // Liste enrichie des favoris (titre/jaquette + podcast ou webradio),
+    // utilisée par l'écran dédié tactile ET par l'admin. Un favori dont
+    // l'épisode/la station a disparu de data.json (podcast supprimé/
+    // ré-ingéré, radio retirée par l'admin) est filtré plutôt que planté —
+    // data.json est régénéré par l'ingestion RSS, pas une source stable dans
+    // le temps.
+    if ($action === 'get_favoris') {
+        header('Content-Type: application/json; charset=utf-8');
+        $favoris = read_favoris();
+        $data = read_json_radio($projectRoot . '/web/lecteur/data.json');
+        $podcastsById = [];
+        foreach ($data['podcasts'] ?? [] as $p) {
+            if (isset($p['id'])) $podcastsById[$p['id']] = $p;
+        }
+        $radiosById = [];
+        foreach ($data['radios'] ?? [] as $r) {
+            if (isset($r['id'])) $radiosById[$r['id']] = $r;
+        }
+
+        $enriched = [];
+        foreach ($favoris as $key => $entry) {
+            $type = $entry['type'] ?? 'episode';
+
+            if ($type === 'radio') {
+                $radio = $radiosById[$entry['radio_id'] ?? ''] ?? null;
+                if ($radio === null) continue;
+                $enriched[] = [
+                    'key'           => $key,
+                    'type'          => 'radio',
+                    'radio_id'      => $radio['id'],
+                    'titre'         => $radio['name'] ?? '',
+                    'podcast_titre' => 'Webradio',
+                    'image'         => $radio['image'] ?? ($radio['image_url'] ?? ''),
+                    'url'           => $radio['url'] ?? '',
+                    'added_at'      => $entry['added_at'] ?? '',
+                ];
+                continue;
+            }
+
+            $podcast = $podcastsById[$entry['podcast_id'] ?? ''] ?? null;
+            if ($podcast === null) continue;
+            $chapter = null;
+            foreach (podcast_display_items($podcast) as $ch) {
+                if (($ch['id'] ?? null) === ($entry['episode_id'] ?? null)) { $chapter = $ch; break; }
+            }
+            if ($chapter === null) continue;
+
+            $enriched[] = [
+                'key'           => $key,
+                'type'          => 'episode',
+                'podcast_id'    => $podcast['id'],
+                'episode_id'    => $chapter['id'],
+                'podcast_titre' => $podcast['titre'] ?? '',
+                'titre'         => $chapter['titre'] ?? '',
+                'image'         => $chapter['image'] ?? ($podcast['image'] ?? ''),
+                'audio'         => $chapter['audio'] ?? '',
+                'duree'         => $chapter['duree'] ?? null,
+                'added_at'      => $entry['added_at'] ?? '',
+            ];
+        }
+
+        usort($enriched, fn($a, $b) => strcmp($b['added_at'], $a['added_at']));
+        echo json_encode(['ok' => true, 'favoris' => $enriched]);
+        exit;
+    }
+
+    // Demande d'ouverture d'écran (TICKET-046, appui long bouton favori
+    // GPIO16). Écrit seulement — c'est index.html qui consomme via
+    // get_ui_request (polling).
+    if ($action === 'request_screen' && isset($_GET['screen'])) {
+        header('Content-Type: application/json; charset=utf-8');
+        write_ui_request((string)$_GET['screen']);
+        echo json_encode(['ok' => true]);
+        exit;
+    }
+
+    if ($action === 'get_ui_request') {
+        header('Content-Type: application/json; charset=utf-8');
+        $d = read_json_radio(UI_REQUEST_PATH);
+        echo json_encode(['screen' => $d['screen'] ?? null, 'ts' => $d['ts'] ?? 0]);
         exit;
     }
 }
