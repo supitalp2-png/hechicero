@@ -11,5 +11,15 @@ ExecStart=/usr/bin/python3 /home/thomas/hechicero/scripts/button_toggle_test.py 
 Restart=always
 RestartSec=5
 
+# TICKET-011 — durcissement (2026-07-19) : ajouté par cohérence même si ce
+# service reste désactivé (cf. docs/70-SERVICES_SYSTEMD.md §7bis — remplacé
+# par buttons_daemon.service, à ne pas réactiver). Accès GPIO, donc PAS de
+# PrivateDevices.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/thomas/hechicero/data
+
 [Install]
 WantedBy=multi-user.target

@@ -14,5 +14,14 @@ StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=play_tracker
 
+# TICKET-011 — durcissement (2026-07-19) : ce service parle à MPD via son
+# socket Unix (/run/mpd/socket, hors de /home donc non concerné par
+# ProtectHome) et écrit dans data/tracking.db, rien d'autre.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/thomas/hechicero/data
+
 [Install]
 WantedBy=multi-user.target

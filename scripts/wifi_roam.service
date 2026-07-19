@@ -9,6 +9,16 @@ User=root
 ExecStart=/usr/bin/python3 /home/thomas/hechicero/scripts/wifi_roam.py
 Restart=always
 RestartSec=15
+TimeoutStopSec=10
+
+# TICKET-011 — durcissement (2026-07-19) : scanne le Wi-Fi et reconfigure
+# NetworkManager (nécessite root, déjà accordé — NoNewPrivileges bloque
+# juste toute escalade AU-DELÀ de ça), écrit data/wifi_roam.log.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/thomas/hechicero/data
 
 [Install]
 WantedBy=multi-user.target

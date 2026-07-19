@@ -11,5 +11,15 @@ ExecStart=/usr/bin/python3 /home/thomas/hechicero/scripts/buttons_daemon.py
 Restart=always
 RestartSec=5
 
+# TICKET-011 — durcissement (2026-07-19) : accès GPIO (9 boutons physiques),
+# parle à MPD (socket + radio.php probablement en HTTP local). PAS de
+# PrivateDevices : casserait l'accès GPIO (vécu ce soir avec l'égaliseur sur
+# /dev/snd, même piège possible ici sur /dev/gpiochip*).
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/thomas/hechicero/data
+
 [Install]
 WantedBy=multi-user.target

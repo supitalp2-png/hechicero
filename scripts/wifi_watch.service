@@ -8,6 +8,16 @@ User=thomas
 ExecStart=/bin/bash /home/thomas/hechicero/scripts/wifi_watch.sh
 Restart=always
 RestartSec=10
+TimeoutStopSec=10
+
+# TICKET-011 — durcissement (2026-07-19) : ce service ne fait qu'interroger
+# l'état Wi-Fi (`iw dev wlan0 link`) et écrire dans data/wifi_watch.log, pas
+# besoin d'accès au reste du système.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/thomas/hechicero/data
 
 [Install]
 WantedBy=multi-user.target

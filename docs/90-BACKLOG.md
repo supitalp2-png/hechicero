@@ -1,7 +1,7 @@
 # Backlog Hechicero
 
 > Convention : `TICKET-### — [type] — Titre — (prio) — owner`
-> Dernière mise à jour : 2026-07-18 (TICKET-030 égaliseur alsaequal livré ET validé en conditions réelles, avec un incident mpd.socket en cours de route — voir §6.4.1 ; TICKET-017 livré et validé ; TICKET-037/047/056 annulés ; TICKET-109 et TICKET-110 roaming clos ; ticket ventilo renuméroté 110→111)
+> Dernière mise à jour : 2026-07-19 (TICKET-011 durcissement systemd livré et validé progressivement sur les 8 services ; TICKET-030 égaliseur alsaequal livré ET validé en conditions réelles la veille, avec un incident mpd.socket en cours de route — voir §6.4.1 ; TICKET-017 livré et validé ; TICKET-037/047/056 annulés ; TICKET-109 et TICKET-110 roaming clos ; ticket ventilo renuméroté 110→111)
 
 ---
 
@@ -22,7 +22,6 @@
 # 🟢 Priorité basse / À décider
 
 - [ ] TICKET-046 — UX — Favoris (cœur) accessibles rapidement
-- [ ] TICKET-011 — sec — Durcir unités systemd (`ProtectSystem`, `NoNewPrivileges`)
 - [ ] TICKET-111 — hardware — Ventilateur GPIO/PWM pour dissipation thermique (2026-07-18) (renuméroté depuis TICKET-110, en collision avec le ticket roaming — 2026-07-18)
       - Demande de Thomas : boîtier chaud, ventilateur silencieux souhaité. Corroboré par TICKET-109 (`vcgencmd get_throttled = 0xe0000` le 2026-07-18 : capping fréquence + throttling + limite thermique constatés depuis le dernier boot)
       - Ventilateur déjà acheté par Thomas — **en attente qu'il soit mis en place physiquement** avant de configurer/tester quoi que ce soit côté logiciel
@@ -98,6 +97,14 @@
         2. **"Indépendance" cassée par un détail alsaequal non documenté ailleurs** : par défaut alsaequal stocke son état dans `$HOME/.alsaequal.bin` (par utilisateur, pas par ctl nommé) — `eqhp`/`eqcasque` semblaient partager leur état car tous les tests tournaient sous `thomas`. Fix : paramètre `controls` avec un chemin distinct par instance (`data/alsaequal_hp.bin`/`data/alsaequal_casque.bin`) — réglé ce même problème ET l'erreur de permission `www-data` (qui a `$HOME=/var/www`, non inscriptible) d'un coup. `www-data` ajouté au groupe `audio`
         3. **Incident en cascade** : pré-créer les fichiers `controls` avec `touch` (fichier vide) fait planter alsaequal en `SIGBUS` — arrivé pendant que MPD tournait, ce qui a fait planter MPD 3× en rafale et grillé le disjoncteur anti-boucle de l'unité systemd **`mpd.socket`** (distincte de `mpd.service`, activation par socket). L'IHM tactile a été inutilisable ~20 min (`radio.php` parle à MPD via `/run/mpd/socket`, contrairement à `mpc` en CLI qui passe par TCP et semblait donc fonctionner) — récupéré via `systemctl reset-failed mpd.socket` + séquence stop/start précise, procédure documentée en §6.4.1 pour la prochaine fois
       - Fichiers créés : `web/admin/audio_eq.php`, `scripts/audio_eq_apply.py`, `scripts/audio_eq_apply.service` ; modifiés : `web/index.php`, `web/dashboard.php`, `web/admin/battery_dashboard.php` (nav), `.gitignore` (`data/audio_eq.json`), `docs/20-SETUP_SYSTEME.md`, `docs/70-SERVICES_SYSTEMD.md`
+
+- [x] TICKET-011 — sec — Durcir unités systemd (`ProtectSystem`, `NoNewPrivileges`) (2026-07-19)
+      - Déploiement volontairement progressif après la soirée TICKET-030 (services testés dans l'ordre : `wifi_watch`/`play_tracker` → `battery_tracker`/`audio_eq_apply` → `wifi_roam`/`button_toggle_test` → `buttons_daemon`/`battery_watchdog`), un lot validé en conditions réelles avant de passer au suivant
+      - Ajouté aux 8 `.service` dans `scripts/` : `NoNewPrivileges=true`, `PrivateTmp=true`, `ProtectSystem=strict` + `ReadWritePaths=/home/thomas/hechicero/data`, `ProtectHome=read-only` — tous ces services ne lisent/écrivent que dans `data/`, rien ailleurs
+      - ⚠️ **Volontairement PAS de `PrivateDevices=true`** sur `buttons_daemon`/`button_toggle_test` (GPIO) ni sur `audio_eq_apply` (`/dev/snd`, carte son) — cette option aurait cassé l'accès matériel, exactement le genre de piège vécu la veille au soir avec l'égaliseur (fichier `controls` vide → SIGBUS → cascade jusqu'à `mpd.socket`). `ProtectSystem`/`ProtectHome` n'affectent pas `/dev`, `/proc`, `/sys` — seul `PrivateDevices` le ferait
+      - Validation en conditions réelles pour 7 des 8 services (logs qui continuent de s'écrire après redémarrage, bouton physique play/stop testé, égaliseur toujours accessible via `amixer`) — voir [[project_hechicero_ticket011_hardening]] en mémoire pour le détail service par service
+      - ⏳ **`battery_watchdog` : chemin `sudo shutdown -h now` non testé** — son flag `--simulate-critical` s'arrête juste avant l'exec du shutdown (ne teste que l'écriture de `data/last_session.json`), impossible de valider sans provoquer un vrai arrêt. Le raisonnement (exec d'un binaire ne nécessite qu'un accès lecture+exécution, compatible avec `ProtectSystem=strict` en lecture seule) est solide mais pas prouvé empiriquement. Si besoin d'une vraie preuve un jour : baisser temporairement `critical_level_percent` dans `data/config.json` au-dessus du niveau de batterie courant, en présence de Thomas pour rallumer ensuite
+      - Fichiers modifiés : les 8 `.service` dans `scripts/` (`battery_tracker`, `play_tracker`, `battery_watchdog`, `buttons_daemon`, `button_toggle_test`, `wifi_roam`, `wifi_watch`, `audio_eq_apply`)
 
 - [x] TICKET-102 — bug — Écran de veille et coupure d'écran cassés après l'intégration hardware finale (2026-07-08 → corrigé 2026-07-09)
       - Épisode 1 (2026-07-08 matin) : port HDMI en dur (`HDMI-A-2`) alors que l'écran était sur `HDMI-A-1` après l'intégration → `scripts/screen_dpms.sh` corrigé. Puis rendu Chromium figé (glitch au changement de port) → résolu par relance kiosk

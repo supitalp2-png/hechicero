@@ -12,5 +12,15 @@ RestartSec=10
 StandardOutput=journal
 StandardError=journal
 
+# TICKET-011 — durcissement (2026-07-19) : lit le capteur I2C (INA219, via
+# /dev/i2c-*, non concerné par ProtectSystem) et /sys/class/backlight (état
+# écran), se connecte au socket MPD, écrit dans data/battery_*.json — rien
+# d'autre. PAS de PrivateDevices : casserait l'accès I2C.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/thomas/hechicero/data
+
 [Install]
 WantedBy=multi-user.target

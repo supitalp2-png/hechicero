@@ -12,5 +12,15 @@ RemainAfterExit=yes
 StandardOutput=journal
 StandardError=journal
 
+# TICKET-011 — durcissement (2026-07-19) : appelle amixer sur /dev/snd/*
+# (non concerné par ProtectSystem) et lit data/audio_eq.json. PAS de
+# PrivateDevices : casserait l'accès à la carte son (vécu ce soir avec
+# l'égaliseur, cf. TICKET-030 — on ne relance pas la même galère).
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/thomas/hechicero/data
+
 [Install]
 WantedBy=multi-user.target
