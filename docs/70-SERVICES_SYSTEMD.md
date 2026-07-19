@@ -344,9 +344,10 @@ le boîtier réel) :**
   breadboard de bring-up du 2026-07-06, sans impact (dispatch logiciel)
 - GPIO13 = vol−, GPIO17 = précédent, GPIO12 = play/pause (fusionné), GPIO27 =
   suivant, GPIO5 = vol+
-- GPIO16 = réserve, pas de fonction décidée
-- GPIO23 = favori (bouton isolé antenne) — assigné logiquement mais pas câblé
-  côté logiciel, TICKET-046 (favoris) jamais codé
+- GPIO16 = favori (TICKET-046, codé le 2026-07-19) — tap = bascule le favori
+  sur l'épisode/webradio en cours, maintien = ouvre l'écran dédié favoris
+- GPIO23 = bouton isolé antenne — réserve, usage futur non défini (écarté du
+  favori, pas GPIO16 comme envisagé un temps)
 - GPIO6 = non câblé
 
 Suivant/précédent gèrent le tap-ou-maintien (`TAP_OR_HOLD`) : tap = épisode
@@ -368,8 +369,8 @@ sudo systemctl enable --now buttons_daemon.service
 
 ### Reste à faire
 - Valider en usage réel prolongé `SEEK_STEP_S`/`HOLD_THRESHOLD_S` (suivant/précédent en maintien)
-- Décider de l'usage de GPIO16 (réserve)
-- Coder TICKET-046 (favoris) pour activer GPIO23
+- TICKET-046 (favoris, GPIO16) codé le 2026-07-19, pas encore testé en conditions réelles — voir `docs/90-BACKLOG.md`
+- Décider un jour de l'usage de GPIO23 (bouton antenne, toujours en réserve)
 
 ---
 

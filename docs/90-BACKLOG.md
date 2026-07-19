@@ -1,7 +1,7 @@
 # Backlog Hechicero
 
 > Convention : `TICKET-### — [type] — Titre — (prio) — owner`
-> Dernière mise à jour : 2026-07-19 (TICKET-046 favoris implémenté, pas encore testé en conditions réelles ; TICKET-011 durcissement systemd livré et validé progressivement sur les 8 services, y compris le chemin shutdown réel de battery_watchdog testé et validé par Thomas ; fix hors-ticket "reprise auto lecture au démarrage MPD" via restore_paused ; TICKET-030 égaliseur alsaequal livré ET validé en conditions réelles la veille, avec un incident mpd.socket en cours de route — voir §6.4.1 ; TICKET-017 livré et validé ; TICKET-037/047/056 annulés ; TICKET-109 et TICKET-110 roaming clos ; ticket ventilo renuméroté 110→111)
+> Dernière mise à jour : 2026-07-19 (TICKET-046 favoris implémenté — épisodes + webradios, cœur animé, navigation suivant/précédent au sein des favoris à l'écran ET au bouton physique GPIO16 — pas encore testé en conditions réelles ; TICKET-011 durcissement systemd livré et validé progressivement sur les 8 services, y compris le chemin shutdown réel de battery_watchdog testé et validé par Thomas ; fix hors-ticket "reprise auto lecture au démarrage MPD" via restore_paused ; TICKET-030 égaliseur alsaequal livré ET validé en conditions réelles la veille, avec un incident mpd.socket en cours de route — voir §6.4.1 ; TICKET-017 livré et validé ; TICKET-037/047/056 annulés ; TICKET-109 et TICKET-110 roaming clos ; ticket ventilo renuméroté 110→111)
 
 ---
 
@@ -387,7 +387,7 @@
       - Reste de l'historique détaillé (plan GPIO, layout boîtier, handlers, actions `radio.php`) : voir TICKET-101, qui a repris et clos le travail restant
 - [x] TICKET-101 — hardware — Finalisation boutons physiques : mapping GPIO ↔ bouton + service systemd définitif
       - Suite de TICKET-091 (choix d'interface GPIO + bring-up déjà validés) et TICKET-031 (bouton "source" HP/casque)
-      - ✅ **Mapping GPIO ↔ bouton confirmé le 2026-07-08** (test bouton par bouton, gauche à droite) : GPIO25 = source (HP/casque), GPIO13 = vol−, GPIO17 = précédent, GPIO12 = play/pause, GPIO27 = suivant, GPIO5 = vol+, GPIO16 = réserve (pas de fonction décidée), GPIO23 = favori (bouton isolé antenne, pas encore câblé côté logiciel — TICKET-046), GPIO6 = non câblé
+      - ✅ **Mapping GPIO ↔ bouton confirmé le 2026-07-08** (test bouton par bouton, gauche à droite) : GPIO25 = source (HP/casque), GPIO13 = vol−, GPIO17 = précédent, GPIO12 = play/pause, GPIO27 = suivant, GPIO5 = vol+, GPIO16 = favori (TICKET-046, confirmé et codé le 2026-07-19 — pas GPIO23 comme envisagé un temps ici), GPIO23 = bouton isolé antenne, réserve pour un usage futur non défini, GPIO6 = non câblé
       - ⚠️ GPIO17 n'est pas le bouton source dans le câblage réel (contrairement au bring-up breadboard du 2026-07-06) — c'est GPIO25. Sans impact, le dispatch est purement logiciel (`HANDLERS` dans `buttons_daemon.py`)
       - ✅ Handlers assignés dans `HANDLERS` (`scripts/buttons_daemon.py`)
       - ✅ Service systemd créé : `scripts/buttons_daemon.service` (remplace `button_toggle_test.service`, voir `docs/70-SERVICES_SYSTEMD.md` §7ter pour l'installation)
@@ -396,7 +396,7 @@
           • latence perçue au play/pause : polling `syncPlaybackState()`/`syncAudioMode()` resserré de 300ms à 100ms dans `index.html`
           • maintien du bouton volume ne répétait pas : rebond mécanique pendant le maintien lu à tort comme un relâchement (bloqué ensuite par le garde-fou anti-rebond) → hystérésis dédiée (`RELEASE_CONFIRM_S`), relâchement confirmé seulement après 50ms de HIGH continu
       - ✅ **Nouveau (2026-07-08)** : suivant/précédent passent en tap-ou-maintien (`TAP_OR_HOLD` dans `buttons_daemon.py`) — tap bref = épisode suivant/précédent (inchangé), maintien > `HOLD_THRESHOLD_S` (0.4s) = recherche par à-coups de `SEEK_STEP_S` (5s) dans l'épisode en cours. Nouvelle action `seek_relative` dans `radio.php` (`seekcur ±N` MPD, recherche relative à la position actuelle). Recherche en secondes fixes (pas en % de la durée) — pratique standard des lecteurs de podcasts (Apple Podcasts, YouTube). Pas encore testé en conditions réelles par Thomas — valeurs `SEEK_STEP_S`/`HOLD_THRESHOLD_S` à ajuster si besoin
-      - ⏳ Reste à faire : Thomas teste le tap/maintien suivant-précédent ; décider plus tard de GPIO16 (réserve) et coder TICKET-046 pour GPIO23 (favori)
+      - ⏳ Reste à faire : Thomas teste le tap/maintien suivant-précédent. GPIO16/favori : voir TICKET-046, codé le 2026-07-19.
 
 - [x] TICKET-031 — hardware/feature — Sortie casque avec bouton physique de bascule HP/casque
       - Contrainte : HiFiBerry Amp4 conservé (pas de sortie casque native)

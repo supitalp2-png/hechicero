@@ -328,6 +328,7 @@ Thomas le 2026-07-08, du plus proche du jack au plus loin :
 **Étiquetage (2026-07-17)** : étiquettes transparentes Dymo collées sur chacun des boutons de la tranche supérieure pour identifier leur fonction (voir `Photos/06-boutons-dessus/13-boutons-etiquettes-dymo.jpg`).
 
 **Interface GPIO** : tranchée dans la pratique — GPIO direct (`RPi.GPIO`), confirmé par le bring-up (2026-07-06/07). Détection par **polling**, pas `add_event_detect()` (peu fiable sur Pi 5/puce RP1 — 1er appui détecté, suivants perdus). GPIO17 (source/HP-casque) + GPIO23/27/5/6/13/16/12/25 libres — 6 fonctions à répartir dessus (vol-, précédent, play/pause, suivant, vol+, favori), 2 broches resteront non câblées (bouton isolé antenne + réserve). GPIO4 abandonné : réservé MUTE ampli sur HiFiBerry Amp4 (confirmé doc officielle HiFiBerry).
+⚠️ Note de planification pré-bring-up, en partie dépassée depuis (le bouton "source" s'est avéré être GPIO25, pas GPIO17, et le favori est GPIO16, pas une des broches encore "à répartir") — mapping définitif confirmé dans `docs/30-LECTEUR.md` et `docs/90-BACKLOG.md` (TICKET-101/TICKET-046).
 
 ### 🔹 Alimentation — USB-C
 
