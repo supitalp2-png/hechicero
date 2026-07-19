@@ -6,6 +6,14 @@ Elle permet d'écouter des podcasts en français et en espagnol, et des webradio
 
 ---
 
+## Pourquoi ce projet
+
+Mon fils est bilingue français / espagnol (Colombie), et il adore les podcasts. Jusqu'ici il écoutait sur une enceinte Merlin — un très bon produit, mais fermé : impossible d'y ajouter le moindre contenu soi-même, et son catalogue ne propose rien en espagnol d'Amérique du Sud. Résultat, il se retrouvait à écouter presque uniquement en français, alors qu'il aurait aimé retrouver la même magie dans ses deux langues.
+
+J'ai voulu combler ce manque pour lui. Et j'avais aussi envie, en tant qu'ingénieur, de construire moi-même quelque chose plutôt que d'acheter une énième solution toute faite — de mettre mes compétences au service d'un vrai cadeau pour mon fils, pas juste d'un gadget technique. Hechicero est né de ces deux envies : répondre à un besoin réel, et lui offrir un objet fait par son père, entièrement ouvert, bilingue par construction, et qu'on peut faire évoluer ensemble.
+
+---
+
 ## L'idée en une phrase
 
 Une Tonies ou une Merlin, mais faite maison — ouverte, réparable, bilingue, et belle.
