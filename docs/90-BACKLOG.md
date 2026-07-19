@@ -1,7 +1,7 @@
 # Backlog Hechicero
 
 > Convention : `TICKET-### — [type] — Titre — (prio) — owner`
-> Dernière mise à jour : 2026-07-19 (TICKET-011 durcissement systemd livré et validé progressivement sur les 8 services ; TICKET-030 égaliseur alsaequal livré ET validé en conditions réelles la veille, avec un incident mpd.socket en cours de route — voir §6.4.1 ; TICKET-017 livré et validé ; TICKET-037/047/056 annulés ; TICKET-109 et TICKET-110 roaming clos ; ticket ventilo renuméroté 110→111)
+> Dernière mise à jour : 2026-07-19 (TICKET-011 durcissement systemd livré et validé progressivement sur les 8 services, y compris le chemin shutdown réel de battery_watchdog testé et validé par Thomas ; fix hors-ticket "reprise auto lecture au démarrage MPD" via restore_paused ; TICKET-030 égaliseur alsaequal livré ET validé en conditions réelles la veille, avec un incident mpd.socket en cours de route — voir §6.4.1 ; TICKET-017 livré et validé ; TICKET-037/047/056 annulés ; TICKET-109 et TICKET-110 roaming clos ; ticket ventilo renuméroté 110→111)
 
 ---
 
@@ -32,6 +32,13 @@
 ---
 
 # ✔️ Terminé
+
+- [x] Correction — bug — Reprise automatique de la lecture au démarrage à froid de MPD (2026-07-19)
+      - Découvert par Thomas juste après le test réel de shutdown de `battery_watchdog` (TICKET-011) : au redémarrage du Pi, le podcast s'est remis à jouer tout seul, sans action sur l'IHM — comportement non prévu dans la séquence de démarrage à froid.
+      - Cause : `/etc/mpd.conf` définit `state_file "/var/lib/mpd/state"` (config Debian par défaut, jamais retouchée par le projet) sans `restore_paused`. Par défaut MPD restaure aussi l'état play/pause sauvegardé, pas seulement la position — comme MPD avait été relancé plusieurs fois en état "playing" pendant les manips TICKET-030 de la veille et le test de shutdown du matin, l'état sauvegardé était "playing".
+      - Fix : ajout de `restore_paused "yes"` juste après `state_file` dans `/etc/mpd.conf`, puis `sudo systemctl restart mpd`. Garde la reprise de position (utile) mais force l'état "en pause" au démarrage.
+      - ✅ Validé en conditions réelles par Thomas le 2026-07-19 : `mpc status` après redémarrage MPD affiche `[paused]` sur la piste en cours, plus d'auto-play.
+      - Documenté dans `docs/20-SETUP_SYSTEME.md` §6.1.
 
 - [x] TICKET-109 — bug/hardware — Coupures Wi-Fi récurrentes + signal anormalement faible à 30cm de la Freebox (2026-07-18)
       - **Épisode 1 (2026-07-15/16, résolu)** : Freebox en "WPA 2/3 - Compatibilité" → association Wi-Fi en boucle (faux message "Secrets were required"). Fix : Freebox basculée en WPA2-AES pur. Aussi fait : power management Wi-Fi désactivé définitivement (`wifi-powersave-off.conf`, `wifi.powersave=2`), MAC remise permanente (`2c:cf:67:cc:4a:2d`, le random cassait le bail DHCP), firmware `brcm80211` blanchi après re-test.

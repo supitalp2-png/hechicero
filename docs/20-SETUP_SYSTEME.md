@@ -113,6 +113,7 @@ Points essentiels :
 - utiliser la carte HiFiBerry
 - activer le volume logiciel
 - ⚠️ **référencer les cartes ALSA par nom (`hw:CARD=...`), jamais par numéro (`hw:2,0`)** — l'ordre d'énumération des cartes (HiFiBerry vs DAC USB casque) n'est pas garanti stable d'un boot à l'autre ; un numéro fixe a fini par pointer vers le mauvais périphérique (bug du 2026-07-03, cf. [[project_hechicero_audio_output]])
+- ⚠️ **`restore_paused "yes"` juste après `state_file`, obligatoire.** Config Debian par défaut : `state_file "/var/lib/mpd/state"` sans `restore_paused` → MPD restaure aussi l'état play/pause au démarrage, pas juste la position. Si MPD a été relancé en état "playing" avant un redémarrage du Pi, la lecture repart toute seule au boot, sans action sur l'IHM (bug découvert le 2026-07-19). `restore_paused "yes"` garde la reprise de position mais force l'état pause au démarrage.
 
 Extrait (noms de cartes à vérifier avec `aplay -l` / `cat /proc/asound/cards`) :
 ```
