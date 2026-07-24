@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1024, initial-scale=1">
+<title>Chambre</title>
+<style>
+  :root{--cyan:#00c8ff;--bg:#0c1014;--card:#151b21;--muted:#8a97a3;--txt:#e6edf3;}
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--txt);
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;user-select:none;}
+  .wrap{display:flex;gap:22px;padding:22px;flex-wrap:wrap;align-items:stretch;}
+  .card{flex:1 1 300px;background:var(--card);border-radius:16px;padding:22px;}
+  .head{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;font-size:20px;font-weight:600;}
+  .row{display:flex;gap:22px;align-items:center;justify-content:center;}
+  .col{display:flex;flex-direction:column;align-items:center;gap:6px;}
+  .tap{cursor:pointer;}
+  .vbox{width:40px;height:230px;display:flex;align-items:center;justify-content:center;}
+  .vbox input{width:230px;height:40px;margin:0;accent-color:var(--cyan);}
+  .end{font-size:13px;color:var(--muted);}
+  .val{font-size:26px;font-weight:600;}
+  .lab{font-size:15px;color:var(--muted);}
+  .badge{font-size:13px;padding:3px 12px;border-radius:20px;background:rgba(0,200,255,.15);color:var(--cyan);visibility:hidden;}
+  #status{padding:6px 22px;font-size:14px;color:var(--muted);}
+  #status.off{color:#ff6b6b;}
+  h1{font-size:16px;font-weight:500;color:var(--muted);margin:0;padding:14px 22px 0;}
+</style>
+</head>
+<body>
+  <h1>Chambre — contrôle (cible : bureau)</h1>
+  <div class="wrap">
+
+    <div class="card">
+      <div class="head"><span>Lumière</span></div>
+      <div class="row">
+        <div class="col">
+          <svg class="tap" id="bulbBtn" width="120" height="134" viewBox="0 0 120 130" role="button" aria-label="Allumer ou éteindre">
+            <circle id="halo" cx="60" cy="52" r="40" fill="#ffd873" opacity="0.4"/>
+            <path id="bulb" d="M60 16 a30 30 0 0 1 30 30 c0 14 -9 22 -15 30 l-30 0 c-6 -8 -15 -16 -15 -30 a30 30 0 0 1 30 -30 z" fill="#3a3f45" stroke="#5a6068" stroke-width="1.5"/>
+            <rect x="47" y="90" width="26" height="8" rx="2" fill="#5a6068"/>
+            <rect x="49" y="100" width="22" height="7" rx="2" fill="#5a6068"/>
+            <rect x="52" y="109" width="16" height="7" rx="2" fill="#5a6068"/>
+          </svg>
+          <div class="end">appuyer = on / off</div>
+          <div class="val" id="lumOut">–</div>
+        </div>
+        <div class="col">
+          <span class="end">100 %</span>
+          <div class="vbox"><input type="range" id="lum" min="0" max="100" step="1" value="0" aria-label="Intensité"></div>
+          <span class="end">0 %</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="head"><span>Volet</span><span class="badge" id="moving">en mouvement</span></div>
+      <div class="row">
+        <div class="col">
+          <svg class="tap" id="voletBtn" width="200" height="232" viewBox="0 0 260 300" role="button" aria-label="Ouvrir ou fermer">
+            <rect x="20" y="20" width="220" height="240" rx="6" fill="#123a4f"/>
+            <rect x="20" y="20" width="220" height="240" rx="6" fill="none" stroke="#2b556b" stroke-width="2"/>
+            <line x1="130" y1="20" x2="130" y2="260" stroke="#2b556b" stroke-width="3"/>
+            <line x1="20" y1="140" x2="240" y2="140" stroke="#2b556b" stroke-width="3"/>
+            <g id="slats"></g>
+            <rect x="14" y="14" width="232" height="252" rx="8" fill="none" stroke="#3a3f45" stroke-width="6"/>
+            <rect x="30" y="262" width="200" height="14" rx="3" fill="#3a3f45"/>
+          </svg>
+          <div class="end">appuyer = ouvre / ferme</div>
+        </div>
+        <div class="col">
+          <span class="lab">Position</span>
+          <span class="val" id="posOut">–</span>
+          <span class="end">↑ ouvert</span>
+          <div class="vbox"><input type="range" id="pos" min="0" max="100" step="1" value="0" aria-label="Position"></div>
+          <span class="end">↓ fermé (nuit)</span>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div id="status">Connexion à la passerelle…</div>
+
+<script>
+const GW = "http://192.168.1.3:8000";
+
+const $ = id => document.getElementById(id);
+const statusEl = $("status");
+let lampOn = false, lastLum = 100;
+
+function setStatus(txt, off){ statusEl.textContent = txt; statusEl.className = off ? "off" : ""; }
+
+async function api(path, method="GET", body){
+  const opt = { method, headers: {} };
+  if(body){ opt.headers["Content-Type"]="application/json"; opt.body=JSON.stringify(body); }
+  const ctrl = new AbortController();
+  const t = setTimeout(()=>ctrl.abort(), 6000);
+  opt.signal = ctrl.signal;
+  try{
+    const r = await fetch(GW+path, opt);
+    clearTimeout(t);
+    if(!r.ok) throw new Error("HTTP "+r.status);
+    setStatus("Passerelle connectée");
+    return await r.json();
+  }catch(e){
+    clearTimeout(t);
+    setStatus("Passerelle hors ligne", true);
+    throw e;
+  }
+}
+
+/* ---------- Lumière ---------- */
+const L = $("lum"), halo = $("halo"), bulb = $("bulb");
+L.style.transform = "rotate(-90deg)";
+function drawLum(v){
+  $("lumOut").textContent = v + " %";
+  halo.setAttribute("opacity", (v/100*0.85).toFixed(2));
+  halo.setAttribute("r", (28+v/100*24).toFixed(0));
+  bulb.setAttribute("fill", v===0 ? "#3a3f45" :
+    "rgb("+Math.round(58+v/100*197)+","+Math.round(63+v/100*153)+","+Math.round(69+v/100*46)+")");
+}
+let lumTimer=null;
+L.addEventListener("input", ()=>{
+  const v = +L.value; drawLum(v); lampOn = v>0; if(v>0) lastLum=v;
+  clearTimeout(lumTimer);
+  lumTimer = setTimeout(()=> api("/lampe","POST",{on:v>0, brightness:v}).catch(()=>{}), 350);
+});
+$("bulbBtn").addEventListener("click", async ()=>{
+  const target = lampOn ? 0 : (lastLum>0?lastLum:100);
+  L.value = target; drawLum(target); lampOn = target>0;
+  try{ await api("/lampe","POST",{on:target>0, brightness:target}); }catch(e){}
+});
+
+/* ---------- Volet ---------- */
+const P = $("pos"), slatG = $("slats"), moving = $("moving");
+P.style.transform = "rotate(-90deg)";
+const topY=22, fullH=236, left=22, right=238, nSlats=14, gap=fullH/nSlats;
+let curP=0, targetP=0, animTimer=null, pollTimer=null;
+
+function drawVolet(){
+  $("posOut").textContent = Math.round(targetP) + " %";
+  const closedFrac = (100-curP)/100, coverH = fullH*closedFrac;
+  let s="";
+  if(coverH>1){
+    if(curP<=4){
+      s = '<rect x="'+left+'" y="'+topY+'" width="'+(right-left)+'" height="'+coverH.toFixed(1)+'" fill="#141d25"/>';
+    }else{
+      const covered = Math.round(nSlats*closedFrac), openness=curP/100;
+      const sy = Math.max(2.5, gap*(1-openness*0.7));
+      const lg = Math.round(40+openness*110);
+      const col = "rgb("+lg+","+(lg+14)+","+(lg+24)+")";
+      for(let i=0;i<covered;i++){
+        const cy = topY+gap*i+gap/2;
+        s += '<rect x="'+left+'" y="'+(cy-sy/2)+'" width="'+(right-left)+'" height="'+sy.toFixed(1)+'" rx="1.5" fill="'+col+'" stroke="#0f1a22" stroke-width="0.6"/>';
+      }
+    }
+  }
+  slatG.innerHTML = s;
+  moving.style.visibility = Math.abs(curP-targetP)>0.5 ? "visible" : "hidden";
+}
+function animate(){
+  clearInterval(animTimer);
+  animTimer = setInterval(()=>{
+    if(Math.abs(curP-targetP)>0.5){ curP += (targetP>curP?1:-1)*Math.min(2,Math.abs(targetP-curP)); drawVolet(); }
+    else { clearInterval(animTimer); drawVolet(); }
+  }, 45);
+}
+function pollVolet(times){
+  clearInterval(pollTimer); let n=0;
+  pollTimer = setInterval(async ()=>{
+    n++; try{ const d = await api("/volet"); targetP = d.position; animate(); }catch(e){}
+    if(n>=times) clearInterval(pollTimer);
+  }, 5000);
+}
+let posTimer=null;
+P.addEventListener("input", ()=>{
+  targetP = +P.value; drawVolet(); animate();
+  clearTimeout(posTimer);
+  posTimer = setTimeout(()=>{ api("/volet","POST",{position:targetP}).then(()=>pollVolet(6)).catch(()=>{}); }, 350);
+});
+$("voletBtn").addEventListener("click", ()=>{
+  targetP = (targetP>=50)?100:0; P.value=targetP; drawVolet(); animate();
+  api("/volet","POST",{position:targetP}).then(()=>pollVolet(6)).catch(()=>{});
+});
+
+/* ---------- État initial ---------- */
+async function init(){
+  try{
+    const l = await api("/lampe");
+    lampOn = l.on; const v = l.on ? l.brightness : 0;
+    L.value = v; if(l.brightness>0) lastLum=l.brightness; drawLum(v);
+  }catch(e){ drawLum(0); }
+  try{
+    const v = await api("/volet");
+    curP = targetP = v.position; P.value = v.position; drawVolet();
+  }catch(e){ drawVolet(); }
+}
+init();
+</script>
+</body>
+</html>

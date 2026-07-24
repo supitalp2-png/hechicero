@@ -1,7 +1,7 @@
 # Backlog Hechicero
 
 > Convention : `TICKET-### — [type] — Titre — (prio) — owner`
-> Dernière mise à jour : 2026-07-19 (TICKET-046 favoris validé et clos par Thomas ; TICKET-112 ouvert — écran « Chambre » domotique Home Assistant via GPIO23, en cadrage ; TICKET-011 durcissement systemd livré et validé progressivement sur les 8 services, y compris le chemin shutdown réel de battery_watchdog testé et validé par Thomas ; fix hors-ticket "reprise auto lecture au démarrage MPD" via restore_paused ; TICKET-030 égaliseur alsaequal livré ET validé en conditions réelles la veille, avec un incident mpd.socket en cours de route — voir §6.4.1 ; TICKET-017 livré et validé ; TICKET-037/047/056 annulés ; TICKET-109 et TICKET-110 roaming clos ; ticket ventilo renuméroté 110→111)
+> Dernière mise à jour : 2026-07-24 — TICKET-112 (passerelle domotique chambre) : Phases 1 (spike OAuth) et 2 (service passerelle FastAPI) livrées et validées en réel sur les équipements du bureau ; page `web/chambre.html` fonctionnelle sur le Pi ; voir `docs/95-DOMOTIQUE_CHAMBRE.md`. Reste un souci connu de retour de position du BSO (voir §8 de la doc). Historique antérieur du 2026-07-19 conservé dans les tickets.
 
 ---
 
@@ -21,8 +21,17 @@
 
 # 🟢 Priorité basse / À décider
 
-- [ ] TICKET-112 — feature/sécurité — Écran « Chambre » : contrôle domotique (Legrand/Netatmo via Home Assistant) depuis l'IHM enfant (2026-07-19)
-      - ⏸️ **EN PAUSE, priorité dégradée haute → basse le 2026-07-19** (décision Thomas, le jour même de l'ouverture) : le cadrage a révélé que le prérequis n'est pas une petite config mais **l'installation et la prise en main complètes d'un Home Assistant** (VM Freebox), soit un chantier à part entière avant même de commencer à coder côté Hechicero. Thomas préfère ne pas engager ce temps maintenant. Le cadrage ci-dessous reste entièrement valable pour la reprise — rien n'est à refaire.
+- [~] TICKET-112 — feature/sécurité — Écran « Chambre » : contrôle domotique (Legrand/Netatmo via passerelle VM) depuis l'IHM enfant (2026-07-19, MAJ 2026-07-24)
+      - ✅ **2026-07-24 — Phases 1 et 2 TERMINÉES et validées en réel (sur les équipements du bureau, avant bascule chambre).** Architecture Home Assistant ABANDONNÉE au profit d'une **VM passerelle FastAPI + API Netatmo Connect directe** (VM Debian déjà en place, 192.168.1.3).
+          - Spike OAuth : app Netatmo déclarée, token + refresh OK, modules identifiés, lampe (on/off + `brightness` 0-100) et volet (`target_position` 0-100) pilotés en réel.
+          - Découverte clé : l'orientation des lames du BSO n'est PAS pilotable via `setstate` (couplée mécaniquement à la position) → l'IHM n'a qu'un seul axe de position 0-100 (0 = occultation totale = nuit).
+          - Service passerelle : FastAPI (`app.py` sur la VM), endpoints `/lampe` et `/volet`, whitelist 2 modules, refresh token auto, cache (quota Netatmo ~500/j), service systemd `hechicero-passerelle` — survit au reboot VM.
+          - Écran : `web/chambre.html` (page autonome, aucun secret) sert sur le Pi (`http://192.168.1.86/chambre.html`) et pilote lampe + volet du bureau via la passerelle — base de l'intégration Phase 3.
+          - Sécurité : aucun secret ni ID de module ni prénom hors de la VM ; l'IHM ne connaît que 2 actions génériques.
+          - 🐛 **Souci connu** : le retour d'état de **position réelle du BSO** ne s'affiche pas correctement dans `web/chambre.html` (la commande marche, c'est le feedback de position qui est à fiabiliser). Détail : `docs/95-DOMOTIQUE_CHAMBRE.md` §8.
+          - **Détails complets : `docs/95-DOMOTIQUE_CHAMBRE.md`.** Reste : Phase 3 (écran dans `web/lecteur/index.html` + bouton GPIO23), Phase 4 (bascule `LAMPE_ID`/`VOLET_ID` sur la chambre, restreindre CORS, test reboot Freebox).
+      - 🗄️ Cadrage historique ci-dessous (hypothèse Home Assistant) conservé pour mémoire — architecture retenue = `docs/95-DOMOTIQUE_CHAMBRE.md` :
+      - ⏸️ **EN PAUSE (état au 2026-07-19, désormais dépassé — repris et livré le 2026-07-24, voir ci-dessus)** (décision Thomas, le jour même de l'ouverture) : le cadrage a révélé que le prérequis n'est pas une petite config mais **l'installation et la prise en main complètes d'un Home Assistant** (VM Freebox), soit un chantier à part entière avant même de commencer à coder côté Hechicero. Thomas préfère ne pas engager ce temps maintenant. Le cadrage ci-dessous reste entièrement valable pour la reprise — rien n'est à refaire.
       - Demande de Thomas : nouvel écran permettant de piloter la lumière et le volet de la chambre de son fils depuis Hechicero.
       - ⚠️ **Prémisse corrigée en cours de cadrage (2026-07-19)** : le ticket a d'abord été écrit en supposant une instance **Home Assistant existante** — c'est faux. Thomas a **Google Home**, et les appareils réels sont du **Legrand / Netatmo** (gamme "with Netatmo", app Home + Control). Ne pas repartir de l'hypothèse HA-déjà-en-place dans les prochaines sessions.
       - Recherche faite : **Google Home est une impasse** — les "Home APIs" ouvertes par Google sont des SDK **mobiles uniquement** (Android/iOS, certification obligatoire), inutilisables depuis un serveur PHP/Python sur le Pi. On contourne donc Google Home entièrement et on parle directement à Legrand.
