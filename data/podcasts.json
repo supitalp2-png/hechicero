@@ -207,6 +207,15 @@
             "language": "fr",
             "image": "images/ladiscomobile.jpg",
             "max_episodes": 999
+        },
+        {
+            "id": "lesexplorateursdelunivers",
+            "label": "Les explorateurs de l'Univers",
+            "rss": "https://radiofrance-podcast.net/podcast09/podcast_ac741429-ff3b-494f-ae1a-ec4eeb47db35.xml",
+            "enabled": true,
+            "language": "fr",
+            "image": "images/lesexplorateursdelunivers.jpg",
+            "max_episodes": 999
         }
     ],
     "radios": [

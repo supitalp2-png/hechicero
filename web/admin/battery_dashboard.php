@@ -131,24 +131,8 @@ $currentPage = basename($_SERVER['PHP_SELF'] ?? 'battery_dashboard.php');
         <div class="ha-subtitle">Cycles batterie, recharge et estimations d’autonomie</div>
       </div>
       <nav class="ha-nav">
-        <a class="ha-btn <?php echo $currentPage === 'index.php' ? 'active' : ''; ?>" href="/">
-          <span class="ha-btn-icon">⚙</span> Admin
-        </a>
-        <a class="ha-btn <?php echo $currentPage === 'dashboard.php' ? 'active' : ''; ?>" href="/dashboard.php">
-          <span class="ha-btn-icon">📊</span> Écoute
-        </a>
-        <a class="ha-btn <?php echo $currentPage === 'battery_dashboard.php' ? 'active' : ''; ?>" href="/admin/battery_dashboard.php">
-          <span class="ha-btn-icon">🔋</span> Batterie
-        </a>
-        <a class="ha-btn <?php echo $currentPage === 'favoris.php' ? 'active' : ''; ?>" href="/admin/favoris.php">
-          <span class="ha-btn-icon">❤️</span> Favoris
-        </a>
-        <a class="ha-btn <?php echo $currentPage === 'audio_eq.php' ? 'active' : ''; ?>" href="/admin/audio_eq.php">
-          <span class="ha-btn-icon">🎚️</span> Audio
-        </a>
-        <a class="ha-btn" href="/lecteur/" target="_blank">
-          <span class="ha-btn-icon">📻</span> Lecteur
-        </a>
+        <a class="ha-btn" href="/"><span class="ha-btn-icon">‹</span> Bureau</a>
+        <a class="ha-btn" href="/lecteur/" target="_blank"><span class="ha-btn-icon">📻</span> Lecteur</a>
       </nav>
     </div>
 

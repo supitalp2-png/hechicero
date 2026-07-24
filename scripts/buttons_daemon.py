@@ -17,9 +17,9 @@ bouton, gauche à droite sur la tranche supérieure du boîtier réel) :
   GPIO16 → favori (TICKET-046, tap = bascule le favori sur l'épisode en
            cours / maintien = ouvre l'écran dédié favoris) — GPIO confirmé le
            2026-07-19 via ce daemon en mode identification
-  GPIO23 → bouton isolé, emplacement antenne — réserve, PAS le favori
-           (explicitement écarté par Thomas le 2026-07-19), usage futur à
-           définir
+  GPIO23 → bouton isolé, emplacement antenne — écran Chambre (TICKET-112,
+           domotique lampe/volet) : toggle simple, ouvre/ferme l'écran et
+           réveille la dalle si elle est en veille DPMS
   GPIO6  → non câblé à un bouton (broche libre inutilisée)
 
 Boutons "tap ou maintien" (2026-07-08, GPIO17/27) : un appui bref garde le
@@ -57,6 +57,8 @@ import argparse
 import json
 import logging
 import re
+import subprocess
+import threading
 import time
 import urllib.request
 
@@ -65,6 +67,16 @@ LOGGER = logging.getLogger("buttons_daemon")
 RADIO_BASE = "http://localhost/lecteur/radio.php"
 CONFIRM_DELAY_S = 0.008       # relecture de la broche après le front, pour confirmer
 MIN_TOGGLE_INTERVAL_S = 0.4   # garde-fou par broche entre deux appuis acceptés
+
+# Réveil de la dalle physique (TICKET-112, bouton Chambre GPIO23). Ce daemon
+# tourne en root, mais l'écran est piloté par wlr-randr dans la session
+# Wayland de l'utilisateur `thomas` (cf. scripts/screen_dpms.sh, "pas de sudo
+# requis") — il faut donc franchir la frontière utilisateur et fournir l'env
+# de session. `runuser` (root -> thomas) évite le piège sudo+NoNewPrivileges
+# du durcissement systemd (TICKET-011).
+SCREEN_DPMS_SCRIPT = "/home/thomas/hechicero/scripts/screen_dpms.sh"
+SCREEN_USER = "thomas"
+SCREEN_ENV = {"WAYLAND_DISPLAY": "wayland-0", "XDG_RUNTIME_DIR": "/run/user/1000"}
 
 # Mapping GPIO ↔ bouton confirmé le 2026-07-08 (voir mémoire
 # project_hechicero_buttons_gpio et docstring du module). GPIO4 volontairement
@@ -214,6 +226,48 @@ def handle_favori_screen(pin: int) -> None:
     LOGGER.info("Demande écran favoris (GPIO%s) — réponse radio.php : %s", pin, result)
 
 
+def wake_screen() -> None:
+    """Rallume la dalle si elle est en veille DPMS (TICKET-112). Best-effort,
+    ne lève jamais : un échec de réveil écran ne doit pas empêcher la bascule
+    d'écran (l'IHM change quand même, visible dès que la dalle revient). Un
+    `wlr-randr --on` alors que l'écran est déjà allumé est un no-op inoffensif.
+
+    Ce daemon est root ; l'écran appartient à la session Wayland de `thomas`.
+    On passe par `runuser` (pas `sudo`, cassé par NoNewPrivileges du
+    durcissement TICKET-011) en injectant l'env de session Wayland.
+
+    Lancé dans un thread détaché : `wlr-randr` peut prendre ~1s, et on ne veut
+    JAMAIS bloquer la boucle de polling GPIO (sinon les autres boutons
+    deviennent mous le temps du réveil) — non-régression."""
+    def _run():
+        try:
+            env_prefix = [f"{k}={v}" for k, v in SCREEN_ENV.items()]
+            subprocess.run(
+                ["runuser", "-u", SCREEN_USER, "--", "env", *env_prefix, SCREEN_DPMS_SCRIPT, "on"],
+                timeout=5, check=False,
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            )
+        except Exception as e:
+            LOGGER.warning("Réveil écran échoué (non bloquant) : %s", e)
+    threading.Thread(target=_run, daemon=True).start()
+
+
+def handle_chambre(pin: int) -> None:
+    """Bouton Chambre (GPIO23, TICKET-112) — toggle de l'écran domotique.
+    Deux effets, indépendants et tous deux best-effort :
+      1. Réveil de la dalle si elle est éteinte (DPMS) — un appui GPIO n'est
+         pas vu comme une activité par le compositeur/swayidle, donc ne
+         rallume pas l'écran tout seul.
+      2. Demande de bascule d'écran côté IHM (action=request_screen, même
+         mécanisme que l'écran favoris) — index.html gère le toggle réel
+         (ouvre / revient à l'écran précédent) et le réveil de la veille
+         "navigateur" (#sleep-overlay).
+    Ordre : on réveille l'écran d'abord pour que la bascule soit visible."""
+    wake_screen()
+    result = http_get("action=request_screen&screen=chambre")
+    LOGGER.info("Bouton Chambre (GPIO%s) — réponse radio.php : %s", pin, result)
+
+
 # Dispatch par broche. Les broches absentes de ce dict tombent sur
 # handle_unassigned via .get(pin, handle_unassigned) dans la boucle.
 #
@@ -222,14 +276,14 @@ def handle_favori_screen(pin: int) -> None:
 # GPIO17, GPIO27 (précédent/suivant) et GPIO16 (favori, TICKET-046)
 # n'utilisent PAS ce dict : ce sont des boutons "tap ou maintien"
 # (TAP_OR_HOLD ci-dessous), dispatchés à part.
-# GPIO23 (bouton isolé, emplacement antenne) reste volontairement en
-# handle_unassigned : réserve, explicitement écartée du favori par Thomas le
-# 2026-07-19, usage futur pas encore défini.
+# GPIO23 (bouton isolé, emplacement antenne) = bouton Chambre (TICKET-112,
+# 2026-07-19) : toggle simple (pas tap-ou-maintien), donc dans ce dict.
 HANDLERS = {
     25: handle_hp_casque,   # source
     13: handle_vol_down,
     12: handle_play_pause,
     5:  handle_vol_up,
+    23: handle_chambre,     # écran domotique Chambre (TICKET-112)
 }
 
 

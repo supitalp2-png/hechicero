@@ -129,56 +129,78 @@ $("bulbBtn").addEventListener("click", async ()=>{
   try{ await api("/lampe","POST",{on:target>0, brightness:target}); }catch(e){}
 });
 
-/* ---------- Volet ---------- */
-const P = $("pos"), slatG = $("slats"), moving = $("moving");
+/* ---------- Volet ----------
+   dispP = position affichée (lissée), srvP = position renvoyée par la passerelle,
+   targetP = consigne (curseur). La passerelle estime la position en temps réel
+   pendant la manœuvre (Netatmo ne la remonte qu'en fin de course). */
+const P = $("pos"), slatG = $("slats"), movingEl = $("moving");
 P.style.transform = "rotate(-90deg)";
 const topY=22, fullH=236, left=22, right=238, nSlats=14, gap=fullH/nSlats;
-let curP=0, targetP=0, animTimer=null, pollTimer=null;
+let dispP=0, srvP=0, targetP=0, srvMoving=false;
+let fastPoll=null, reconcileTimer=null;
 
 function drawVolet(){
-  $("posOut").textContent = Math.round(targetP) + " %";
-  const closedFrac = (100-curP)/100, coverH = fullH*closedFrac;
+  $("posOut").textContent = Math.round(dispP) + " %";
+  const closedFrac=(100-dispP)/100, coverH=fullH*closedFrac;
   let s="";
   if(coverH>1){
-    if(curP<=4){
-      s = '<rect x="'+left+'" y="'+topY+'" width="'+(right-left)+'" height="'+coverH.toFixed(1)+'" fill="#141d25"/>';
+    if(dispP<=4){
+      s='<rect x="'+left+'" y="'+topY+'" width="'+(right-left)+'" height="'+coverH.toFixed(1)+'" fill="#141d25"/>';
     }else{
-      const covered = Math.round(nSlats*closedFrac), openness=curP/100;
-      const sy = Math.max(2.5, gap*(1-openness*0.7));
-      const lg = Math.round(40+openness*110);
-      const col = "rgb("+lg+","+(lg+14)+","+(lg+24)+")";
+      const covered=Math.round(nSlats*closedFrac), openness=dispP/100;
+      const sy=Math.max(2.5, gap*(1-openness*0.7));
+      const lg=Math.round(40+openness*110);
+      const col="rgb("+lg+","+(lg+14)+","+(lg+24)+")";
       for(let i=0;i<covered;i++){
-        const cy = topY+gap*i+gap/2;
-        s += '<rect x="'+left+'" y="'+(cy-sy/2)+'" width="'+(right-left)+'" height="'+sy.toFixed(1)+'" rx="1.5" fill="'+col+'" stroke="#0f1a22" stroke-width="0.6"/>';
+        const cy=topY+gap*i+gap/2;
+        s+='<rect x="'+left+'" y="'+(cy-sy/2)+'" width="'+(right-left)+'" height="'+sy.toFixed(1)+'" rx="1.5" fill="'+col+'" stroke="#0f1a22" stroke-width="0.6"/>';
       }
     }
   }
-  slatG.innerHTML = s;
-  moving.style.visibility = Math.abs(curP-targetP)>0.5 ? "visible" : "hidden";
+  slatG.innerHTML=s;
+  movingEl.style.visibility = srvMoving ? "visible" : "hidden";
 }
-function animate(){
-  clearInterval(animTimer);
-  animTimer = setInterval(()=>{
-    if(Math.abs(curP-targetP)>0.5){ curP += (targetP>curP?1:-1)*Math.min(2,Math.abs(targetP-curP)); drawVolet(); }
-    else { clearInterval(animTimer); drawVolet(); }
-  }, 45);
+
+/* boucle d'animation continue : dispP glisse doucement vers srvP -> rendu fluide */
+setInterval(()=>{
+  if(Math.abs(dispP-srvP)>0.3){
+    dispP += (srvP>dispP?1:-1)*Math.min(1.5, Math.abs(srvP-dispP));
+    drawVolet();
+  }
+}, 40);
+
+async function pollOnce(){
+  try{
+    const d = await api("/volet");
+    srvP = d.position; srvMoving = !!d.moving;
+    if(!srvMoving) drawVolet();
+  }catch(e){}
 }
-function pollVolet(times){
-  clearInterval(pollTimer); let n=0;
-  pollTimer = setInterval(async ()=>{
-    n++; try{ const d = await api("/volet"); targetP = d.position; animate(); }catch(e){}
-    if(n>=times) clearInterval(pollTimer);
-  }, 5000);
+function startTracking(){
+  clearInterval(fastPoll); clearTimeout(reconcileTimer);
+  srvMoving = true; drawVolet();
+  fastPoll = setInterval(async ()=>{
+    await pollOnce();
+    if(!srvMoving){
+      clearInterval(fastPoll);
+      /* recalage tardif quand Netatmo a vraiment mis à jour (après le settle serveur) */
+      reconcileTimer = setTimeout(pollOnce, 35000);
+    }
+  }, 700);
 }
+function commandVolet(pos){
+  targetP = pos; P.value = pos; srvMoving = true; drawVolet();
+  api("/volet","POST",{position:pos}).then(startTracking).catch(()=>{});
+}
+
 let posTimer=null;
 P.addEventListener("input", ()=>{
-  targetP = +P.value; drawVolet(); animate();
+  targetP = +P.value; srvMoving = true; drawVolet();
   clearTimeout(posTimer);
-  posTimer = setTimeout(()=>{ api("/volet","POST",{position:targetP}).then(()=>pollVolet(6)).catch(()=>{}); }, 350);
+  posTimer = setTimeout(()=> commandVolet(targetP), 300);
 });
 $("voletBtn").addEventListener("click", ()=>{
-  targetP = (targetP>=50)?100:0; P.value=targetP; drawVolet(); animate();
-  api("/volet","POST",{position:targetP}).then(()=>pollVolet(6)).catch(()=>{});
+  commandVolet((targetP>=50)?100:0);
 });
 
 /* ---------- État initial ---------- */
@@ -190,7 +212,9 @@ async function init(){
   }catch(e){ drawLum(0); }
   try{
     const v = await api("/volet");
-    curP = targetP = v.position; P.value = v.position; drawVolet();
+    srvP = dispP = targetP = v.position; srvMoving = !!v.moving;
+    P.value = v.position; drawVolet();
+    if(srvMoving) startTracking();
   }catch(e){ drawVolet(); }
 }
 init();

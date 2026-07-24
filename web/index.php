@@ -569,6 +569,22 @@ if (isset($_GET['action'])) {
 }
 body { font-size:14px; line-height:1.5; }
 
+/* Titre "Hechicero" doré stylisé, comme l'écran de démarrage du lecteur
+   (TICKET-113). Même police Great Vibes + même dégradé or. Accueil seulement. */
+@font-face {
+  font-family:'Great Vibes';
+  src:url('/fonts/GreatVibes-Regular.ttf') format('truetype');
+  font-weight:normal; font-style:normal; font-display:swap;
+}
+#home-header h1 {
+  font-family:'Great Vibes','Palatino Linotype',Palatino,serif;
+  font-weight:400; font-size:clamp(48px,9vw,82px); line-height:1.05;
+  background:linear-gradient(180deg,
+    #7a4e08 0%,#c88820 12%,#f0cc58 26%,#fff098 40%,
+    #f0cc50 54%,#c08018 65%,#eec850 76%,#d09828 88%,#7a4e08 100%);
+  -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text;
+}
+
 /* ── Header */
 .mode-switch { display:flex; border:1px solid var(--border); border-radius:6px; overflow:hidden; }
 .mode-btn { padding:6px 16px; background:transparent; color:var(--muted); border:none; cursor:pointer;
@@ -722,6 +738,51 @@ body.expert .expert-flex  { display:inline-flex !important; }
 body.expert .expert-chk   { cursor:pointer !important; }
 body.expert input[disabled] { cursor:not-allowed !important; }
 
+/* ── Bureau d'icônes (TICKET-113) ──────────────────────────────
+   L'état de vue est dans body[data-view] (attribut, pas class — setMode()
+   réécrit body.className, il ne faut donc pas y stocker cet état).
+   home = grille visible + sections masquées ; sinon = panneau dédié. */
+#springboard { display:none; }
+body[data-view="home"] #springboard { display:grid; }
+/* Sur l'accueil, toutes les sections-panneaux sont masquées (override du
+   !important de .expert-only). */
+body[data-view="home"] section[data-panel] { display:none !important; }
+/* Section "accueil" (État système) : visible SEULEMENT sur l'accueil. */
+body:not([data-view="home"]) section[data-home] { display:none !important; }
+/* Dans un panneau, on masque les sections des AUTRES panneaux ; celles du
+   panneau actif s'affichent normalement (et .expert-only continue de gérer
+   le contenu expert au sein du panneau). */
+body[data-view="veille"]   section[data-panel]:not([data-panel="veille"])   { display:none !important; }
+body[data-view="horaires"] section[data-panel]:not([data-panel="horaires"]) { display:none !important; }
+body[data-view="podcasts"] section[data-panel]:not([data-panel="podcasts"]) { display:none !important; }
+/* Deux headers : accueil (Hechicero + Normal/Expert + bureau d'icônes) et
+   panneau (style board : icône+titre à gauche, Bureau/Lecteur à droite). */
+#panel-header { display:none; }
+body:not([data-view="home"]) #home-header  { display:none; }
+body:not([data-view="home"]) #panel-header { display:flex; }
+#panel-header h1 { display:inline-flex; align-items:center; gap:10px; }
+
+#springboard {
+  grid-template-columns:repeat(3, 1fr); gap:18px 10px;
+  max-width:520px; margin:8px auto 0;
+}
+.sb-tile {
+  display:flex; flex-direction:column; align-items:center; gap:8px;
+  text-decoration:none; color:var(--text,#e6edf3);
+  background:none; border:none; cursor:pointer; padding:0; font:inherit;
+}
+.sb-ico {
+  width:80px; height:80px; border-radius:18px;
+  display:flex; align-items:center; justify-content:center;
+  font-size:40px; line-height:1;
+  box-shadow:0 2px 8px rgba(0,0,0,.25);
+}
+.sb-lbl { font-size:13px; color:var(--muted,#8a97a3); text-align:center; line-height:1.2; }
+/* La tuile Sauvegardes est .expert-only : en mode Expert la règle générique la
+   passerait en display:block (casse le centrage flex) — on la remet en flex. */
+body.expert .sb-tile.expert-only { display:flex !important; }
+@media (min-width:640px){ #springboard { grid-template-columns:repeat(5, 1fr); } }
+
 /* ── Max episodes select (expert) */
 .max-sel { background:var(--bg); border:1px solid var(--border); border-radius:4px;
   color:var(--text); font-size:11px; padding:2px 4px; cursor:pointer; }
@@ -751,45 +812,78 @@ input:checked + .slider:before { transform:translateX(20px); }
 
 <div class="ha-page">
 
-<!-- ── Header ──────────────────────────────────────────────── -->
-<div class="ha-header">
+<!-- ── Header ACCUEIL (bureau) ──────────────────────────────── -->
+<div class="ha-header" id="home-header">
   <div>
     <h1>Hechicero</h1>
     <div class="ha-subtitle">Administration principale, contrôle parental et synchronisation.</div>
   </div>
-  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-    <div class="mode-switch">
-      <button class="mode-btn active" id="btn-normal" onclick="setMode('normal')">Normal</button>
-      <button class="mode-btn"        id="btn-expert" onclick="setMode('expert')">Expert</button>
-    </div>
-    <nav class="ha-nav">
-      <a class="ha-btn active" href="/">
-        <span class="ha-btn-icon">⚙</span> Admin
-      </a>
-      <a class="ha-btn" href="/dashboard.php">
-        <span class="ha-btn-icon">📊</span> Écoute
-      </a>
-      <a class="ha-btn" href="/admin/battery_dashboard.php">
-        <span class="ha-btn-icon">🔋</span> Batterie
-      </a>
-      <a class="ha-btn" href="/admin/favoris.php">
-        <span class="ha-btn-icon">❤️</span> Favoris
-      </a>
-      <a class="ha-btn expert-only" href="/admin/backup_dashboard.php" title="Visible seulement en mode Expert">
-        <span class="ha-btn-icon">💾</span> Sauvegardes
-      </a>
-      <a class="ha-btn expert-only" href="/admin/audio_eq.php" title="Visible seulement en mode Expert">
-        <span class="ha-btn-icon">🎚️</span> Audio
-      </a>
-      <a class="ha-btn" href="/lecteur/" target="_blank" title="Ouvrir le lecteur enfant">
-        <span class="ha-btn-icon">📻</span> Lecteur
-      </a>
-    </nav>
+  <div class="mode-switch">
+    <button class="mode-btn active" id="btn-normal" onclick="setMode('normal')">Normal</button>
+    <button class="mode-btn"        id="btn-expert" onclick="setMode('expert')">Expert</button>
   </div>
 </div>
 
-<!-- ── État système (expert) ───────────────────────────────── -->
-<section class="expert-only">
+<!-- ── Header PANNEAU (style board : icône+titre à gauche, Bureau/Lecteur à
+     droite — cohérent avec les pages autonomes, TICKET-113) ─────────────── -->
+<div class="ha-header" id="panel-header">
+  <div>
+    <h1><span id="ph-icon"></span> <span id="ph-title"></span></h1>
+    <div class="ha-subtitle" id="ph-sub"></div>
+  </div>
+  <nav class="ha-nav">
+    <a class="ha-btn" href="/" onclick="showView('home');return false;"><span class="ha-btn-icon">‹</span> Bureau</a>
+    <a class="ha-btn" href="/lecteur/" target="_blank"><span class="ha-btn-icon">📻</span> Lecteur</a>
+  </nav>
+</div>
+
+<!-- ── Bureau d'icônes (TICKET-113) ─────────────────────────── -->
+<div id="springboard">
+  <button class="sb-tile" onclick="showView('veille')">
+    <span class="sb-ico" style="background:#185FA5">🌙</span>
+    <span class="sb-lbl">Veille &amp; son</span>
+  </button>
+  <button class="sb-tile" onclick="showView('horaires')">
+    <span class="sb-ico" style="background:#534AB7">🕐</span>
+    <span class="sb-lbl">Horaires</span>
+  </button>
+  <button class="sb-tile" onclick="showView('podcasts')">
+    <span class="sb-ico" style="background:#D85A30">🎧</span>
+    <span class="sb-lbl">Podcasts</span>
+  </button>
+  <a class="sb-tile" href="/dashboard.php">
+    <span class="sb-ico" style="background:#0F6E56">📊</span>
+    <span class="sb-lbl">Écoute</span>
+  </a>
+  <a class="sb-tile" href="/admin/battery_dashboard.php">
+    <span class="sb-ico" style="background:#639922">🔋</span>
+    <span class="sb-lbl">Batterie</span>
+  </a>
+  <a class="sb-tile" href="/admin/favoris.php">
+    <span class="sb-ico" style="background:#D4537E">❤️</span>
+    <span class="sb-lbl">Favoris</span>
+  </a>
+  <a class="sb-tile" href="/admin/audio_eq.php">
+    <span class="sb-ico" style="background:#5F5E5A">🎚️</span>
+    <span class="sb-lbl">Égaliseur</span>
+  </a>
+  <a class="sb-tile" href="/admin/domotique.php">
+    <span class="sb-ico" style="background:#1D9E75">🏠</span>
+    <span class="sb-lbl">Domotique</span>
+  </a>
+  <a class="sb-tile" href="/lecteur/" target="_blank">
+    <span class="sb-ico" style="background:#BA7517">📻</span>
+    <span class="sb-lbl">Lecteur</span>
+  </a>
+  <a class="sb-tile expert-only" href="/admin/backup_dashboard.php">
+    <span class="sb-ico" style="background:#444441">💾</span>
+    <span class="sb-lbl">Sauvegardes</span>
+  </a>
+</div>
+
+<!-- ── État système (expert) — affiché sur l'ACCUEIL (data-home), pas dans un
+     panneau (TICKET-113, retour Thomas 2026-07-24) ───────────────────────── -->
+<section class="expert-only" data-home="1">
   <div class="sec-hdr"><h2>État du système</h2></div>
   <div class="sys-grid">
     <div class="card">
@@ -812,7 +906,7 @@ input:checked + .slider:before { transform:translateX(20px); }
   </div>
 </section>
 
-<section>
+<section data-panel="horaires">
   <div class="sec-hdr"><h2>Contrôle parental</h2></div>
   <div class="card" id="parental-card">
 
@@ -861,10 +955,12 @@ input:checked + .slider:before { transform:translateX(20px); }
   </div>
 </section>
 
-<!-- ── Administration avancée ──────────────────────────────── -->
-<section class="expert-only">
+<!-- ── Administration avancée (veille + son) ───────────────── -->
+<!-- TICKET-113 : plus expert-only — accessible en normal via l'icône
+     "Veille & son" (Thomas veut pouvoir régler veille/son sans mode Expert). -->
+<section data-panel="veille">
   <div class="sec-hdr">
-    <h2>Administration avancée</h2>
+    <h2>Veille &amp; son de démarrage</h2>
     <button class="btn btn-primary btn-sm" id="btn-save-adv" onclick="saveConfig()">Enregistrer</button>
   </div>
   <div class="adv-grid">
@@ -975,7 +1071,7 @@ input:checked + .slider:before { transform:translateX(20px); }
 <!-- section supprimée, contenu fusionné dans Admin avancée -->
 
 <!-- ── Ajouter (expert) ────────────────────────────────────── -->
-<section class="expert-only">
+<section class="expert-only" data-panel="podcasts">
   <div class="sec-hdr"><h2>Ajouter</h2></div>
   <div class="add-grid">
 
@@ -1029,7 +1125,7 @@ input:checked + .slider:before { transform:translateX(20px); }
 </section>
 
 <!-- ── Podcasts ────────────────────────────────────────────── -->
-<section>
+<section data-panel="podcasts">
   <div class="sec-hdr">
     <h2>Podcasts <span class="sec-count" id="pod-count"></span></h2>
   </div>
@@ -1046,7 +1142,7 @@ input:checked + .slider:before { transform:translateX(20px); }
 </section>
 
 <!-- ── Webradios ───────────────────────────────────────────── -->
-<section>
+<section data-panel="podcasts">
   <div class="sec-hdr">
     <h2>Webradios <span class="sec-count" id="radio-count"></span></h2>
   </div>
@@ -1063,7 +1159,7 @@ input:checked + .slider:before { transform:translateX(20px); }
 </section>
 
 <!-- ── Synchronisation ──────────────────────────────────────── -->
-<section>
+<section data-panel="podcasts">
   <div class="sec-hdr">
     <h2>Synchronisation des podcasts</h2>
     <button class="btn btn-primary btn-sm" id="btn-ingest" onclick="runIngest()">▶ Mettre à jour</button>
@@ -1125,6 +1221,27 @@ function setMode(mode) {
   // Refresh les listes pour activer/désactiver les contrôles
   loadPodcasts();
   loadRadios();
+}
+
+// ── Bureau d'icônes (TICKET-113) ───────────────────────────
+// L'état de vue vit dans body[data-view] (attribut) — surtout PAS dans
+// body.className, que setMode() réécrit. home = grille ; sinon = panneau.
+// En panneau, on remplit le header "style board" (icône + titre + sous-titre)
+// pour un rendu cohérent avec les pages autonomes (Favoris, Domotique...).
+const PANEL_META = {
+  veille:   { icon:'🌙', title:'Veille & son',        sub:'Écran de veille et son de démarrage' },
+  horaires: { icon:'🕐', title:'Horaires',            sub:'Heures d’écoute autorisées' },
+  podcasts: { icon:'🎧', title:'Podcasts & webradios', sub:'Contenus et synchronisation' },
+};
+function showView(view) {
+  document.body.dataset.view = view;
+  const m = PANEL_META[view];
+  if (m) {
+    document.getElementById('ph-icon').textContent  = m.icon;
+    document.getElementById('ph-title').textContent = m.title;
+    document.getElementById('ph-sub').textContent   = m.sub;
+  }
+  window.scrollTo(0, 0);
 }
 
 // ── Statut ────────────────────────────────────────────────
@@ -1633,6 +1750,7 @@ async function pollLog() {
 }
 
 // ── Init ──────────────────────────────────────────────────
+showView('home');  // bureau d'icônes en page d'accueil (TICKET-113)
 setMode(localStorage.getItem('hechicero_mode') || 'normal');
 api({action:'ensure_radio_images'}).catch(()=>{});  // télécharge les images radio manquantes
 loadStatus();

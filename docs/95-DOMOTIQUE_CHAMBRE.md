@@ -60,10 +60,17 @@ doit dégrader **que** l'écran Chambre, jamais le reste.
 - **Volet** : module type `NLLV`, `appliance_type: orientable_sun_shade`. Expose
   `current_position` et `target_position` (0-100, pas de 1%).
   -> position pilotable. Commande : `setstate` avec `{"target_position": 0-100}`.
-  - L'orientation des lames n'est PAS pilotable en temps réel via `setstate` (6 noms de
-    propriété testés, tous refusés). Sur ce BSO, l'orientation est **couplée mécaniquement à la
-    position** : à 0% le volet est totalement fermé (occultation = nuit). **L'IHM n'a donc qu'un
-    seul axe : la position 0-100%.**
+  - L'orientation des lames n'est PAS pilotable via l'API publique (6 noms de propriété testés
+    dans `setstate`, tous refusés « additional properties »). **Confirmé indépendamment** : la
+    librairie `pyatmo` (celle de Home Assistant) modélise aussi le `NLLV` en position seule
+    (`ShutterMixin`, pas d'orientation). Le champ `target_orientation_float` n'existe que dans les
+    *plannings/scénarios*, pas en commande directe. L'appli mobile Netatmo, elle, pilote bien
+    l'inclinaison — mais via son **API interne/privée**, non ouverte aux tiers.
+  - **Décision Thomas (2026-07-24) : on reste en POSITION SEULE (0-100%).** Les pistes pour
+    l'orientation (scénarios API, ou rétro-ingénierie de l'API privée) sont écartées : bancales,
+    fragiles, dépendance opaque contraire aux invariants — d'autant plus sur l'appareil de l'enfant.
+    À 0% le BSO se ferme complètement (occultation = nuit), ce qui couvre le vrai besoin. **L'IHM
+    n'a donc qu'un seul axe : la position 0-100%.**
 - Librairie : utiliser `homepluscontrol` en version **GitHub** (la version PyPI est l'ancienne
   API Legrand `eliotbylegrand.com`, dépréciée). La passerelle ne s'en sert que pour l'auth.
 - Quota API Netatmo limité (~500 appels/jour) : la passerelle met l'état en cache quelques
@@ -137,15 +144,30 @@ bureau via la passerelle — base de l'intégration Phase 3 dans `web/lecteur/in
 
 ---
 
-## 8. Problèmes connus / à corriger
+## 8. Position du volet — estimation temps réel (résolu 2026-07-24)
 
-- ⚠️ **Retour d'état de position du BSO non fonctionnel dans `web/chambre.html`** (constaté
-  2026-07-24) : l'affichage de la **position réelle** du volet ne se met pas à jour correctement
-  (le curseur/dessin ne reflète pas la position lue via `GET /volet` pendant/après le mouvement).
-  À investiguer en Phase 3 — pistes : le `current_position` renvoyé par Netatmo met du temps à
-  refléter le mouvement réel (et le cache passerelle de quelques secondes s'ajoute) ; ou bug dans
-  la boucle de polling/animation côté page. La **commande** du volet fonctionne, c'est uniquement
-  le **retour d'information** de position qui est à fiabiliser.
+Netatmo ne remonte la position réelle du volet (`current_position`) **qu'en fin de manœuvre**
+(quand le relais se désactive), pas pendant le mouvement — comportement connu, non contournable
+côté API. Un affichage « live » de la position était donc impossible en lisant simplement Netatmo.
+
+**Solution retenue (« time-based cover », comme Home Assistant)** : la passerelle **estime** la
+position par le temps écoulé, à partir des durées de manœuvre mesurées.
+
+- `config.env` (VM) : `VOLET_T_OPEN` et `VOLET_T_CLOSE` = durées réelles de manœuvre complète
+  (mesurées : 45 s dans chaque sens sur le volet du bureau). On se base sur la **durée réelle de
+  déplacement**, pas sur la durée pendant laquelle Netatmo maintient l'ordre (~65 s, réglage de
+  fin de course probablement déréglé, à voir plus tard — sans impact ici).
+- `VOLET_SETTLE` (30 s) : marge avant de refaire confiance à Netatmo après une manœuvre (le relais
+  restant actif au-delà des 45 s, une relecture trop tôt renverrait l'ancienne position).
+- Pendant la manœuvre, `GET /volet` renvoie la position estimée **sans appeler Netatmo** (protège
+  le quota, permet un polling fréquent et fluide) + un drapeau `moving: true`. En fin de manœuvre
+  estimée, `moving: false` et recalage ultérieur sur la vraie position Netatmo.
+- Côté page `web/chambre.html` : polling ~0,7 s pendant le mouvement + lissage de l'affichage →
+  rendu quasi temps réel. Validé par Thomas le 2026-07-24.
+
+**Limite connue restante** : l'estimation suppose des durées linéaires et un point de départ connu ;
+si le volet est bougé par un autre moyen (interrupteur mural, appli) pendant une estimation, l'écart
+se corrige au recalage suivant. Acceptable.
 
 ---
 

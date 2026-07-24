@@ -1,7 +1,7 @@
 # Backlog Hechicero
 
 > Convention : `TICKET-### — [type] — Titre — (prio) — owner`
-> Dernière mise à jour : 2026-07-24 — TICKET-112 (passerelle domotique chambre) : Phases 1 (spike OAuth) et 2 (service passerelle FastAPI) livrées et validées en réel sur les équipements du bureau ; page `web/chambre.html` fonctionnelle sur le Pi ; voir `docs/95-DOMOTIQUE_CHAMBRE.md`. Reste un souci connu de retour de position du BSO (voir §8 de la doc). Historique antérieur du 2026-07-19 conservé dans les tickets.
+> Dernière mise à jour : 2026-07-24 — TICKET-113 (bureau d'icônes admin + page domotique + harmonisation nav) livré ET validé/clos ; TICKET-112 domotique validé en prod (lampe+volet chambre) ; **raffinement gestion lumière (ampoule grise éteinte / jaune+halo allumée, curseur = intensité qui allume, tap ampoule = on/off) appliqué des DEUX côtés (web/admin/domotique.php ET web/lecteur/index.html), pas encore testé en réel**. Souci connu : retour de position du BSO (§8 doc).
 
 ---
 
@@ -29,7 +29,15 @@
           - Écran : `web/chambre.html` (page autonome, aucun secret) sert sur le Pi (`http://192.168.1.86/chambre.html`) et pilote lampe + volet du bureau via la passerelle — base de l'intégration Phase 3.
           - Sécurité : aucun secret ni ID de module ni prénom hors de la VM ; l'IHM ne connaît que 2 actions génériques.
           - 🐛 **Souci connu** : le retour d'état de **position réelle du BSO** ne s'affiche pas correctement dans `web/chambre.html` (la commande marche, c'est le feedback de position qui est à fiabiliser). Détail : `docs/95-DOMOTIQUE_CHAMBRE.md` §8.
-          - **Détails complets : `docs/95-DOMOTIQUE_CHAMBRE.md`.** Reste : Phase 3 (écran dans `web/lecteur/index.html` + bouton GPIO23), Phase 4 (bascule `LAMPE_ID`/`VOLET_ID` sur la chambre, restreindre CORS, test reboot Freebox).
+          - **Détails complets : `docs/95-DOMOTIQUE_CHAMBRE.md`.**
+      - 🛠️ **2026-07-24 — Phase 3 (intégration IHM) CODÉE, pas encore testée en réel.** Transposition de `web/chambre.html` dans l'IHM enfant `web/lecteur/index.html` comme vrai écran du lecteur :
+          - Nouvel écran `#chambre` (markup + CSS scopé `.ch-*` / `#chambre`, accent cyan dédié `--ch-cyan`, IDs préfixés `ch-*` pour zéro collision avec l'existant — vérifié, notamment le `ch-title` des chapitres est distinct). Enregistré dans `ALL_SCREENS`.
+          - Logique lampe + volet transposée fidèlement du prototype (halo animé, lissage de position, badge `moving`, timeout 6s → « hors ligne »). **Fetch passerelle uniquement à l'ouverture de l'écran** (`startChambre`/`stopChambre`) : rien n'est appelé au boot ni écran fermé (kiosque démarre passerelle éteinte OK, quota Netatmo préservé). Appels navigateur→passerelle en direct (`CH_GW='http://192.168.1.3:8000'`, aucun secret côté navigateur).
+          - **Mini-lecteur** : apparaît automatiquement en bas de l'écran Chambre pendant une lecture (comportement natif des écrans non-lecteur, demande de Thomas) — la lecture n'est jamais coupée par l'ouverture de l'écran.
+          - **Bouton GPIO23** (`buttons_daemon.py`) : passe de `handle_unassigned` à `handle_chambre` (dans `HANDLERS`, toggle simple). Émet `request_screen=chambre` (mécanisme `request_screen`/`get_ui_request` réutilisé des favoris, `radio.php` déjà générique — aucune modif PHP). Côté JS, `pollUiRequest` gère `chambre` en toggle (ouvre / revient à l'écran précédent).
+          - **Réveil écran** (demande Thomas) : (a) veille « navigateur » `#sleep-overlay` levée côté JS quand la demande arrive ; (b) dalle physiquement éteinte (DPMS) réveillée par `buttons_daemon.py` via `screen_dpms.sh on` — lancé en **thread détaché** (jamais bloquer la boucle GPIO) et via `runuser` root→thomas avec env Wayland (pas `sudo`, cassé par NoNewPrivileges du durcissement TICKET-011). En sortie de veille, la Chambre s'ouvre (pas de toggle-close).
+          - ⚠️ **À valider en réel (point le plus incertain)** : le réveil DPMS depuis le daemon root vers la session Wayland de `thomas` (`runuser` + env). Tester d'abord la commande à la main avant de se fier au bouton.
+      - ⏳ Reste : test réel Phase 3 (voir plan de test), correction du feedback position BSO (§8 doc), Phase 4 (bascule `LAMPE_ID`/`VOLET_ID` sur la chambre côté VM, restreindre CORS, test reboot Freebox).
       - 🗄️ Cadrage historique ci-dessous (hypothèse Home Assistant) conservé pour mémoire — architecture retenue = `docs/95-DOMOTIQUE_CHAMBRE.md` :
       - ⏸️ **EN PAUSE (état au 2026-07-19, désormais dépassé — repris et livré le 2026-07-24, voir ci-dessus)** (décision Thomas, le jour même de l'ouverture) : le cadrage a révélé que le prérequis n'est pas une petite config mais **l'installation et la prise en main complètes d'un Home Assistant** (VM Freebox), soit un chantier à part entière avant même de commencer à coder côté Hechicero. Thomas préfère ne pas engager ce temps maintenant. Le cadrage ci-dessous reste entièrement valable pour la reprise — rien n'est à refaire.
       - Demande de Thomas : nouvel écran permettant de piloter la lumière et le volet de la chambre de son fils depuis Hechicero.
@@ -64,6 +72,26 @@
 ---
 
 # ✔️ Terminé
+
+- [x] TICKET-113 — UX/admin — Refonte navigation admin en « bureau » d'icônes façon iPhone (2026-07-24)
+      - ✅ **Validé et clos par Thomas le 2026-07-24** (bureau + panneaux, page domotique admin, nav unifiée ‹ Bureau/Lecteur, header « style board » pour les panneaux, État système sur l'accueil, icônes agrandies, icône webradio réparée, sous-titres nettoyés).
+      - Demande de Thomas : la page d'admin (`web/index.php`) devient un bureau d'icônes façon vieil iPhone — grosses icônes carrées arrondies avec label, **pensé mobile** (l'admin se consulte depuis un téléphone). But : rendre la navigation plus cohérente **sans trop toucher aux boards déjà en place**.
+      - Icônes prévues : ⚙️ Veille + son de démarrage · 🕐 Heures autorisées d'écoute · 🎧 Gérer podcasts + webradios · 📊 Dashboard écoute (`dashboard.php`) · 🔋 Batterie (`battery_dashboard.php`) · ❤️ Favoris (`favoris.php`) · 🎚️ Égaliseur (`audio_eq.php`) · 📻 Ouvrir le lecteur (`/lecteur/`) · 🏠 Domotique · 💾 Sauvegardes (`backup_dashboard.php`, **Expert only**).
+      - On garde le toggle **Normal/Expert** (Expert révèle l'icône Sauvegardes), mécanisme `.expert-only`/`body.expert` déjà en place.
+      - **Décisions de cadrage (2026-07-24)** :
+        - Les 3 fonctions aujourd'hui en sections DANS `index.php` (veille/son = section « Administration avancée » ; horaires = section « Contrôle parental » ; podcasts = sections Ajouter/Podcasts/Webradios/Sync) → **vue dédiée par icône** : taper l'icône masque le bureau et affiche un panneau plein écran avec juste cette fonction + bouton « retour au bureau ». Le contenu interne des sections NE CHANGE PAS (mêmes markup/JS), on ne fait que les envelopper dans des conteneurs montrés/masqués → risque de régression minimal. NB : le contrôle des **langues** (dans la section parental) n'a pas d'icône dédiée → à loger dans le panneau Horaires (parental).
+        - **Domotique** : nouvelle page admin dédiée (`web/admin/domotique.php` à créer) qui **reprend le look de l'écran Chambre du lecteur** (ampoule + suns, volet à lamelles, curseurs à gros pouce), parle à la passerelle `192.168.1.3:8000` (aucun secret, comme `chambre.html`). Pensée pour accueillir **plus tard** des règles d'administration (ex. volet ouvrable seulement 8h–19h, veilleuse nuit auto-extinction 10 min) — fonctions futures, pas dans ce ticket.
+        - Boards déjà autonomes (dashboard, batterie, EQ, favoris, sauvegardes) : **on n'y touche pas**, le bureau fait juste un lien ; au plus un petit « retour au bureau ».
+      - ✅ Maquette validée par Thomas (2026-07-24).
+      - 🛠️ **Partie A faite (index.php)** : bureau `#springboard` (10 icônes carrées colorées, 3 col mobile / 5 desktop) ajouté après le header ; état de vue dans `body[data-view]` (attribut, PAS `body.className` que `setMode()` réécrit) ; `showView()` bascule accueil ↔ panneaux ; barre `#panel-back` (retour). Les 7 sections existantes reçoivent `data-panel` (veille / horaires / podcasts) sans toucher leur contenu interne ; CSS masque les sections hors panneau (override du `!important` de `.expert-only`), l'expert-only continue de gérer le contenu expert AU SEIN d'un panneau. Section « Administration avancée » renommée « Veille & son de démarrage » et **dé-expert-only** (accessible en normal via son icône, demande Thomas). `.ha-nav` (barre de liens du header) masquée sur l'admin, remplacée par le bureau. Icône Sauvegardes = `expert-only`. Aucune modif du JS existant (loadStatus/loadConfig/etc. inchangés).
+      - 🛠️ **Partie B faite** : `web/admin/domotique.php` (nouveau) — reprend le look de l'écran Chambre (ampoule + suns, volet à lamelles, curseurs à gros pouce, toggle volet = consigne, animation de position, statut passerelle). Standalone, parle à `192.168.1.3:8000`, aucun secret. Header admin (`ha-page`/`ha-nav`) avec lien « ‹ Bureau » vers `/`. Placeholder commenté pour les règles futures (volet 8h-19h, veilleuse nuit 10 min).
+      - 🛠️ **Harmonisation nav + retours (2026-07-24)** :
+        - Nav unifiée sur TOUS les boards (battery_dashboard, dashboard, favoris, audio_eq, backup_dashboard, domotique) : la longue barre (Admin/Écoute/Batterie/Favoris/Audio/Lecteur) est remplacée par **‹ Bureau + 📻 Lecteur** en haut à droite (modèle du board Domotique). La navigation passe par le bureau d'icônes. Lecteur enfant non touché.
+        - Palette déjà partagée : `index.php` charge `hechicero-admin.css` et n'écrase pas les couleurs de base → bureau + boards ont la même palette navy/or que Batterie (rien à faire).
+        - Cartes du board Favoris alignées sur `.ha-panel` (fond `--surface`, rayon 16, ombre).
+        - Sous-titres « TICKET-… » (Favoris, Égaliseur, Domotique) remplacés par du texte propre.
+        - 🐛 **Bug corrigé** : icônes des webradios cassées dans le board Favoris — le champ `image` est relatif au lecteur, préfixé désormais par `/lecteur/` (fallback `image_url`).
+      - ✅ Testé et validé par Thomas le 2026-07-24 (nav harmonisée, headers de panneaux « style board », État système sur l'accueil, icônes agrandies).
 
 - [x] TICKET-046 — UX — Favoris (cœur) accessibles rapidement
       - ✅ **Validé en conditions réelles et clos par Thomas le 2026-07-19.**

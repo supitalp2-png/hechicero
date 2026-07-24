@@ -64,21 +64,8 @@ $currentPage = basename($_SERVER['PHP_SELF'] ?? 'backup_dashboard.php');
         <div class="ha-subtitle">Ghost complet de la carte SD — version durcie, validée manuellement après chaque évolution majeure</div>
       </div>
       <nav class="ha-nav">
-        <a class="ha-btn <?php echo $currentPage === 'index.php' ? 'active' : ''; ?>" href="/">
-          <span class="ha-btn-icon">⚙</span> Admin
-        </a>
-        <a class="ha-btn <?php echo $currentPage === 'dashboard.php' ? 'active' : ''; ?>" href="/dashboard.php">
-          <span class="ha-btn-icon">📊</span> Écoute
-        </a>
-        <a class="ha-btn <?php echo $currentPage === 'battery_dashboard.php' ? 'active' : ''; ?>" href="/admin/battery_dashboard.php">
-          <span class="ha-btn-icon">🔋</span> Batterie
-        </a>
-        <a class="ha-btn <?php echo $currentPage === 'backup_dashboard.php' ? 'active' : ''; ?>" href="/admin/backup_dashboard.php">
-          <span class="ha-btn-icon">💾</span> Sauvegardes
-        </a>
-        <a class="ha-btn" href="/lecteur/" target="_blank">
-          <span class="ha-btn-icon">📻</span> Lecteur
-        </a>
+        <a class="ha-btn" href="/"><span class="ha-btn-icon">‹</span> Bureau</a>
+        <a class="ha-btn" href="/lecteur/" target="_blank"><span class="ha-btn-icon">📻</span> Lecteur</a>
       </nav>
     </div>
 

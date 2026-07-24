@@ -59,12 +59,20 @@ foreach ($favorisRaw as $key => $entry) {
     if ($type === 'radio') {
         $radio = $radiosById[$entry['radio_id'] ?? ''] ?? null;
         if ($radio === null) continue;
+        // Icône webradio : le champ "image" est relatif au lecteur
+        // ("images/radio/x.jpg") → cassé depuis /admin/. On préfixe par
+        // /lecteur/ ; à défaut on retombe sur l'URL distante (image_url).
+        $rimg = $radio['image'] ?? '';
+        if ($rimg !== '' && !preg_match('#^(https?:)?/#', $rimg)) {
+            $rimg = '/lecteur/' . ltrim($rimg, '/');
+        }
+        if ($rimg === '') $rimg = $radio['image_url'] ?? '';
         $favoris[] = [
             'key'           => $key,
             'type'          => 'radio',
             'podcast_titre' => 'Webradio',
             'titre'         => $radio['name'] ?? '',
-            'image'         => $radio['image'] ?? ($radio['image_url'] ?? ''),
+            'image'         => $rimg,
             'added_at'      => $entry['added_at'] ?? '',
         ];
         continue;
@@ -100,8 +108,9 @@ $currentPage = basename($_SERVER['PHP_SELF'] ?? 'favoris.php');
   <style>
     .fav-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; }
     .fav-card {
-      background: var(--surface-2, rgba(13,24,38,0.6)); border: 1px solid var(--border);
-      border-radius: 14px; overflow: hidden; display: flex; flex-direction: column;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 16px; overflow: hidden; display: flex; flex-direction: column;
+      box-shadow: 0 18px 60px rgba(0,0,0,0.22);
     }
     .fav-card img { width: 100%; aspect-ratio: 1/1; object-fit: cover; display: block; }
     .fav-card-body { padding: 12px 14px; display: flex; flex-direction: column; gap: 4px; flex: 1; }
@@ -123,27 +132,11 @@ $currentPage = basename($_SERVER['PHP_SELF'] ?? 'favoris.php');
     <div class="ha-header">
       <div>
         <h1>❤️ Favoris</h1>
-        <div class="ha-subtitle">TICKET-046 — épisodes marqués favoris par bouton physique (GPIO16)</div>
+        <div class="ha-subtitle">Épisodes et webradios marqués d’un cœur</div>
       </div>
       <nav class="ha-nav">
-        <a class="ha-btn <?php echo $currentPage === 'index.php' ? 'active' : ''; ?>" href="/">
-          <span class="ha-btn-icon">⚙</span> Admin
-        </a>
-        <a class="ha-btn <?php echo $currentPage === 'dashboard.php' ? 'active' : ''; ?>" href="/dashboard.php">
-          <span class="ha-btn-icon">📊</span> Écoute
-        </a>
-        <a class="ha-btn <?php echo $currentPage === 'battery_dashboard.php' ? 'active' : ''; ?>" href="/admin/battery_dashboard.php">
-          <span class="ha-btn-icon">🔋</span> Batterie
-        </a>
-        <a class="ha-btn active" href="/admin/favoris.php">
-          <span class="ha-btn-icon">❤️</span> Favoris
-        </a>
-        <a class="ha-btn <?php echo $currentPage === 'audio_eq.php' ? 'active' : ''; ?>" href="/admin/audio_eq.php">
-          <span class="ha-btn-icon">🎚️</span> Audio
-        </a>
-        <a class="ha-btn" href="/lecteur/" target="_blank">
-          <span class="ha-btn-icon">📻</span> Lecteur
-        </a>
+        <a class="ha-btn" href="/"><span class="ha-btn-icon">‹</span> Bureau</a>
+        <a class="ha-btn" href="/lecteur/" target="_blank"><span class="ha-btn-icon">📻</span> Lecteur</a>
       </nav>
     </div>
 

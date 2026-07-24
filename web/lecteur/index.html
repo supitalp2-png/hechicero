@@ -257,6 +257,87 @@
     .flag-svg svg { width: 100%; height: 100%; display: block; }
 
     /* ══════════════════════════════ */
+    /* SCREEN — CHAMBRE (TICKET-112)  */
+    /* Domotique lampe + volet. Tout est scopé sous #chambre / .ch-* pour ne  */
+    /* jamais collisionner avec les IDs courts du prototype chambre.html.     */
+    /* Accent cyan dédié (--ch-cyan), distinct de l'accent doré de l'app.     */
+    /* ══════════════════════════════ */
+    #chambre { --ch-cyan: #00c8ff; }
+    /* La grille tient dans la hauteur visible au-dessus du mini-lecteur, sans
+       scroll (UX enfant) : cartes centrées, gros éléments tactiles calibrés
+       pour ~460px de hauteur utile (1024×600 − statusbar − mini-lecteur). */
+    #chambre .s-body { display: flex; align-items: center; }
+    .ch-status { font-size: 0.95rem; color: var(--muted); flex-shrink: 0; }
+    .ch-status.off { color: #ff6b6b; }
+    .ch-wrap {
+      display: flex; gap: 22px; flex-wrap: wrap; align-items: stretch;
+      justify-content: center; width: 100%; padding: 4px;
+    }
+    .ch-card {
+      flex: 1 1 340px; max-width: 470px;
+      background: var(--surface); border: 1.5px solid var(--border);
+      border-radius: 18px; padding: 18px 20px;
+      /* Colonne : en-tête en haut, contenu centré — garantit deux cartes de
+         même taille et un rendu équilibré (retour Thomas 2026-07-24). */
+      display: flex; flex-direction: column;
+    }
+    .ch-head {
+      display: flex; align-items: center; gap: 12px; margin-bottom: 10px;
+    }
+    .ch-row { flex: 1; }
+    .ch-title { font-size: 1.5rem; font-weight: 600; margin-right: auto; }
+    .ch-val { font-size: 2.4rem; font-weight: 700; color: var(--ch-cyan); font-variant-numeric: tabular-nums; }
+    .ch-badge {
+      font-size: 0.85rem; padding: 4px 14px; border-radius: 20px;
+      background: rgba(0,200,255,.15); color: var(--ch-cyan);
+      visibility: hidden; white-space: nowrap;
+    }
+    .ch-row { display: flex; gap: 18px; align-items: center; justify-content: center; }
+    .ch-col { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+    .ch-tap { cursor: pointer; -webkit-tap-highlight-color: transparent; }
+    .ch-tap:active { transform: scale(0.94); }
+    /* Icônes tactiles agrandies (cibles généreuses pour un enfant) */
+    .ch-icon-bulb  { width: 150px; height: auto; display: block; }
+    .ch-icon-volet { width: 178px; height: auto; display: block; }
+    .ch-hint { font-size: 0.95rem; color: var(--muted); }
+    .ch-end  { font-size: 0.95rem; color: var(--muted); }
+    /* Repères soleil du curseur lampe (grand soleil en haut = fort, petit en
+       bas = doux), teinte chaude façon appli Legrand. */
+    .ch-sun { display: block; color: #e0b878; }
+    .ch-sun-lg { width: 36px; height: 36px; }
+    .ch-sun-sm { width: 24px; height: 24px; color: #b89968; }
+    /* Curseurs verticaux épais à gros pouce rond — faciles à attraper au doigt,
+       dans l'esprit des grosses commandes du lecteur. Rotation -90° = vertical
+       (haut = 100 %, bas = 0 %). */
+    .ch-slider-col { justify-content: center; gap: 8px; }
+    .ch-vbox { width: 64px; height: 186px; display: flex; align-items: center; justify-content: center; }
+    .ch-vbox input {
+      -webkit-appearance: none; appearance: none;
+      width: 186px; height: 14px; margin: 0; border-radius: 8px;
+      background: var(--border); transform: rotate(-90deg); cursor: pointer;
+    }
+    .ch-vbox input::-webkit-slider-thumb {
+      -webkit-appearance: none; appearance: none;
+      width: 46px; height: 46px; border-radius: 50%;
+      background: var(--ch-cyan); border: 3px solid #0c1014;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+    }
+    .ch-vbox input::-moz-range-thumb {
+      width: 46px; height: 46px; border: 3px solid #0c1014; border-radius: 50%;
+      background: var(--ch-cyan);
+    }
+    /* Toast Chambre indisponible (TICKET-112) */
+    .ch-toast {
+      position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      z-index: 600; padding: 20px 30px; border-radius: 18px;
+      background: rgba(15, 24, 34, 0.97); border: 1.5px solid #00c8ff;
+      color: var(--text); font-size: 1.4rem; font-weight: 600;
+      box-shadow: 0 18px 60px rgba(0,0,0,0.45); backdrop-filter: blur(10px);
+      text-align: center; pointer-events: none;
+    }
+    .ch-toast.hidden { display: none; }
+
+    /* ══════════════════════════════ */
     /* SCREEN 2 — PODCASTS GRID      */
     /* ══════════════════════════════ */
     #pod-grid {
@@ -810,6 +891,84 @@
   </div>
 
   <!-- ─────────────────────────────── -->
+  <!-- SCREEN — CHAMBRE (TICKET-112)  -->
+  <!-- domotique lampe + volet via passerelle 192.168.1.3:8000 -->
+  <!-- ─────────────────────────────── -->
+  <div class="screen has-sb hidden" id="chambre">
+    <div class="s-header">
+      <button class="btn-back" id="back-chambre"><span class="chev">‹</span>Retour</button>
+      <span class="s-title">Chambre</span>
+      <span class="ch-status" id="ch-status">Connexion…</span>
+    </div>
+    <div class="s-body">
+      <div class="ch-wrap">
+
+        <!-- Lumière -->
+        <div class="ch-card">
+          <div class="ch-head">
+            <span class="ch-title">Lumière</span>
+            <span class="ch-val" id="ch-lumOut">–</span>
+          </div>
+          <div class="ch-row">
+            <div class="ch-col">
+              <svg class="ch-tap ch-icon-bulb" id="ch-bulbBtn" viewBox="0 0 120 130" role="button" aria-label="Allumer ou éteindre">
+                <circle id="ch-halo" cx="60" cy="52" r="40" fill="#ffd873" opacity="0.4"/>
+                <path id="ch-bulb" d="M60 16 a30 30 0 0 1 30 30 c0 14 -9 22 -15 30 l-30 0 c-6 -8 -15 -16 -15 -30 a30 30 0 0 1 30 -30 z" fill="#3a3f45" stroke="#5a6068" stroke-width="1.5"/>
+                <rect x="47" y="90" width="26" height="8" rx="2" fill="#5a6068"/>
+                <rect x="49" y="100" width="22" height="7" rx="2" fill="#5a6068"/>
+                <rect x="52" y="109" width="16" height="7" rx="2" fill="#5a6068"/>
+              </svg>
+              <div class="ch-hint">appuyer = on / off</div>
+            </div>
+            <div class="ch-col ch-slider-col">
+              <!-- Repères "grand soleil / petit soleil" façon appli Legrand
+                   (lampe uniquement) — plus parlant qu'un % pour un enfant. -->
+              <svg class="ch-sun ch-sun-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-label="Plus fort">
+                <circle cx="12" cy="12" r="5"/>
+                <path d="M12 1v3M12 20v3M1 12h3M20 12h3"/>
+              </svg>
+              <div class="ch-vbox"><input type="range" id="ch-lum" min="1" max="100" step="1" value="50" aria-label="Intensité"></div>
+              <svg class="ch-sun ch-sun-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-label="Plus doux">
+                <circle cx="12" cy="12" r="3.6"/>
+                <path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3"/>
+              </svg>
+            </div>
+          </div>
+        </div>
+
+        <!-- Volet -->
+        <div class="ch-card">
+          <div class="ch-head">
+            <span class="ch-title">Volet</span>
+            <span class="ch-badge" id="ch-moving">en mouvement</span>
+            <span class="ch-val" id="ch-posOut">–</span>
+          </div>
+          <div class="ch-row">
+            <div class="ch-col">
+              <svg class="ch-tap ch-icon-volet" id="ch-voletBtn" viewBox="0 0 260 300" role="button" aria-label="Ouvrir ou fermer">
+                <rect x="20" y="20" width="220" height="240" rx="6" fill="#123a4f"/>
+                <rect x="20" y="20" width="220" height="240" rx="6" fill="none" stroke="#2b556b" stroke-width="2"/>
+                <line x1="130" y1="20" x2="130" y2="260" stroke="#2b556b" stroke-width="3"/>
+                <line x1="20" y1="140" x2="240" y2="140" stroke="#2b556b" stroke-width="3"/>
+                <g id="ch-slats"></g>
+                <rect x="14" y="14" width="232" height="252" rx="8" fill="none" stroke="#3a3f45" stroke-width="6"/>
+                <rect x="30" y="262" width="200" height="14" rx="3" fill="#3a3f45"/>
+              </svg>
+              <div class="ch-hint">appuyer = ouvre / ferme</div>
+            </div>
+            <div class="ch-col ch-slider-col">
+              <span class="ch-end">↑ ouvert</span>
+              <div class="ch-vbox"><input type="range" id="ch-pos" min="0" max="100" step="1" value="0" aria-label="Position"></div>
+              <span class="ch-end">↓ fermé</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ─────────────────────────────── -->
   <!-- SCREEN 4 — LECTEUR             -->
   <!-- ─────────────────────────────── -->
   <div class="screen has-sb hidden" id="player">
@@ -926,6 +1085,8 @@
 
 <div id="battery-popup" class="battery-notice hidden"></div>
 <div id="battery-alert" class="battery-notice hidden"></div>
+<!-- Toast Chambre (TICKET-112) — message bref quand la passerelle ne répond pas -->
+<div id="ch-toast" class="ch-toast hidden"></div>
 <div id="resume-prompt" class="battery-notice hidden">
   <div class="battery-notice-title">Reprise après batterie faible</div>
   <div class="battery-notice-msg" id="resume-text"></div>
@@ -1024,7 +1185,7 @@
 // ═══════════════════════════════════════
 const el = id => document.getElementById(id);
 
-const ALL_SCREENS = ['home','podcasts','radio-catalog','chapters','favoris','player','radio-player'];
+const ALL_SCREENS = ['home','podcasts','radio-catalog','chapters','favoris','chambre','player','radio-player'];
 function show(id) {
   currentScreen = id;
   ALL_SCREENS.forEach(s => el(s).classList.add('hidden'));
@@ -1172,6 +1333,12 @@ let lastUiRequestTs = null;
 // physiques GPIO gardent leur comportement actuel (scope podcast uniquement).
 let favNavQueue = null;
 let favNavIdx = -1;
+
+// Écran Chambre (TICKET-112) — mémorise l'écran d'où on est venu pour y
+// revenir à la fermeture (le déclencheur GPIO23 peut être pressé depuis
+// n'importe quel écran, contrairement aux favoris). La logique domotique
+// (fetch passerelle) est branchée en phase 2 dans openChambre/closeChambre.
+let chambrePrevScreen = 'home';
 
 function applyBatteryStats(stats) {
   const pct = stats.current_level ?? stats.percent ?? stats.battery_percent ?? null;
@@ -1404,6 +1571,299 @@ async function openFavoris() {
   show('favoris');
 }
 
+// ═══════════════════════════════════════
+// ÉCRAN CHAMBRE (TICKET-112) — domotique
+// ═══════════════════════════════════════
+// Phase 1 : navigation seule (ouvrir/fermer). Le branchement de la passerelle
+// (fetch lampe/volet à l'ouverture, arrêt à la fermeture) est ajouté en
+// phase 2 dans startChambre()/stopChambre(), appelés ici.
+// Sonde /health avec timeout court — sert de garde d'accès (l'écran ne
+// s'ouvre QUE si la passerelle répond, demande Thomas) et de moniteur en
+// continu (refermeture auto si elle tombe pendant l'usage).
+async function chGatewayHealthy() {
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 2500);
+    const r = await fetch(CH_GW + '/health', { cache: 'no-store', signal: ctrl.signal });
+    clearTimeout(t);
+    if (!r.ok) return false;
+    const d = await r.json();
+    return !!d.ok;
+  } catch (e) { return false; }
+}
+
+function chShowToast(msg) {
+  const el0 = el('ch-toast');
+  el0.textContent = msg;
+  el0.classList.remove('hidden');
+  clearTimeout(window.__chToastTimer);
+  window.__chToastTimer = setTimeout(() => el0.classList.add('hidden'), 2000);
+}
+
+// Ouverture GARDÉE : on n'ouvre l'écran que si la passerelle répond. Sinon,
+// bref message et on reste où on est (demande Thomas 2026-07-24).
+async function requestOpenChambre() {
+  if (await chGatewayHealthy()) openChambre();
+  else chShowToast('Chambre indisponible');
+}
+
+function openChambre() {
+  if (currentScreen === 'chambre') return;
+  chambrePrevScreen = currentScreen;
+  show('chambre');
+  startChambre();
+}
+// Réveil de la veille "navigateur" (#sleep-overlay) — un appui GPIO ne génère
+// pas de click/keydown, donc l'overlay ne se lèverait pas tout seul. (Le
+// réveil de la dalle physiquement éteinte, lui, est déclenché côté
+// buttons_daemon.py via screen_dpms.sh — le navigateur ne peut pas piloter
+// wlr-randr.) On lève l'overlay et on réarme le timer de veille.
+function chWakeBrowserVeille() {
+  const ov = getSleepOverlay();
+  if (ov && ov.classList.contains('active')) ov.classList.remove('active');
+  resetSleepTimer('gpio_chambre');
+}
+function closeChambre() {
+  stopChambre();
+  const back = ALL_SCREENS.includes(chambrePrevScreen) && chambrePrevScreen !== 'chambre'
+    ? chambrePrevScreen : 'home';
+  show(back);
+}
+// Bascule pour le bouton physique GPIO23 (phase 3) : referme si on y est déjà,
+// sinon ouvre — mais l'ouverture est gardée par /health (requestOpenChambre).
+function toggleChambre() {
+  if (currentScreen === 'chambre') closeChambre();
+  else requestOpenChambre();
+}
+// ── Domotique Chambre (phase 2) — transposé de web/chambre.html ──────────
+// Adresse de la passerelle. PAS un secret : simple IP LAN, aucun token ni
+// entity_id Netatmo côté navigateur (la passerelle détient seule ces infos).
+const CH_GW = 'http://192.168.1.3:8000';
+
+let chActive = false;      // écran Chambre ouvert (les fetch/animations ne tournent QUE dans ce cas)
+let chWired  = false;      // listeners DOM attachés une seule fois
+let chLampOn = false, chLastLum = 100;
+let chDispP = 0, chSrvP = 0, chTargetP = 0, chSrvMoving = false;
+let chAnim = null, chFastPoll = null, chReconcile = null, chLumTimer = null, chPosTimer = null, chHealthPoll = null;
+
+function chSetStatus(txt, off) {
+  const s = el('ch-status');
+  if (!s) return;
+  s.textContent = txt;
+  s.classList.toggle('off', !!off);
+}
+
+// Appel passerelle avec timeout dur (6s) — un Internet coupé ou une passerelle
+// éteinte ne doit JAMAIS geler l'IHM : on abandonne et on bascule "hors ligne".
+async function chApi(path, method = 'GET', body) {
+  const opt = { method, headers: {} };
+  if (body) { opt.headers['Content-Type'] = 'application/json'; opt.body = JSON.stringify(body); }
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 6000);
+  opt.signal = ctrl.signal;
+  try {
+    const r = await fetch(CH_GW + path, opt);
+    clearTimeout(t);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    chSetStatus('Passerelle connectée');
+    return await r.json();
+  } catch (e) {
+    clearTimeout(t);
+    chSetStatus('Passerelle hors ligne', true);
+    throw e;
+  }
+}
+
+// Éteinte = ampoule grise, pas de halo. Allumée = ampoule jaune + halo dont
+// la taille/opacité suit l'intensité (spec Thomas 2026-07-24). Lit l'état
+// (chLampOn) et la valeur du curseur.
+function chDrawLum() {
+  const v = +el('ch-lum').value, halo = el('ch-halo'), bulb = el('ch-bulb');
+  if (chLampOn) {
+    el('ch-lumOut').textContent = v + ' %';
+    bulb.setAttribute('fill', '#ffd34d');
+    halo.setAttribute('opacity', (0.15 + v / 100 * 0.75).toFixed(2));
+    halo.setAttribute('r', (28 + v / 100 * 26).toFixed(0));
+  } else {
+    el('ch-lumOut').textContent = 'éteinte';
+    bulb.setAttribute('fill', '#3a3f45');
+    halo.setAttribute('opacity', '0');
+  }
+}
+
+// Volet : dispP = position affichée (lissée), chSrvP = position passerelle,
+// chTargetP = consigne curseur. La passerelle estime la position en temps réel
+// pendant la manœuvre (Netatmo ne la remonte qu'en fin de course).
+const CH_topY = 22, CH_fullH = 236, CH_left = 22, CH_right = 238, CH_nSlats = 14, CH_gap = 236 / 14;
+function chDrawVolet() {
+  el('ch-posOut').textContent = Math.round(chDispP) + ' %';
+  const closedFrac = (100 - chDispP) / 100, coverH = CH_fullH * closedFrac;
+  let s = '';
+  if (coverH > 1) {
+    // Lamelles baissées depuis le haut. Toujours dessinées (y compris volet
+    // fermé à 0 %) : à la fermeture, les lamelles se resserrent et
+    // s'assombrissent — vrai rendu de volet baissé plutôt qu'un aplat sombre
+    // qui faisait "boîte vide" (retour Thomas 2026-07-24). Au minimum une
+    // lamelle dès qu'il y a de la couverture, pour ne jamais afficher un
+    // cadre vide.
+    const covered = Math.max(1, Math.round(CH_nSlats * closedFrac)), openness = chDispP / 100;
+    const sy = Math.max(2.5, CH_gap * (1 - openness * 0.7));
+    const lg = Math.round(40 + openness * 110);
+    const col = 'rgb(' + lg + ',' + (lg + 14) + ',' + (lg + 24) + ')';
+    for (let i = 0; i < covered; i++) {
+      const cy = CH_topY + CH_gap * i + CH_gap / 2;
+      s += '<rect x="' + CH_left + '" y="' + (cy - sy / 2) + '" width="' + (CH_right - CH_left) + '" height="' + sy.toFixed(1) + '" rx="1.5" fill="' + col + '" stroke="#0f1a22" stroke-width="0.6"/>';
+    }
+  }
+  el('ch-slats').innerHTML = s;
+  el('ch-moving').style.visibility = chSrvMoving ? 'visible' : 'hidden';
+}
+
+async function chPollOnce() {
+  try {
+    const d = await chApi('/volet');
+    chSrvP = d.position; chSrvMoving = !!d.moving;
+    if (!chSrvMoving) chDrawVolet();
+  } catch (e) {}
+}
+
+// Pendant une manœuvre, on interroge /volet souvent (gratuit côté passerelle,
+// qui estime sans taper Netatmo).
+//
+// ⚠️ Le BSO Netatmo annonce `moving:false` TROP TÔT, à une position
+// intermédiaire fausse (ex. 53 % alors qu'il finit à 100 %) — feedback peu
+// fiable, cf. docs/95 §8. On ne s'arrête donc PAS au premier `moving:false` :
+// on continue de suivre tant que la position rapportée n'est pas proche de la
+// consigne (chTargetP), avec un plafond de sécurité (~40 s). Sans ça, l'IHM
+// se figeait sur la position intermédiaire jusqu'au recalage tardif (ou un
+// rechargement de page) — bug constaté le 2026-07-24.
+function chStartTracking() {
+  clearInterval(chFastPoll); clearTimeout(chReconcile);
+  chSrvMoving = true; chDrawVolet();
+  const started = Date.now();
+  chFastPoll = setInterval(async () => {
+    if (!chActive) { clearInterval(chFastPoll); return; }
+    await chPollOnce();
+    const nearTarget = Math.abs(chSrvP - chTargetP) <= 3;
+    const timedOut = Date.now() - started > 40000;
+    // Vrai arrêt = la passerelle dit "arrêté" ET on est bien arrivé à la
+    // consigne. Sinon (arrêt annoncé mais loin de la cible), on continue.
+    if ((!chSrvMoving && nearTarget) || timedOut) {
+      clearInterval(chFastPoll);
+      // Un dernier recalage tardif, au cas où Netatmo affine encore après coup.
+      chReconcile = setTimeout(() => { if (chActive) chPollOnce(); }, 20000);
+    }
+  }, 700);
+}
+
+function chCommandVolet(pos) {
+  chTargetP = pos; el('ch-pos').value = pos; chSrvMoving = true; chDrawVolet();
+  chApi('/volet', 'POST', { position: pos }).then(chStartTracking).catch(() => {});
+}
+
+// Listeners attachés une seule fois (les éléments existent toujours dans le
+// DOM, l'écran est juste masqué/affiché).
+function chWire() {
+  if (chWired) return;
+  chWired = true;
+
+  const L = el('ch-lum');
+  // Bouger le curseur allume TOUJOURS la lampe à la valeur choisie (même si
+  // elle était éteinte) ; au plus bas = intensité minimale, pas éteinte.
+  L.addEventListener('input', () => {
+    const v = +L.value; chLampOn = true; chLastLum = v; chDrawLum();
+    clearTimeout(chLumTimer);
+    chLumTimer = setTimeout(() => chApi('/lampe', 'POST', { on: true, brightness: v }).catch(() => {}), 350);
+  });
+  // Appui sur l'ampoule = allume/éteint. À l'allumage, dernière intensité.
+  el('ch-bulbBtn').addEventListener('click', async () => {
+    chLampOn = !chLampOn;
+    if (chLampOn) {
+      const v = chLastLum > 0 ? chLastLum : 100; L.value = v; chDrawLum();
+      chApi('/lampe', 'POST', { on: true, brightness: v }).catch(() => {});
+    } else {
+      chDrawLum();
+      chApi('/lampe', 'POST', { on: false }).catch(() => {});
+    }
+  });
+
+  const P = el('ch-pos');
+  // Le curseur = la CONSIGNE. On ne le resynchronise jamais sur la position
+  // réelle (celle-ci est montrée par l'animation du volet + le grand chiffre) :
+  // il ne bouge que quand l'utilisateur le manipule ou via chCommandVolet.
+  P.addEventListener('input', () => {
+    chTargetP = +P.value; chSrvMoving = true; chDrawVolet();
+    clearTimeout(chPosTimer);
+    chPosTimer = setTimeout(() => chCommandVolet(chTargetP), 300);
+  });
+  // Toggle volet (spec Thomas) : ouvert (100 %) → 0 ; sinon (fermé OU
+  // intermédiaire) → 100. Donc depuis un état intermédiaire, 1er appui = 100,
+  // appui suivant = 0. On décide sur la CONSIGNE (chTargetP = position
+  // initiale puis dernière commande), pas sur la position mesurée : le retour
+  // de position réelle du BSO n'est pas fiable (cf. docs/95 §8), la consigne
+  // rend le toggle déterministe.
+  el('ch-voletBtn').addEventListener('click', () => {
+    chCommandVolet(chTargetP >= 100 ? 0 : 100);
+  });
+}
+
+// Ouverture de l'écran : on câble (1x), on lance la boucle d'animation du
+// volet, et on récupère l'état réel lampe + volet. Rien de tout ça ne tourne
+// tant que l'écran n'est pas ouvert (kiosque qui boote passerelle éteinte OK,
+// et quota Netatmo préservé).
+async function startChambre() {
+  chActive = true;
+  chWire();
+  chSetStatus('Connexion…');
+
+  clearInterval(chAnim);
+  chAnim = setInterval(() => {
+    if (!chActive) { clearInterval(chAnim); return; }
+    if (Math.abs(chDispP - chSrvP) > 0.3) {
+      chDispP += (chSrvP > chDispP ? 1 : -1) * Math.min(1.5, Math.abs(chSrvP - chDispP));
+      chDrawVolet();
+    }
+  }, 40);
+
+  try {
+    const l = await chApi('/lampe');
+    chLampOn = !!l.on;
+    chLastLum = (l.brightness > 0) ? l.brightness : 100;
+    el('ch-lum').value = chLampOn ? (l.brightness > 0 ? l.brightness : chLastLum) : chLastLum;
+    chDrawLum();
+  } catch (e) { chLampOn = false; chDrawLum(); }
+  try {
+    const d = await chApi('/volet');
+    chSrvP = chDispP = chTargetP = d.position; chSrvMoving = !!d.moving;
+    el('ch-pos').value = d.position; chDrawVolet();
+    if (chSrvMoving) chStartTracking();
+  } catch (e) { chDrawVolet(); }
+
+  // Moniteur d'accès : tant que l'écran est ouvert, on vérifie que la
+  // passerelle répond ; si elle tombe, on referme automatiquement (demande
+  // Thomas — "accessible seulement si la passerelle répond", strict). /health
+  // ne touche pas Netatmo, donc ce polling ne consomme pas de quota.
+  clearInterval(chHealthPoll);
+  chHealthPoll = setInterval(async () => {
+    if (!chActive) { clearInterval(chHealthPoll); return; }
+    if (!(await chGatewayHealthy())) {
+      if (chActive && currentScreen === 'chambre') { chShowToast('Chambre indisponible'); closeChambre(); }
+    }
+  }, 5000);
+}
+
+// Fermeture : on coupe tout (aucun appel réseau ni animation en arrière-plan
+// quand l'écran n'est pas visible — quota Netatmo + non-régression).
+function stopChambre() {
+  chActive = false;
+  clearInterval(chAnim); chAnim = null;
+  clearInterval(chFastPoll); chFastPoll = null;
+  clearInterval(chHealthPoll); chHealthPoll = null;
+  clearTimeout(chReconcile); chReconcile = null;
+  clearTimeout(chLumTimer); chLumTimer = null;
+  clearTimeout(chPosTimer); chPosTimer = null;
+}
+
 // Montre/cache les boutons précédent/suivant du lecteur radio — inexistants
 // avant cette évolution (une webradio browsée normalement n'a pas de notion
 // de "suivant"), affichés seulement en navigation favoris.
@@ -1511,6 +1971,19 @@ async function pollUiRequest() {
     if (d.ts && d.ts !== lastUiRequestTs) {
       lastUiRequestTs = d.ts;
       if (d.screen === 'favoris') openFavoris();
+      else if (d.screen === 'chambre') {
+        // En sortie de veille, on veut MONTRER la Chambre (pas la refermer par
+        // toggle si on y était déjà avant l'endormissement). Hors veille, vrai
+        // toggle. Dans les deux cas, l'OUVERTURE reste gardée par /health
+        // (requestOpenChambre) — l'écran ne s'ouvre que si la passerelle répond.
+        const wasVeille = !!getSleepOverlay()?.classList.contains('active');
+        chWakeBrowserVeille();
+        if (currentScreen === 'chambre') {
+          if (!wasVeille) closeChambre();  // déjà dessus, pas en veille → referme
+        } else {
+          requestOpenChambre();            // ouverture gardée
+        }
+      }
     }
   } catch (_) {}
 }
@@ -2376,6 +2849,7 @@ el('back-pods-ch').addEventListener('click', () => { show('podcasts'); });
 el('back-ch').addEventListener('click', () => { show('chapters'); });
 el('back-radio-catalog').addEventListener('click', () => { show('radio-catalog'); });
 el('back-favoris').addEventListener('click', () => show('home'));
+el('back-chambre').addEventListener('click', () => closeChambre());
 el('rp-btn-pp').addEventListener('click', async () => { await sendRadio('pause'); refreshStatus(); });
 el('rp-vd').addEventListener('click', async () => { await setVolume(Math.max(0,   currentVolume - 5)); });
 el('rp-vu').addEventListener('click', async () => { await setVolume(Math.min(100, currentVolume + 5)); });
@@ -2403,8 +2877,11 @@ el('radio-vol-bar').addEventListener('click', e => {
   document.addEventListener('pointerdown', e => {
     const s = e.target.closest('.s-body');
     if (!s) return;
-    // Laisser les barres de scrubbing gérer elles-mêmes
-    if (e.target.closest('.prog-bg, .vol-bar-wrap')) return;
+    // Laisser les barres de scrubbing et les cibles tactiles gérer elles-mêmes
+    // (progression, volume, curseurs Chambre .ch-vbox, et icônes tap .ch-tap
+    // lampe/volet) — sinon le scroll JS capte le geste et, au moindre
+    // mouvement du doigt (>4px), annule le click : le tap volet "ne marche pas".
+    if (e.target.closest('.prog-bg, .vol-bar-wrap, .ch-vbox, .ch-tap')) return;
     scroller = s; sy = e.clientY; st = s.scrollTop; moved = false;
   }, true);
   document.addEventListener('pointermove', e => {

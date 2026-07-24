@@ -1,14 +1,14 @@
 {
     "volume": {
         "speakers_max": 66,
-        "headphones_max": 100
+        "headphones_max": 99
     },
     "chime_enabled": true,
-    "chime_volume": 20,
+    "chime_volume": 40,
     "sleep_enabled": true,
     "sleep_delay": 120,
     "sleep_mode": "retro_clock",
-    "screen_off_enabled": false,
+    "screen_off_enabled": true,
     "screen_off_delay": 1200,
     "chime_sound": "boot_orgue.wav"
 }

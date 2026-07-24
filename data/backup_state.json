@@ -1,14 +1,14 @@
 {
   "durcie": {
-    "validated_at": "2026-07-09T20:17:04+02:00",
-    "label": "20260709 - Le sortilège du démarrage - l'éveil sans réseau",
-    "size_mb": 24886,
+    "validated_at": "2026-07-17T15:04:17+02:00",
+    "label": "Correction problème wifi",
+    "size_mb": 27497,
     "file": "hechicero_durcie.img.gz",
     "git_commit": "",
     "last_validation_error": null
   },
   "private_sync": {
-    "last_attempt": "2026-07-17T16:41:53+02:00",
+    "last_attempt": "2026-07-24T08:42:22+02:00",
     "ok": true,
     "error": null
   }

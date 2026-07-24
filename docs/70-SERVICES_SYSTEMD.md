@@ -346,8 +346,8 @@ le boîtier réel) :**
   suivant, GPIO5 = vol+
 - GPIO16 = favori (TICKET-046, codé le 2026-07-19) — tap = bascule le favori
   sur l'épisode/webradio en cours, maintien = ouvre l'écran dédié favoris
-- GPIO23 = bouton isolé antenne — réserve, usage futur non défini (écarté du
-  favori, pas GPIO16 comme envisagé un temps)
+- GPIO23 = bouton isolé antenne — écran Chambre domotique (TICKET-112) :
+  toggle ouvre/ferme l'écran + réveille la dalle si en veille DPMS
 - GPIO6 = non câblé
 
 Suivant/précédent gèrent le tap-ou-maintien (`TAP_OR_HOLD`) : tap = épisode
@@ -370,7 +370,7 @@ sudo systemctl enable --now buttons_daemon.service
 ### Reste à faire
 - Valider en usage réel prolongé `SEEK_STEP_S`/`HOLD_THRESHOLD_S` (suivant/précédent en maintien)
 - TICKET-046 (favoris, GPIO16) codé le 2026-07-19, pas encore testé en conditions réelles — voir `docs/90-BACKLOG.md`
-- Décider un jour de l'usage de GPIO23 (bouton antenne, toujours en réserve)
+- GPIO23 (bouton antenne) = écran Chambre domotique (TICKET-112), plus en réserve
 
 ---
 
