@@ -367,6 +367,47 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now buttons_daemon.service
 ```
 
+### ⚠️ Le tube lgpio doit vivre dans `/run`, jamais dans le dépôt (2026-08-04)
+
+La bibliothèque **lgpio** (utilisée par `RPi.GPIO` sur Pi 5) crée un tube nommé
+`.lgd-nfy<N>` **dans le répertoire courant du processus** pour la remontée
+d'événements GPIO. Tant que `WorkingDirectory` pointait sur `scripts/`, ce tube
+atterrissait dans le dépôt — un fichier binaire parasite qu'on finissait par
+prendre pour un déchet.
+
+Le vrai problème est ailleurs : depuis le durcissement **TICKET-011**,
+`ProtectSystem=strict` et `ProtectHome=read-only` rendent `scripts/`
+**non inscriptible** pour ce service. lgpio ne pouvait donc plus créer son tube.
+Ça n'a rien cassé pendant deux semaines uniquement parce qu'un `.lgd-nfy0`
+créé **avant** le durcissement traînait encore et se laissait simplement ouvrir.
+**La panne était armée et invisible.** Le jour où ce fichier a été supprimé
+(ménage du dépôt, 2026-08-04), le service est entré en boucle de crash :
+
+```
+xCreatePipe: Can't set permissions (436) for .../scripts/.lgd-nfy0, No such file or directory
+FileNotFoundError: [Errno 2] No such file or directory: '.lgd-nfy-3'
+```
+
+(`-3` n'est pas un numéro de handle mais un code d'erreur retourné par lgpio.)
+
+Correctif retenu — `systemd` fournit le répertoire lui-même :
+
+```ini
+RuntimeDirectory=hechicero-buttons
+RuntimeDirectoryMode=0750
+WorkingDirectory=/run/hechicero-buttons
+```
+
+`RuntimeDirectory=` crée `/run/hechicero-buttons` au démarrage, le rend
+inscriptible **malgré `ProtectSystem=strict`**, et le nettoie à l'arrêt. Le tube
+ne peut plus manquer, ne pollue plus le dépôt, et ne s'écrit plus sur la carte SD.
+Le dossier appartient à root en 0750 : `ls` sans `sudo` renvoie
+`Permission denied`, c'est normal.
+
+> 🔎 **Le même piège vaut pour les 7 autres services durcis** : si l'un d'eux
+> écrit un fichier de travail hors de ses `ReadWritePaths`, il tient peut-être
+> debout uniquement grâce à un fichier antérieur au durcissement. À auditer.
+
 ### Reste à faire
 - Valider en usage réel prolongé `SEEK_STEP_S`/`HOLD_THRESHOLD_S` (suivant/précédent en maintien)
 - TICKET-046 (favoris, GPIO16) codé le 2026-07-19, pas encore testé en conditions réelles — voir `docs/90-BACKLOG.md`

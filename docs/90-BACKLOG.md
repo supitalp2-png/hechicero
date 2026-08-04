@@ -1,12 +1,21 @@
 # Backlog Hechicero
 
 > Convention : `TICKET-### — [type] — Titre — (prio) — owner`
-> Dernière mise à jour : 2026-08-04 — ouverture de **TICKET-119** (écran technique caché par combinaison de boutons — cadré, non implémenté) ; **TICKET-114 (rafraîchissement auto du catalogue) et TICKET-115 (réveil fiable de l'écran) livrés et clos** ; TICKET-116 (gain casque) appliqué, pas encore testé en voiture. Passe de remise au propre du dépôt le même jour (TICKET-118) : fuite de prénom neutralisée, fichiers morts supprimés, `.gitignore` durci, `80-ALIMENTATION.md` fusionné dans `05-POWER_MANAGEMENT.md`, collision TICKET-090 résolue (l'ancien « nettoyage fichiers morts » devient TICKET-117).
+> Dernière mise à jour : 2026-08-04 — **TICKET-120 : boutons physiques réparés** (lgpio ne pouvait plus créer son tube depuis le durcissement TICKET-011, panne latente depuis le 2026-07-19) ; ouverture de **TICKET-121** (auditer les 7 autres services durcis, même piège possible) et de **TICKET-119** (écran technique caché par combinaison de boutons — cadré, non implémenté) ; **TICKET-114 (rafraîchissement auto du catalogue) et TICKET-115 (réveil fiable de l'écran) livrés et clos** ; TICKET-116 (gain casque) appliqué, pas encore testé en voiture. Passe de remise au propre du dépôt le même jour (TICKET-118) : fuite de prénom neutralisée, fichiers morts supprimés, `.gitignore` durci, `80-ALIMENTATION.md` fusionné dans `05-POWER_MANAGEMENT.md`, collision TICKET-090 résolue (l'ancien « nettoyage fichiers morts » devient TICKET-117).
 > Mise à jour 2026-07-24 — TICKET-113 (bureau d'icônes admin + page domotique + harmonisation nav) livré ET validé/clos ; TICKET-112 domotique validé en prod (lampe+volet chambre) ; **raffinement gestion lumière (ampoule grise éteinte / jaune+halo allumée, curseur = intensité qui allume, tap ampoule = on/off) appliqué des DEUX côtés (web/admin/domotique.php ET web/lecteur/index.html), pas encore testé en réel**. Souci connu : retour de position du BSO (§8 doc).
 
 ---
 
 # 🔥 Priorité haute
+
+- [ ] TICKET-121 — sec/infra — Auditer les 8 services durcis : fichiers de travail hors `ReadWritePaths` (2026-08-04)
+      - **Déclencheur** : TICKET-120 a révélé une panne **armée depuis deux semaines et totalement invisible**. Depuis le durcissement TICKET-011, `buttons_daemon` ne pouvait plus créer son tube lgpio dans `scripts/` (devenu non inscriptible) ; le service ne survivait que parce qu'un fichier créé **avant** le durcissement traînait encore et se laissait ouvrir. Sa suppression a fait tomber les boutons physiques.
+      - **Hypothèse à vérifier** : les 7 autres services durcis peuvent être dans le même état — fonctionnels aujourd'hui uniquement grâce à un fichier antérieur au 2026-07-19, et condamnés au premier nettoyage ou à la première réinstallation depuis une image neuve.
+      - **C'est le pire type de bug pour ce projet** : il ne se déclare pas au durcissement, mais des semaines plus tard, sur une action sans rapport apparent. Et sur une image SD fraîchement restaurée, il se déclarerait immédiatement — donc la sauvegarde ghost ne protège pas de celui-là.
+      - **Méthode proposée** (instrumenter plutôt que relire le code) : pour chacun des 8 services, déplacer temporairement ou renommer les fichiers de travail suspects, redémarrer, et vérifier que le service se recrée bien ce dont il a besoin. Alternative moins intrusive : `systemd-analyze security <service>` pour la vue d'ensemble, puis `strace -f -e trace=openat,mkfifo` au démarrage pour repérer les écritures hors `ReadWritePaths`.
+      - **Services à passer en revue** : `battery_tracker`, `battery_watchdog`, `play_tracker`, `hechicero-idle`, `audio_eq_apply`, `wifi_watch`, `wifi_roam` (`buttons_daemon` est traité par TICKET-120).
+      - **Attention particulière** à `audio_eq_apply` : `alsaequal` écrit des états binaires (`data/alsaequal_hp.bin`, `data/alsaequal_casque.bin`), et l'incident `mpd.socket` de TICKET-030 montre que cette chaîne est fragile.
+      - **Règle à graver** ensuite dans `docs/70-SERVICES_SYSTEMD.md` : un service durci ne doit jamais écrire dans le dépôt. Répertoire de travail volatil → `RuntimeDirectory=` (systemd le crée, le rend inscriptible malgré `ProtectSystem=strict`, et le nettoie). État persistant → `data/`, déjà en `ReadWritePaths`.
 
 - [~] TICKET-116 — audio — Gain casque trop faible en écoute nomade (voiture) (2026-08-03)
       - Demande de Thomas : niveau au casque insuffisant en voiture.
@@ -97,6 +106,17 @@
 ---
 
 # ✔️ Terminé
+
+- [x] TICKET-120 — bug/infra — Boutons physiques HS : lgpio ne pouvait plus créer son tube dans `scripts/` (2026-08-04)
+      - ✅ **Corrigé et confirmé par Thomas le 2026-08-04** — les 9 boutons répondent de nouveau.
+      - Symptôme : plus aucun bouton physique. `buttons_daemon.service` apparaissait pourtant `active (running)` par intermittence — en réalité une boucle de crash/redémarrage toutes les 5 s (`Restart=always`).
+      - **Cause** : la bibliothèque **lgpio** (utilisée par `RPi.GPIO` sur Pi 5) crée un tube nommé `.lgd-nfy<N>` **dans le répertoire courant** du processus. `WorkingDirectory` pointait sur `scripts/` — or depuis le durcissement **TICKET-011**, `ProtectSystem=strict` + `ProtectHome=read-only` rendent ce dossier **non inscriptible** pour le service.
+      - 🔍 **La panne était armée depuis le 2026-07-19 et invisible** : lgpio ne pouvait déjà plus créer le tube, mais un `.lgd-nfy0` créé **avant** le durcissement traînait dans `scripts/` et se laissait simplement ouvrir. Sa suppression, pendant le ménage du dépôt de TICKET-117, a fait tomber le château de cartes.
+      - Trace : `xCreatePipe: Can't set permissions (436) for .../scripts/.lgd-nfy0, No such file or directory` puis `FileNotFoundError: '.lgd-nfy-3'` (`-3` est un code d'erreur lgpio, pas un numéro de handle).
+      - 🛠️ **Correctif** dans `scripts/buttons_daemon.service` : `RuntimeDirectory=hechicero-buttons` + `RuntimeDirectoryMode=0750` + `WorkingDirectory=/run/hechicero-buttons`. systemd crée le répertoire au démarrage, le rend inscriptible **malgré `ProtectSystem=strict`**, et le nettoie à l'arrêt. Le tube ne peut plus manquer, ne pollue plus le dépôt et ne s'écrit plus sur la carte SD. `ls` sans `sudo` y renvoie `Permission denied` — normal, root:0750.
+      - Écarté au passage : `button_toggle_test.service`, toujours installé dans `/etc/systemd/system/` alors que son script a été supprimé du dépôt, est bien `disabled` — pas de conflit GPIO. Reste à désinstaller proprement à l'occasion.
+      - ➡️ **Suite** : TICKET-121 — les 7 autres services durcis sont peut-être dans le même état latent.
+      - 📌 **Leçon** : un service durci qui écrit dans le dépôt est une panne à retardement. Ce n'est pas le ménage qui a cassé les boutons, c'est le durcissement de juillet ; le ménage n'a fait que révéler la panne. Chercher la cause au bon endroit, pas au plus récent.
 
 - [x] TICKET-118 — infra/sécurité — Remise au propre du dépôt et de la documentation (2026-08-04)
       - 🔴 **Fuite corrigée** : `docs/55-PODCAST_SERIE_DECISIONS.md` contenait le prénom réel de l'enfant dans une consigne d'orthographe, alors que le fichier déclare lui-même deux fois « aucun prénom réel (repo public) ». La consigne est rapatriée dans `private/podcast-easteregg/00-contexte.md`, seul endroit autorisé.
