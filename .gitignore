@@ -44,6 +44,11 @@ data/favoris.json
 data/ui_request.json
 data/nav_context.json
 data/radio_pause_state.json
+# Ajoutés le 2026-08-04 : purs états runtime, réécrits en permanence par les
+# services. Ils apparaissaient en `M` dans chaque `git status` et se glissaient
+# dans les commits sans rapport.
+data/backup_state.json
+data/audio_output_state.json
 data/alsaequal_hp.bin
 data/alsaequal_casque.bin
 data/tracking.db
