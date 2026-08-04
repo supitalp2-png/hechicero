@@ -1,7 +1,7 @@
 # Backlog Hechicero
 
 > Convention : `TICKET-### — [type] — Titre — (prio) — owner`
-> Dernière mise à jour : 2026-08-04 — **TICKET-114 (rafraîchissement auto du catalogue) et TICKET-115 (réveil fiable de l'écran) livrés et clos** ; TICKET-116 (gain casque) appliqué, pas encore testé en voiture. Passe de remise au propre du dépôt le même jour (TICKET-118) : fuite de prénom neutralisée, fichiers morts supprimés, `.gitignore` durci, `80-ALIMENTATION.md` fusionné dans `05-POWER_MANAGEMENT.md`, collision TICKET-090 résolue (l'ancien « nettoyage fichiers morts » devient TICKET-117).
+> Dernière mise à jour : 2026-08-04 — ouverture de **TICKET-119** (écran technique caché par combinaison de boutons — cadré, non implémenté) ; **TICKET-114 (rafraîchissement auto du catalogue) et TICKET-115 (réveil fiable de l'écran) livrés et clos** ; TICKET-116 (gain casque) appliqué, pas encore testé en voiture. Passe de remise au propre du dépôt le même jour (TICKET-118) : fuite de prénom neutralisée, fichiers morts supprimés, `.gitignore` durci, `80-ALIMENTATION.md` fusionné dans `05-POWER_MANAGEMENT.md`, collision TICKET-090 résolue (l'ancien « nettoyage fichiers morts » devient TICKET-117).
 > Mise à jour 2026-07-24 — TICKET-113 (bureau d'icônes admin + page domotique + harmonisation nav) livré ET validé/clos ; TICKET-112 domotique validé en prod (lampe+volet chambre) ; **raffinement gestion lumière (ampoule grise éteinte / jaune+halo allumée, curseur = intensité qui allume, tap ampoule = on/off) appliqué des DEUX côtés (web/admin/domotique.php ET web/lecteur/index.html), pas encore testé en réel**. Souci connu : retour de position du BSO (§8 doc).
 
 ---
@@ -28,6 +28,23 @@
 ---
 
 # 🟢 Priorité basse / À décider
+
+- [ ] TICKET-119 — feature/admin — Écran technique caché, ouvert par combinaison de boutons physiques (2026-08-04)
+      - **Demande de Thomas** : un **appui long simultané sur le bouton casque (GPIO25, « source ») et le bouton antenne (GPIO23)** ouvre une page d'administration technique affichant l'**adresse IP** d'Hechicero, des **informations batterie**, et permettant de **modifier l'égaliseur**.
+      - ⚠️ **Cadrage seulement — rien à implémenter pour l'instant** (décision Thomas, 2026-08-04).
+      - **Pourquoi c'est utile** : en mobilité, retrouver l'IP du Pi est aujourd'hui un chemin de croix (partage de connexion du téléphone, câble USB-Ethernet + ICS, cf. TICKET-109/110 et la procédure d'accès de secours). Un écran qui l'affiche directement supprime le besoin de SSH pour la question la plus fréquente.
+      - **Contenu envisagé** :
+        - IP de **chaque interface active** (`wlan0`, `eth0` USB-Ethernet), pas seulement la première trouvée — c'est précisément quand elles changent qu'on a besoin de l'écran. Plus SSID et qualité du signal.
+        - Batterie : niveau, statut (secteur / décharge / charge), autonomie estimée — données déjà disponibles dans `data/battery_stats.json` (cf. `docs/05-POWER_MANAGEMENT.md`).
+        - Égaliseur : réglage des 10 bandes pour les 2 profils HP/casque — la mécanique existe déjà (TICKET-030, `alsaequal`, `web/admin/audio_eq.php`, `scripts/audio_eq_apply.py`).
+      - **Points à trancher avant de coder** :
+        1. **Écran du lecteur ou page admin ?** Naviguer Chromium vers `/admin/` sortirait du kiosque et couperait le fil de la lecture. Le modèle de l'écran Chambre (TICKET-112) — un écran de plus dans `index.html`, avec mini-lecteur conservé — est probablement le bon, quitte à ne réimplémenter que l'essentiel de l'EQ. À arbitrer selon l'effort.
+        2. **Détection de la combinaison.** `buttons_daemon.py` gère aujourd'hui chaque broche indépendamment (poll 10 ms, anti-rebond 3 niveaux, `TAP_OR_HOLD`). Une combinaison demande un état supplémentaire : détecter que **les deux** broches sont maintenues, **et supprimer les actions individuelles** — sinon l'appui déclencherait aussi la bascule HP/casque (GPIO25) et l'ouverture de l'écran Chambre (GPIO23). C'est le vrai travail du ticket.
+        3. **Fenêtre de tolérance** : les deux boutons ne seront jamais pressés à la milliseconde près. Prévoir un délai de grâce (~300 ms) avant de considérer qu'il s'agit d'un appui simple, donc un léger retard sur les actions de GPIO25 et GPIO23 — à vérifier qu'il reste imperceptible.
+        4. **Sortie de l'écran** : retour à l'écran précédent (modèle Chambre), pas retour forcé à l'accueil.
+      - **Réutiliser l'existant** : le canal `request_screen` / `get_ui_request` (`radio.php`, déjà générique) sert exactement à ça — le daemon Python écrit la demande, `index.html` la consomme par polling. Aucune modification PHP nécessaire côté transport, comme pour les favoris (TICKET-046) et la Chambre (TICKET-112).
+      - **Sécurité / usage** : c'est un écran **parent**. Il ne doit pas exposer de secret (aucun jeton, aucun identifiant de la passerelle domotique) ni offrir de contournement du contrôle parental. La combinaison à deux boutons maintenus est déjà, en soi, une protection raisonnable contre un déclenchement accidentel par l'enfant.
+      - ❓ **À confirmer avec Thomas** : l'écran doit-il rester accessible en dehors des horaires autorisés d'écoute (comme l'écran Chambre) ? A priori oui, c'est un outil de dépannage.
 
 - [~] TICKET-112 — feature/sécurité — Écran « Chambre » : contrôle domotique (Legrand/Netatmo via passerelle VM) depuis l'IHM enfant (2026-07-19, MAJ 2026-07-24)
       - ✅ **2026-07-24 — Phases 1 et 2 TERMINÉES et validées en réel (sur les équipements du bureau, avant bascule chambre).** Architecture Home Assistant ABANDONNÉE au profit d'une **VM passerelle FastAPI + API Netatmo Connect directe** (VM Debian déjà en place, 192.168.1.3).
