@@ -3,8 +3,18 @@ data/batterie.txt
 web/status.json
 
 # --- Podcasts téléchargés (audio + images + meta) ---
-podcasts/
+# NB : `podcasts/` seul excluait aussi `.gitkeep` — git ne ré-inclut jamais un
+# fichier situé sous un dossier exclu, donc la négation était inerte. Il faut
+# exclure le CONTENU (`podcasts/*`), pas le dossier. (2026-08-04)
+podcasts/*
 !podcasts/.gitkeep
+
+# ⚠️ `podcasts/*` contient un `/` : le motif est donc ANCRÉ à la racine du dépôt,
+# contrairement à l'ancien `podcasts/` qui matchait n'importe quel dossier de ce
+# nom à n'importe quelle profondeur. `web/podcasts` (lien symbolique vers
+# ~/hechicero/podcasts) n'est plus couvert par héritage — il faut l'exclure
+# explicitement.
+web/podcasts
 
 # --- Lecteur : fichiers générés automatiquement ---
 web/lecteur/audio/
@@ -43,5 +53,14 @@ data/tracking.db-wal
 # --- Photos originales (haute résolution, hors repo) ---
 Photos/
 
-# --- Fichiers temporaires ---
-web/lecteur/index.html.bak
+# --- Fichiers temporaires, sauvegardes et scratch ---
+# Le filet de sécurité, c'est git + le ghost SD (docs/85-SAUVEGARDE_RESTAURATION.md),
+# pas des copies posées à côté du fichier. Elles s'accumulaient et finissaient
+# par être committées. (2026-08-04)
+*.bak
+*.old
+*.orig
+*.rej
+*.pre-ticket*
+*~
+.lgd-nfy0

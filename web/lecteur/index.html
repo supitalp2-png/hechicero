@@ -1475,6 +1475,71 @@ function findEpisodeByAudio(audioPath) {
   return null;
 }
 
+// ═══════════════════════════════════════
+// TICKET-114 — Rafraîchissement automatique du catalogue
+// ═══════════════════════════════════════
+// Problème : après un ingest ou un ajout via l'admin, il fallait recharger
+// Chromium à la main pour voir les nouveaux podcasts.
+// Cause exacte : loadData() était bien rappelé toutes les 5 min, mais rien ne
+// re-rendait l'écran DÉJÀ affiché. goToPodcasts() était le seul endroit qui
+// enchaînait chargement puis rendu — donc tant que l'enfant ne quittait pas la
+// grille pour y revenir, rien ne changeait, même après des heures.
+let lastCatalogVersion = null;
+
+// Compare la signature {mtime, size} de data.json (action data_version de
+// radio.php : deux stat(), pas les ~700 Ko du catalogue) et ne recharge que si
+// elle a bougé.
+async function pollCatalogVersion() {
+  try {
+    const r = await fetch('radio.php?action=data_version', { cache: 'no-store' });
+    if (!r.ok) return;
+    const v = await r.json();
+    const sig = `${v.mtime}:${v.size}`;
+    if (lastCatalogVersion === null) { lastCatalogVersion = sig; return; } // 1re passe : on mémorise seulement
+    if (sig === lastCatalogVersion) return;
+    lastCatalogVersion = sig;
+    await refreshCatalogInPlace();
+  } catch (e) {
+    // PHP ou réseau indisponible : on retentera au tick suivant, sans bruit.
+  }
+}
+
+// Recharge data.json ET re-rend l'écran visible, en préservant l'état de
+// lecture. Remplace les appels « à l'aveugle » à loadData().
+async function refreshCatalogInPlace() {
+  // ⚠️ Précaution 1 — même famille de piège que TICKET-108 : l'ingest insère
+  // les nouveaux épisodes EN TÊTE de liste. Après rechargement, currentIdx
+  // désignerait un autre épisode et next/prev partiraient sur le mauvais. On
+  // ré-ancre donc sur le CHEMIN AUDIO, seul identifiant stable à travers un
+  // rechargement du catalogue.
+  const anchorAudio = (currentPodcast && currentIdx >= 0)
+    ? (getDisplayItems(currentPodcast)[currentIdx]?.audio || null)
+    : null;
+  const browsedPodcastId = currentPodcast?.id || null;
+
+  await loadData();
+
+  // Réattacher la référence d'objet : DATA a été remplacé, currentPodcast
+  // pointerait sinon sur l'ancien objet, orphelin.
+  if (browsedPodcastId) {
+    const again = (DATA?.podcasts || []).find(p => p.id === browsedPodcastId);
+    if (again) currentPodcast = again;
+  }
+  if (anchorAudio) {
+    const found = findEpisodeByAudio(anchorAudio);
+    if (found) { currentPodcast = found.podcast; currentIdx = found.idx; }
+  }
+
+  // ⚠️ Précaution 2 — on ne re-rend JAMAIS un écran de lecture : un ingest qui
+  // se termine en arrière-plan ne doit pas faire clignoter la lecture en cours.
+  if (currentScreen === 'player' || currentScreen === 'radio-player') return;
+
+  if      (currentScreen === 'podcasts')      renderPodcasts();
+  else if (currentScreen === 'chapters')      renderChapters();
+  else if (currentScreen === 'favoris')       renderFavoris();
+  else if (currentScreen === 'radio-catalog') openRadioCatalog();
+}
+
 function clearResumePrompt() {
   pendingResumeTarget = null;
   el('resume-prompt').classList.add('hidden');
@@ -3206,7 +3271,14 @@ setInterval(fetchFavoris, 1000);
 
 // ── Rafraîchissement périodique de la config admin (toutes les 5 min)
 // Répercute sans redémarrage les changements de veille, contrôle parental et radios ajoutées.
-setInterval(() => { loadParentalConfig(); loadData(); }, 5 * 60 * 1000);
+// TICKET-114 : le tick appelle refreshCatalogInPlace() et non plus loadData()
+// — c'est ce dernier, qui chargeait sans jamais re-rendre, qui était le trou.
+setInterval(() => { loadParentalConfig(); refreshCatalogInPlace(); }, 5 * 60 * 1000);
+
+// TICKET-114 — détection rapide d'un catalogue modifié (ingest nocturne, ajout
+// depuis l'admin). Polling à 10 s sur une réponse de quelques octets ; le
+// rechargement complet n'a lieu que quand la signature a réellement changé.
+setInterval(pollCatalogVersion, 10000);
 </script>
 
 <!-- ── Écran de veille ──────────────────────────────────────────── -->

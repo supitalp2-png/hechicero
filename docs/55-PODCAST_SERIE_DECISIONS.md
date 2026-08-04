@@ -89,7 +89,7 @@ Le collègue, la directrice et la maman apparaissent dans l'épisode 4 dédié E
 
 - **Ton** : léger mais sérieux — on aime faire des blagues, ça n'empêche pas d'aborder des choses sérieuses. Chaleureux, sincère, compréhensible pour un enfant de 7 ans. Vraies histoires, pas de leçons de morale.
 - **Adresse affectueuse** : "mon fils", jamais "mon grand"
-- **Orthographe** : "[prénom]" (sans tréma), jamais "[prénom]"
+- **Orthographe du prénom** : une graphie précise est imposée (sans tréma) — consignée dans `private/podcast-easteregg/00-contexte.md`, jamais ici (repo public).
 - **Cerveau de papa** : pas de vocabulaire médical ni d'étiquette diagnostique. Décrire l'effet concret : besoin de mordre dans du complexe pour être calme, et le revers obsessionnel.
 - **Épisode algo/code** : inclure Al-Khwarizmi (étapes logiques) et Jacquard (donner des instructions à une machine).
 

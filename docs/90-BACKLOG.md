@@ -1,11 +1,19 @@
 # Backlog Hechicero
 
 > Convention : `TICKET-### — [type] — Titre — (prio) — owner`
-> Dernière mise à jour : 2026-07-24 — TICKET-113 (bureau d'icônes admin + page domotique + harmonisation nav) livré ET validé/clos ; TICKET-112 domotique validé en prod (lampe+volet chambre) ; **raffinement gestion lumière (ampoule grise éteinte / jaune+halo allumée, curseur = intensité qui allume, tap ampoule = on/off) appliqué des DEUX côtés (web/admin/domotique.php ET web/lecteur/index.html), pas encore testé en réel**. Souci connu : retour de position du BSO (§8 doc).
+> Dernière mise à jour : 2026-08-04 — **TICKET-114 (rafraîchissement auto du catalogue) et TICKET-115 (réveil fiable de l'écran) livrés et clos** ; TICKET-116 (gain casque) appliqué, pas encore testé en voiture. Passe de remise au propre du dépôt le même jour (TICKET-118) : fuite de prénom neutralisée, fichiers morts supprimés, `.gitignore` durci, `80-ALIMENTATION.md` fusionné dans `05-POWER_MANAGEMENT.md`, collision TICKET-090 résolue (l'ancien « nettoyage fichiers morts » devient TICKET-117).
+> Mise à jour 2026-07-24 — TICKET-113 (bureau d'icônes admin + page domotique + harmonisation nav) livré ET validé/clos ; TICKET-112 domotique validé en prod (lampe+volet chambre) ; **raffinement gestion lumière (ampoule grise éteinte / jaune+halo allumée, curseur = intensité qui allume, tap ampoule = on/off) appliqué des DEUX côtés (web/admin/domotique.php ET web/lecteur/index.html), pas encore testé en réel**. Souci connu : retour de position du BSO (§8 doc).
 
 ---
 
 # 🔥 Priorité haute
+
+- [~] TICKET-116 — audio — Gain casque trop faible en écoute nomade (voiture) (2026-08-03)
+      - Demande de Thomas : niveau au casque insuffisant en voiture.
+      - 🔍 Chaîne vérifiée de bout en bout, **aucune atténuation cachée** : mixer `Headphone` du DAC KT USB Audio à 100 % / 0.00 dB, EQ plat à 50, mapping IHM correct (`headphones_max = 100`), `mpc volume` atteint bien 100.
+      - **Conclusion : le DAC KT USB Audio est le facteur limitant**, pas un bridage logiciel.
+      - 🛠️ Appliqué : `volume_normalization "yes"` dans `/etc/mpd.conf` ; bandes EQ casque 1 kHz / 2 kHz / 4 kHz passées de 50 à 70 (~+5 dB) via `amixer -D eqcasque` — cf. TICKET-030 pour la mécanique des profils EQ.
+      - ⏳ Reste : test réel en voiture. Si toujours insuffisant, le levier suivant est matériel (DAC ou ampli casque), pas logiciel.
 
 - [ ] TICKET-058 — feature/UX — Série podcast "Décisions Prises" + easter egg
       - Première découverte : 3 taps sur "Hechicero" à l'écran d'accueil → déverrouille + lance l'épisode 0 automatiquement
@@ -72,6 +80,48 @@
 ---
 
 # ✔️ Terminé
+
+- [x] TICKET-118 — infra/sécurité — Remise au propre du dépôt et de la documentation (2026-08-04)
+      - 🔴 **Fuite corrigée** : `docs/55-PODCAST_SERIE_DECISIONS.md` contenait le prénom réel de l'enfant dans une consigne d'orthographe, alors que le fichier déclare lui-même deux fois « aucun prénom réel (repo public) ». La consigne est rapatriée dans `private/podcast-easteregg/00-contexte.md`, seul endroit autorisé.
+      - ✅ **Historique git réécrit** le 2026-08-04 (`git filter-repo --replace-text`) : `git log --all -S` ne trouve plus le prénom. Sauvegarde de l'historique d'origine dans `~/hechicero-github-avant-filtrage.git` (clone mirror de GitHub, 113 Mo). ⚠️ GitHub peut conserver un temps les objets devenus inaccessibles — purge complète = demande de GC ou recréation du dépôt.
+      - 🧹 Fichiers morts supprimés et `.gitignore` durci — détail dans TICKET-117.
+      - 📚 **Doc** : `80-ALIMENTATION.md` (spec du 2026-06-26) fusionnée dans `05-POWER_MANAGEMENT.md`, qui devient la référence unique batterie — les deux décrivaient le même sujet et divergeaient, et le numéro 80 était en collision avec `80-hardware.md`. Ajout au passage du piège `level_end` (bug des cycles batterie du 2026-07-06) et de la réserve TICKET-011 sur le chemin `shutdown`.
+      - 📚 `30-LECTEUR.md` : sections « Non implémenté » et « Évolutions prévues » purgées — elles annonçaient encore comme à venir les favoris, les boutons GPIO, le chime et le script d'intégrité (tous livrés), plus le carrousel et les animations (annulés).
+      - 📚 `README.md` : index de la doc corrigé (ajout de `85-SAUVEGARDE_RESTAURATION.md` et `95-DOMOTIQUE_CHAMBRE.md`, qui manquaient). `web/index.php` : commentaire renvoyant à un fichier inexistant (`95-RESTAURATION_URGENCE.md`) corrigé.
+      - ✅ Vérifié : `web/podcasts` est un **lien symbolique** vers `~/hechicero/podcasts` — pas de duplication des 28 Go de médias.
+      - ✅ Vérifié : les 45 renvois croisés entre docs pointent tous vers des fichiers existants. **Ne pas renuméroter les docs en masse** — c'est ce qui casserait ces renvois.
+      - 💥 **Incident au cours de cette passe, à ne jamais reproduire** : `git filter-repo` a été lancé dans le même bloc de commandes que le ménage, **avant le commit**. Son `reset --hard` final a effacé tout le travail non committé — TICKET-114, TICKET-115 et toute la doc du jour. Tout a été réécrit dans la foulée. Règles retenues : (1) une opération destructive d'historique se lance **seule**, jamais enchaînée ; (2) **commit et push d'abord**, sans exception ; (3) une sauvegarde de dépôt se fait par `git clone --mirror` (113 Mo), jamais par `cp -a` d'un dossier qui contient 28 Go de médias.
+
+- [x] TICKET-117 — infra — Nettoyage fichiers morts dans le dépôt (renuméroté depuis TICKET-090 le 2026-08-04, en collision avec le ticket batterie « 51 micro-cycles factices »)
+      - ✅ Session 12 : `app.js`, `style.css`, `lecture.html` supprimés via `git rm`
+      - ✅ **Deuxième passe le 2026-08-04** : suppression des patchs à usage unique (`patch_ticket114.py`, `patch_ticket115b.py`), des sauvegardes `*.pre-ticket*` et `*.bak`/`*.old`, du bring-up `button_toggle_test.py` + `.service` (remplacé par `buttons_daemon`), de l'artefact lgpio `.lgd-nfy0` et des scripts de migration déjà passés (`fix_durations.py`, `fix_battery_cycles.py`, `seed_tracking.py`, `analyze_bewitched.py`).
+      - ✅ `.gitignore` durci pour que ça ne revienne pas : `*.bak`, `*.old`, `*.orig`, `*.rej`, `*.pre-ticket*`, `*~`, `.lgd-nfy0`. Correction au passage de `podcasts/` → `podcasts/*` (la négation `!podcasts/.gitkeep` était inerte : git ne ré-inclut jamais un fichier sous un dossier exclu), avec ajout explicite de `web/podcasts` — un motif contenant un `/` est ancré à la racine et ne couvre plus le lien symbolique par héritage.
+
+- [x] TICKET-115 — bug/UX — Écran noir intermittent : réveil fiable de la dalle (2026-08-02, réécrit et **corrigé le 2026-08-04**)
+      - ✅ **Confirmé corrigé par Thomas le 2026-08-04.**
+      - Symptôme : par intermittence l'écran restait noir après une extinction de veille, seul un reboot ramenait l'image. VNC continuait de fonctionner (sortie virtuelle) — c'est ce qui a masqué le problème si longtemps.
+      - 🔍 **Diagnostic pris en direct pendant la panne** (pas une hypothèse de plus) : `wlr-randr` affichait HDMI-A-1 « Enabled: yes », le bon mode courant, EDID du JRP7003 lu correctement ; `dmesg | grep -i hdmi` : aucun événement depuis le boot. Le Pi se croyait en train d'afficher.
+      - **Cause racine** : `wlr-randr --on --preferred` ne déclenche **aucun modeset** quand le connecteur est déjà actif ET déjà au mode préféré. Reposer le même mode est un no-op → la dalle, elle bel et bien éteinte, n'est jamais réveillée.
+      - Séquence qui ramène l'image : `--mode 1280x720@60` ; `sleep 3` ; `--mode 1024x600@59.821`.
+      - 🐛 **Régression de la 1ère version du correctif** : rebond de mode systématique dans l'action `on`. Or `buttons_daemon.py` appelle `screen_dpms.sh on` à **chaque** appui du bouton antenne GPIO23 (écran Chambre) → l'écran déjà allumé s'éteignait et clignotait à chaque pression.
+      - 🛠️ **Réécriture 2026-08-04** de `scripts/screen_dpms.sh` (124 lignes, 5820 octets, md5 `933e04d7a2b435b333d7de67b5f1a247`) :
+        - `off` → `wlr-randr --output HDMI-A-1 --off`
+        - `on` → lit l'état ; si « Enabled: yes » **ne fait rien** (chemin swayidle resume + bouton GPIO23, zéro clignotement) ; sinon rebond `1280x720@60` → 3 s → `1024x600@59.821`
+        - `rescue` → force le rebond quel que soit l'état. Nécessaire parce que le cas « Enabled: yes mais dalle noire » **n'est pas détectable depuis le Pi** (tous les indicateurs sont au vert) : c'est l'humain qui constate et tranche, en SSH.
+        - `status` → `wlr-randr`
+        - Journalisation de chaque bascule dans `data/screen_dpms.log`.
+      - ✅ Les 4 actions testées et conformes au log. Observation utile : pendant un rebond manuel, un **second appel concurrent** à `on` (swayidle resume) a été correctement absorbé en no-op au lieu d'empiler un deuxième rebond.
+      - 📌 **Leçon de livraison** : le fichier avait été détruit la veille par un **heredoc collé en SSH tronqué en cours de route**. Méthode retenue : écriture directe via le partage Samba, puis vérification `ls -l` / `md5sum` côté Pi **avant** exécution. Jamais de heredoc, jamais de script de patch transféré.
+      - Commande de secours si l'écran affiche « Not Support » : `export WAYLAND_DISPLAY=wayland-0 XDG_RUNTIME_DIR=/run/user/1000` puis `wlr-randr --output HDMI-A-1 --mode 1024x600@59.821`.
+
+- [x] TICKET-114 — bug/UX — Rafraîchissement automatique du catalogue dans le lecteur (2026-08-03, réécrit le 2026-08-04)
+      - Problème : après un ingest ou un ajout via l'admin, il fallait recharger Chromium à la main pour voir les nouveaux podcasts.
+      - **Cause exacte** : `loadData()` était bien rappelé toutes les 5 min, mais **sans jamais re-rendre l'écran affiché**. `goToPodcasts()` était le seul endroit qui enchaînait chargement puis rendu → tant que l'enfant ne quittait pas la grille pour y revenir, rien ne changeait, même après des heures.
+      - 🛠️ `web/lecteur/radio.php` : action `data_version` renvoyant `{mtime, size}` de `data.json`. Deux `stat()`, assez léger pour un polling à 10 s, au lieu de retransférer les ~700 Ko du catalogue. mtime **et** size : mtime seul rate une réécriture dans la même seconde, size seule rate un remplacement de même taille.
+      - 🛠️ `web/lecteur/index.html` : `pollCatalogVersion()` toutes les 10 s compare la signature ; au changement, `refreshCatalogInPlace()` recharge `data.json` et re-rend l'écran visible. Le tick 5 min appelle désormais `refreshCatalogInPlace()` au lieu de `loadData()` — c'est ce qui bouche le trou d'origine.
+      - ⚠️ **Précaution 1 à ne pas casser en refactorant** : la position de lecture est ré-ancrée sur le **chemin audio** (`findEpisodeByAudio()`), pas sur `currentIdx` — l'ingest insère les nouveaux épisodes en tête de liste, donc l'index désignerait un autre épisode et `next`/`prev` partiraient sur le mauvais. Même famille de piège que TICKET-108.
+      - ⚠️ **Précaution 2** : les écrans `player` et `radio-player` ne sont **jamais** re-rendus — la lecture en cours ne doit pas clignoter parce qu'un ingest s'est terminé en arrière-plan.
+      - ⏳ **Validation** : `php -l` sans erreur et endpoint vérifié en curl. Le test visuel de bout en bout (nouveaux podcasts apparaissant seuls sur la grille pendant un ingest complet) n'a pas encore été confirmé formellement.
 
 - [x] TICKET-113 — UX/admin — Refonte navigation admin en « bureau » d'icônes façon iPhone (2026-07-24)
       - ✅ **Validé et clos par Thomas le 2026-07-24** (bureau + panneaux, page domotique admin, nav unifiée ‹ Bureau/Lecteur, header « style board » pour les panneaux, État système sur l'accueil, icônes agrandies, icône webradio réparée, sous-titres nettoyés).
@@ -374,8 +424,7 @@
 - [x] TICKET-089 — bug/backend — `battery_watchdog.py` : errno 121 code mort
       - Fix session 12 : réinitialisation INA219 déplacée à l'intérieur de `read_level()`
       - ✅ `scripts/battery_watchdog.py` corrigé
-- [x] TICKET-090 — infra — Nettoyage fichiers morts dans le repo
-      - ✅ Session 12 : fichiers morts supprimés via `git rm`
+- [x] TICKET-117 — voir la section Terminé plus haut (ex-TICKET-090 « nettoyage fichiers morts », renuméroté le 2026-08-04 pour lever la collision avec le ticket batterie ci-dessous)
 - [x] TICKET-096 — bug/infra — Hechicero s'éteignait au débranchement du chargeur
       - Cause : upower voyait la batterie INA219 à 0% (pas de driver ACPI) → HybridSleep au retrait du secteur
       - Fix : `CriticalPowerAction=Ignore` + `AllowRiskyCriticalPowerAction=true` dans `/etc/UPower/UPower.conf`

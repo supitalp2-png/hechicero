@@ -460,7 +460,7 @@ if (isset($_GET['action'])) {
     if ($a === 'backup_validate') {
         if (pid_alive(BACKUP_PID)) { echo json_encode(['ok'=>false,'msg'=>'Une sauvegarde est déjà en cours']); exit; }
         $label = trim($_POST['label'] ?? '');
-        // Nécessite une règle sudoers dédiée (voir docs/95-RESTAURATION_URGENCE.md) :
+        // Nécessite une règle sudoers dédiée (voir docs/85-SAUVEGARDE_RESTAURATION.md) :
         // www-data ALL=(root) NOPASSWD: /usr/bin/python3 .../backup_manager.py validate*
         $cmd = 'sudo /usr/bin/python3 ' . escapeshellarg(BACKUP_SCRIPT)
              . ' validate --label ' . escapeshellarg($label)

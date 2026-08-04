@@ -35,7 +35,7 @@ Contenu :
 - `data.json` : catalogue local (radios + podcasts), généré par le backend
 - `images/` : jaquettes podcasts (`{id}.jpg`) et radios (`radio/{id}.jpg`)
 
-> `app.js` et `style.css` étaient du code mort (styles et logique intégrés dans `index.html`, TICKET-040 ✅) — supprimés (TICKET-090 ✅). Il reste un `index.html.bak` dans `web/lecteur/`, à nettoyer à l'occasion.
+> `app.js` et `style.css` étaient du code mort (styles et logique intégrés dans `index.html`, TICKET-040 ✅) — supprimés (TICKET-117 ✅, ex-TICKET-090). Le `index.html.bak` qui traînait a été supprimé le 2026-08-04, et `*.bak` est désormais dans `.gitignore`.
 
 ### 3.2 Rôle des fichiers
 - **index.html** : contient toute la logique — chargement de `data.json`, rendu des 5 écrans, événements tactiles, commandes MPD
@@ -185,7 +185,7 @@ Le lecteur doit fonctionner **sans lag** sur un Raspberry Pi 5.
 
 ---
 
-## 12. État réel au 2026-07-17
+## 12. État réel au 2026-08-04
 
 ### Implémenté et validé
 - Son de démarrage (chime) : accord grave C2–G2–C3–G3–E4 via Web Audio API, sans fichier audio — `playStartupChime(volume)` (TICKET-023 ✅)
@@ -225,12 +225,27 @@ Le lecteur doit fonctionner **sans lag** sur un Raspberry Pi 5.
   - PHP : add_podcast → ingest ciblé `--podcast <id>` déclenché en background
   - Lecteur : `openRadioCatalog()` et `goToPodcasts()` rechargent `data.json` à chaque visite
   - Lecteur : `setInterval` 5 min pour config/parental (contrôle parental, config veille)
+- Rafraîchissement **automatique du catalogue affiché** sans rechargement du kiosque — TICKET-114 ✅
+  - Le trou que TICKET-100 laissait : `loadData()` était bien rappelé toutes les 5 min, mais **l'écran déjà affiché n'était jamais re-rendu**. `goToPodcasts()` était le seul endroit qui enchaînait chargement puis rendu → tant que l'enfant ne quittait pas la grille pour y revenir, un podcast fraîchement ingéré n'apparaissait jamais
+  - `radio.php` : action `data_version` → `{mtime, size}` de `data.json`. Deux `stat()`, assez léger pour un polling à 10 s, au lieu de retransférer les ~700 Ko du catalogue. **mtime ET size** : mtime seul rate une réécriture dans la même seconde, size seule rate un remplacement de même taille
+  - `index.html` : `pollCatalogVersion()` toutes les 10 s compare la signature ; au moindre changement, `refreshCatalogInPlace()` recharge `data.json` et re-rend l'écran visible. Le tick 5 min appelle désormais `refreshCatalogInPlace()` au lieu de `loadData()` — c'est ce qui bouche le trou d'origine
+  - ⚠️ **Précaution 1** — la position de lecture est ré-ancrée sur le **chemin audio** (`findEpisodeByAudio()`), jamais sur `currentIdx` : l'ingest insère les nouveaux épisodes **en tête** de liste, donc l'index désignerait un autre épisode et `next`/`prev` partiraient sur le mauvais. Même famille de piège que TICKET-108
+  - ⚠️ **Précaution 2** — les écrans `player` / `radio-player` ne sont **jamais** re-rendus : la lecture en cours ne doit pas clignoter parce qu'un ingest s'est terminé en arrière-plan
+  - ⏳ Le test visuel de bout en bout (nouveaux podcasts apparaissant seuls sur la grille pendant un ingest complet) reste à confirmer
 - Écran de veille (overlay JS `#sleep-overlay`, `retro`/`modern`/`classic` ± horloge) — TICKET-102
   - Déclenché par `resetSleepTimer()`/`activateSleep()` côté client, réveil sur `click`/`keydown` réels uniquement (`touchstart`/`pointermove` explicitement exclus — faux positifs du panneau tactile CTP)
   - Config `sleep_enabled`/`sleep_delay`/`sleep_mode` (`web/lecteur/config.json`, admin → Expert)
   - **Bug corrigé le 2026-07-09** : `checkParentalTime()` (vérif horaires parentaux, toutes les 30s) rechargeait la config et resettait le timer de veille à *chaque* appel, même sans rien de changé — si `sleep_delay` dépassait 30s, la veille ne pouvait alors jamais se déclencher naturellement. Fix : `applySleepConfig()` ne reset le timer que si la config a réellement changé (ou 1er chargement)
   - Traceur de debug temporaire (`logSleepEvent()` → action `sleep_log` de `radio.php` → `data/sleep_debug.log`, `tail -f` en SSH) laissé en place, à retirer une fois le fix confirmé stable dans la durée
   - Mécanisme distinct de la coupure d'écran système (`hechicero-idle.service`, voir `docs/70-SERVICES_SYSTEMD.md` §6) — un bug sur l'un ne dit rien sur l'état de l'autre
+- Réveil fiable de la dalle après veille — TICKET-115 ✅ (corrigé et confirmé le 2026-08-04)
+  - Symptôme : par intermittence l'écran restait noir après une extinction de veille, seul un reboot ramenait l'image. VNC (sortie virtuelle) continuait de fonctionner et masquait le problème
+  - Diagnostic pris **pendant** la panne : `wlr-randr` annonçait « Enabled: yes », le bon mode courant, EDID du JRP7003 lu ; `dmesg` sans aucun événement HDMI depuis le boot. Le Pi se croyait en train d'afficher
+  - **Cause racine** : `wlr-randr --on --preferred` ne déclenche **aucun modeset** si le connecteur est déjà actif et déjà au mode préféré — reposer le même mode est un no-op, la dalle éteinte n'est jamais réveillée
+  - Correctif dans `scripts/screen_dpms.sh` : rebond de mode `1280x720@60` → `sleep 3` → `1024x600@59.821`, seule séquence qui ramène l'image à coup sûr
+  - ⚠️ **`on` ne rebondit pas systématiquement** : `buttons_daemon.py` appelle `screen_dpms.sh on` à chaque appui du bouton GPIO23 (écran Chambre). Un rebond inconditionnel faisait clignoter l'écran déjà allumé (régression constatée). Donc `on` = ne rien faire si « Enabled: yes » ; le rebond forcé est isolé dans une action **`rescue`** déclenchée à la main en SSH — le cas « Enabled: yes mais dalle noire » n'étant pas détectable depuis le Pi
+  - Actions : `off` · `on` · `rescue` · `status` ; chaque bascule journalisée dans `data/screen_dpms.log`
+  - Secours si « Not Support » à l'écran : `export WAYLAND_DISPLAY=wayland-0 XDG_RUNTIME_DIR=/run/user/1000` puis `wlr-randr --output HDMI-A-1 --mode 1024x600@59.821`
 - Bascule sortie audio HP/Casque — TICKET-031 ✅
   - DAC USB KT USB Audio + HiFiBerry, sur cartes ALSA dont le numéro **dérive d'un boot à l'autre** (bug 2026-07-03 : card 2/3 inversés vs. setup initial) → `/etc/mpd.conf` doit référencer les cartes par nom (`hw:CARD=sndrpihifiberry,DEV=0` / `hw:CARD=Audio,DEV=0`), jamais par numéro
   - MPD configuré avec 2 sorties : `My ALSA Device` (HiFiBerry, HP) + `Casque USB` (DAC USB, casque)
@@ -239,6 +254,7 @@ Le lecteur doit fonctionner **sans lag** sur un Raspberry Pi 5.
   - Volume mémorisé par mode (localStorage `hechicero_vol_hp` / `hechicero_vol_casque`, IHM 0–100%)
   - `currentVolumeMax()` retourne `VOLUME_MAX_SPEAKERS` ou `VOLUME_MAX_HEADPHONES` selon `audioMode`
   - Séquence bascule : volume réglé AVANT la bascule MPD (évite le pic sonore)
+  - **Gain casque (TICKET-116, 2026-08-03, pas encore testé en voiture)** : niveau jugé trop faible en écoute nomade. Chaîne vérifiée de bout en bout, **aucune atténuation cachée** — mixer `Headphone` du DAC KT USB Audio à 100 %/0.00 dB, EQ plat à 50, `headphones_max = 100`, `mpc volume` atteint bien 100. **Le DAC KT USB Audio est le facteur limitant, pas un bridage logiciel.** Appliqué : `volume_normalization "yes"` dans `/etc/mpd.conf` + bandes EQ casque 1/2/4 kHz de 50 → 70 (~+5 dB) via `amixer -D eqcasque` (cf. TICKET-030). Si insuffisant, le levier suivant est matériel
   - Bascule manuelle définitive : IHM (bouton pill) + bouton physique GPIO17 ("source", cf. TICKET-091). La détection automatique du branchement casque (LM393, puis jack switché) a été testée sous deux approches différentes et abandonnée dans les deux cas — le bouton manuel est la solution retenue pour de bon, pas une étape transitoire
 - Navigation épisode pilotable par bouton physique GPIO — TICKET-091/101 ✅ définitif
   - `radio.php` : actions `next_episode` / `prev_episode` — retrouvent l'épisode en cours à partir du **fichier réellement joué par MPD** (`mpd_currentsong()`, jamais un état mémorisé, même principe que `get_output`), le comparent à `data.json`, lancent l'épisode voisin. Répondent `ok:false` (`out_of_bounds` / `no_current_episode`) en bout de série, webradio en cours, ou MPD à l'arrêt. Nouvelle action `seek_relative` (`seekcur ±N`) pour le maintien tap-ou-maintien ci-dessous
@@ -257,21 +273,22 @@ Le lecteur doit fonctionner **sans lag** sur un Raspberry Pi 5.
 - Batterie : `/index.php?action=battery_data` (primaire) → fallback `../status.json` (lecture seule, fichier statique)
 
 ### Non implémenté (tickets ouverts)
-- Son de confirmation / retour visuel au choix (TICKET-023)
-- Contenu ES complet dans `data.json` (TICKET-004)
-- Nettoyage fichiers morts : `app.js`, `style.css`, `lecture.html`, `*.bak` (TICKET-090)
+- Série easter egg « Décisions Prises » (TICKET-058) — EP0 et EP1 écrits, production audio à faire
+- Gain casque : test réel en voiture (TICKET-116)
+- Test visuel de bout en bout du rafraîchissement de catalogue (TICKET-114)
+
+> Section revue le 2026-08-04. Trois entrées retirées, les tickets étant déjà `[x]` au backlog : TICKET-023 (chime livré), TICKET-004 (contenu ES livré) et TICKET-117 ex-090 (fichiers morts — `app.js`, `style.css`, `lecture.html` n'existent plus ; les `*.bak` restants ont été supprimés et sont désormais couverts par `.gitignore`).
 
 ---
 
 ## 13. Évolutions prévues
-- Script d'intégrité audio/images/data.json (TICKET-048)
-- Carrousel pour les jaquettes (TICKET-047)
-- Favoris (TICKET-046)
-- Animations simples (fade, slide) (TICKET-037)
-- Son de confirmation au lancement (TICKET-023)
-- Support des boutons physiques (GPIO)
-- Série easter egg "Décisions Prises" (TICKET-058)
-- Limiteur exposition sonore (TICKET-087)
+
+> Liste purgée le 2026-08-04 : elle annonçait encore comme « à venir » des choses livrées depuis longtemps.
+
+- Série easter egg « Décisions Prises » (TICKET-058) — le seul vrai reste côté lecteur
+
+**Retirés parce que livrés** : favoris (TICKET-046, clos le 2026-07-19), boutons physiques GPIO (TICKET-091/101), script d'intégrité (TICKET-048), son de démarrage (TICKET-023), limiteur d'exposition sonore (TICKET-087).
+**Retirés parce qu'annulés** : carrousel de jaquettes (TICKET-047), animations fade/slide (TICKET-037) — décisions du 2026-07-18, voir `docs/90-BACKLOG.md`.
 
 ---
 

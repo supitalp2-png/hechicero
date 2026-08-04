@@ -978,6 +978,27 @@ if (isset($_GET['action'])) {
         echo json_encode(['screen' => $d['screen'] ?? null, 'ts' => $d['ts'] ?? 0]);
         exit;
     }
+
+    // TICKET-114 — signature de data.json, pour savoir si le catalogue a changé
+    // sans retransférer les ~700 Ko du fichier. Deux stat() suffisent, donc
+    // c'est assez léger pour un polling à 10 s côté kiosque.
+    // Pourquoi mtime ET size : mtime seul rate une réécriture dans la même
+    // seconde, size seule rate un remplacement de même taille. Ensemble ils
+    // couvrent les cas réels de l'ingest.
+    if ($action === 'data_version') {
+        header('Content-Type: application/json; charset=utf-8');
+        $dataPath = __DIR__ . '/data.json';
+        clearstatcache(true, $dataPath);
+        if (!file_exists($dataPath)) {
+            echo json_encode(['mtime' => 0, 'size' => 0]);
+            exit;
+        }
+        echo json_encode([
+            'mtime' => (int)@filemtime($dataPath),
+            'size'  => (int)@filesize($dataPath),
+        ]);
+        exit;
+    }
 }
 ?>
 <!DOCTYPE html>

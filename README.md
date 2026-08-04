@@ -80,7 +80,7 @@ Le détail des tickets et des décisions techniques est dans `docs/`.
 | Fichier | Contenu |
 |---|---|
 | `docs/00-manifeste.md` | Vision et principes du projet |
-| `docs/05-POWER_MANAGEMENT.md` | Monitoring batterie, service systemd, shutdown propre |
+| `docs/05-POWER_MANAGEMENT.md` | Batterie : monitoring, seuils, dashboard, shutdown propre |
 | `docs/10-choix_techniques.md` | Choix d'architecture et matériel |
 | `docs/15-INVARIANTS.md` | Règles absolues du projet (jamais à violer) |
 | `docs/20-SETUP_SYSTEME.md` | Installation complète sur Raspberry Pi 5 |
@@ -92,8 +92,9 @@ Le détail des tickets et des décisions techniques est dans `docs/`.
 | `docs/60-KIOSK_MODE.md` | Configuration mode kiosque Chromium |
 | `docs/70-SERVICES_SYSTEMD.md` | Services systemd (batterie, RSS, kiosque) |
 | `docs/80-hardware.md` | Matériel, câblage, comportements Pi 5 |
-| `docs/80-ALIMENTATION.md` | Gestion alimentation batterie — spec complète (TICKET-080 à 084) |
+| `docs/85-SAUVEGARDE_RESTAURATION.md` | Sauvegarde ghost de la carte SD et restauration |
 | `docs/90-BACKLOG.md` | Tickets ouverts et fermés |
+| `docs/95-DOMOTIQUE_CHAMBRE.md` | Écran Chambre : passerelle Netatmo, lampe et volet |
 | `docs/99-prompt.md` | Prompt de reprise de session pour Claude |
 
 ---
