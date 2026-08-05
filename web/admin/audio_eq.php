@@ -52,7 +52,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'save'
         }
 
         $config = read_config();
-        $config['profiles'][$profileName] = ['preset' => $preset, 'bands_db' => $bands];
+        $entry = ['preset' => $preset, 'bands_db' => $bands];
+
+        // TICKET-124 : gain global, casque uniquement. Champ distinct de
+        // bands_db — la forme et le niveau ne doivent plus être mélangés,
+        // sinon charger un preset écrase le gain réglé pour la voiture.
+        // Les haut-parleurs n'en ont pas : speakers_max ≤ 80 est un invariant
+        // de sécurité auditive, on ne lui ouvre pas de contournement.
+        if ($profileName === 'casque') {
+            $entry['gain_db'] = max(0, min(6, (int)round((float)($_POST['gain'] ?? 0))));
+        }
+
+        $config['profiles'][$profileName] = $entry;
         $config['updated'] = date('c');
 
         if (file_put_contents(CONFIG_PATH, json_encode($config, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE)) === false) {
@@ -89,6 +100,16 @@ $currentPage = basename($_SERVER['PHP_SELF'] ?? 'audio_eq.php');
     .eq-tab.active { color: var(--text); border-color: var(--accent); background: rgba(240,190,79,0.12); }
     .eq-profile { display: none; }
     .eq-profile.active { display: block; }
+    /* TICKET-124 — gain global casque, visuellement distinct des bandes pour
+       qu'on ne le confonde jamais avec une onzième fréquence. */
+    .eq-gain { background: rgba(0,200,255,.06); border: 1px solid rgba(0,200,255,.25);
+               border-radius: 12px; padding: 14px 16px; margin-bottom: 18px; }
+    .eq-gain-head { display: flex; justify-content: space-between; align-items: baseline; }
+    .eq-gain-head label { font-weight: 600; }
+    .eq-gain-value { font-variant-numeric: tabular-nums; font-size: 1.25em; color: var(--accent); }
+    .eq-gain-input { width: 100%; margin: 10px 0 4px; }
+    .eq-gain-help { margin: 6px 0 0; font-size: .85em; opacity: .75; line-height: 1.45; }
+    .eq-gain-warn { margin: 8px 0 0; font-size: .85em; color: #e8b33a; line-height: 1.45; }
     .eq-presets { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 18px; }
     .eq-preset-btn {
       padding: 8px 14px; border-radius: 999px; border: 1px solid var(--border);
@@ -154,6 +175,24 @@ $currentPage = basename($_SERVER['PHP_SELF'] ?? 'audio_eq.php');
         <input type="hidden" name="profile" value="<?php echo $profileKey; ?>">
         <input type="hidden" name="preset" class="eq-preset-input" value="<?php echo htmlspecialchars($profile['preset'] ?? 'custom'); ?>">
 
+        <?php if ($profileKey === 'casque'): $gain = (int)($profile['gain_db'] ?? 0); ?>
+          <div class="eq-gain">
+            <div class="eq-gain-head">
+              <label for="eq-gain-input">Gain général du casque</label>
+              <span class="eq-gain-value"><?php echo $gain; ?> dB</span>
+            </div>
+            <input type="range" id="eq-gain-input" name="gain" class="eq-gain-input"
+                   min="0" max="6" step="1" value="<?php echo $gain; ?>">
+            <p class="eq-gain-help">
+              Remonte les dix bandes d'autant, sans toucher à la forme du profil.
+              C'est la seule marge de gain restante en écoute nomade : le mixer du DAC
+              et le volume MPD sont déjà au maximum. Le réglage est conservé quand tu
+              changes de profil.
+            </p>
+            <p class="eq-gain-warn" hidden></p>
+          </div>
+        <?php endif; ?>
+
         <div class="eq-presets">
           <?php foreach (PRESETS as $key => $preset): ?>
             <button type="button" class="eq-preset-btn" data-preset="<?php echo $key; ?>" data-bands="<?php echo htmlspecialchars(json_encode($preset['bands'])); ?>">
@@ -196,7 +235,11 @@ $currentPage = basename($_SERVER['PHP_SELF'] ?? 'audio_eq.php');
 
     // Presets : préchargent les 10 curseurs du profil courant
     document.querySelectorAll('.eq-profile').forEach(form => {
-      const sliders = form.querySelectorAll('input[type=range]');
+      // ⚠️ Sélecteur restreint aux bandes (TICKET-124) : le curseur de gain est
+      // aussi un input[type=range] dans ce formulaire. Sans le filtre sur
+      // name="bands[]", il serait traité comme une onzième fréquence — les
+      // presets l'écraseraient et il partirait dans bands_db.
+      const sliders = form.querySelectorAll('input[type=range][name="bands[]"]');
       const presetInput = form.querySelector('.eq-preset-input');
 
       form.querySelectorAll('.eq-preset-btn').forEach(btn => {
@@ -215,8 +258,40 @@ $currentPage = basename($_SERVER['PHP_SELF'] ?? 'audio_eq.php');
         slider.addEventListener('input', () => {
           valueEl.textContent = `${slider.value} dB`;
           presetInput.value = 'custom';
+          majGain();
         });
       });
+
+      // ── Gain global (casque uniquement, TICKET-124) ──────────────────────
+      // Il ne marque JAMAIS le preset comme « custom » : le gain est un niveau,
+      // pas une forme. C'est tout l'intérêt de les avoir séparés.
+      const gainInput = form.querySelector('.eq-gain-input');
+      const gainValue = form.querySelector('.eq-gain-value');
+      const gainWarn  = form.querySelector('.eq-gain-warn');
+
+      function majGain() {
+        if (!gainInput) return;
+        const g = parseFloat(gainInput.value) || 0;
+        gainValue.textContent = `${g} dB`;
+
+        // Écrêtage : alsaequal plafonne à +12 dB par bande. On le dit avant
+        // d'enregistrer, sinon la courbe s'aplatit sans que personne ne le voie.
+        const ecretees = [...sliders].filter(s => (parseFloat(s.value) || 0) + g > 12);
+        if (ecretees.length) {
+          gainWarn.textContent =
+            `⚠️ ${ecretees.length} bande(s) dépasseraient +12 dB et seront écrêtées : `
+            + ecretees.map(s => s.closest('.eq-band').querySelector('.eq-band-label').textContent).join(', ')
+            + `. La forme du profil sera aplatie sur ces fréquences.`;
+          gainWarn.hidden = false;
+        } else {
+          gainWarn.hidden = true;
+        }
+      }
+
+      if (gainInput) {
+        gainInput.addEventListener('input', majGain);
+        majGain();
+      }
     });
   </script>
 </body>

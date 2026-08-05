@@ -58,18 +58,31 @@ else
             fail "action '$act' MANQUANTE"
         fi
     done
-    # Comportement anti-clignotement : sur écran allumé, 'on' ne doit rien faire.
-    # C'est la régression du bouton GPIO23 qu'on surveille ici.
+    # Comportement anti-clignotement : sur écran ALLUMÉ, 'on' ne doit rien faire.
+    # C'est la régression du bouton GPIO23 (TICKET-115bis) qu'on surveille ici.
+    #
+    # ⚠️ On vérifie l'état AVANT d'appeler quoi que ce soit (corrigé le
+    # 2026-08-05). L'ancienne version appelait `on` sans regarder : si l'écran
+    # était éteint, le test le RALLUMAIT. Effet de bord interdit par le
+    # registre — et surtout, depuis TICKET-123, un réveil qui ne vient pas du
+    # tactile laisse swayidle bloqué et l'écran allumé indéfiniment. Le smoke
+    # test pouvait donc déclencher lui-même le bug qu'il est censé surveiller.
     if command -v wlr-randr >/dev/null 2>&1; then
-        avant=$(wc -l < "$ROOT/data/screen_dpms.log" 2>/dev/null || echo 0)
-        "$ROOT/scripts/screen_dpms.sh" on >/dev/null 2>&1
-        derniere=$(tail -1 "$ROOT/data/screen_dpms.log" 2>/dev/null)
-        if echo "$derniere" | grep -q "déjà actif"; then
-            pass "appui bouton antenne : no-op confirmé (pas de clignotement)"
-        elif echo "$derniere" | grep -q "rebond"; then
-            warn "l'écran était éteint : rebond déclenché (normal si veille active)"
+        etat_ecran=$(wlr-randr 2>/dev/null | awk '
+            $1 == "HDMI-A-1"  { inblock = 1; next }
+            /^[^[:space:]]/   { inblock = 0 }
+            inblock && $1 == "Enabled:" { print $2; exit }')
+        if [ "$etat_ecran" = "yes" ]; then
+            "$ROOT/scripts/screen_dpms.sh" on >/dev/null 2>&1
+            if tail -1 "$ROOT/data/screen_dpms.log" 2>/dev/null | grep -q "déjà actif"; then
+                pass "appui bouton antenne : no-op confirmé (pas de clignotement)"
+            else
+                fail "écran allumé mais 'on' n'a pas été un no-op — régression du clignotement GPIO23"
+            fi
+        elif [ "$etat_ecran" = "no" ]; then
+            pass "écran en veille — test du no-op sauté (le réveiller depuis un test figerait swayidle, TICKET-123)"
         else
-            warn "impossible de lire data/screen_dpms.log — vérifier à la main"
+            warn "état de l'écran illisible via wlr-randr — test du no-op sauté"
         fi
     else
         warn "wlr-randr indisponible (pas de session Wayland ici ?) — test écran sauté"
@@ -302,6 +315,117 @@ if [ -x "$ROOT/scripts/check_privacy.sh" ] || [ -f "$ROOT/scripts/check_privacy.
     esac
 else
     warn "scripts/check_privacy.sh absent — aucun filet contre une fuite de prénom"
+fi
+
+titre "8. Chaîne audio (zone Z6)"
+
+# Zone Z6 du registre. Elle n'avait aucune garde automatique alors qu'elle a
+# déjà fait planter MPD (TICKET-030). Tous les contrôles ci-dessous sont en
+# lecture seule : rien n'est appliqué, aucun son n'est modifié.
+
+# ── Numéros de carte ALSA instables ───────────────────────────────────────
+# Les numéros hw:N,0 changent d'un boot à l'autre (vécu le 2026-07-03 : cartes
+# 2 et 3 inversées). Toute référence par numéro finit par pointer la mauvaise
+# carte, et le son sort au mauvais endroit — ou pas du tout.
+# La référence matérielle ne vit PAS dans mpd.conf (corrigé le 2026-08-05) :
+# depuis TICKET-030, les sorties MPD pointent vers les plugins alsaequal
+# (`eqhp` / `eqcasque`), et c'est /etc/asound.conf qui nomme les vraies cartes.
+# Chercher hw:CARD= dans mpd.conf ne pouvait donc rien donner.
+if [ -r /etc/asound.conf ]; then
+    if grep -qE 'slave\.pcm.*(plug)?hw:CARD=' /etc/asound.conf; then
+        pass "asound.conf : cartes des sorties MPD référencées par nom (hw:CARD=)"
+    else
+        fail "asound.conf : aucune sortie référencée par nom — les numéros de carte dérivent d'un boot à l'autre"
+    fi
+
+    # Le périphérique ALSA par défaut est un chemin distinct de celui de MPD.
+    # Tout ce qui ne précise pas -D l'emprunte : son de démarrage, aplay,
+    # Chromium. S'il est numéroté, une ré-énumération l'envoie sur la mauvaise
+    # carte — le chime de boot partirait dans le HDMI.
+    if grep -qE '^\s*(slave\.pcm\s+"hw:[0-9]|card\s+[0-9])' /etc/asound.conf; then
+        warn "asound.conf : le périphérique par DÉFAUT est numéroté ($(grep -cE '^\s*(slave\.pcm\s+"hw:[0-9]|card\s+[0-9])' /etc/asound.conf) ligne(s)) — MPD n'est pas concerné, mais le son de démarrage si. Remplacer par CARD=sndrpihifiberry"
+    else
+        pass "asound.conf : périphérique par défaut référencé par nom"
+    fi
+else
+    warn "/etc/asound.conf illisible — contrôle des cartes ALSA sauté"
+fi
+
+# mpd.conf doit pointer vers les plugins d'égalisation, pas vers le matériel.
+if [ -r /etc/mpd.conf ]; then
+    if grep -qE '^[^#]*device[^#]*"hw:[0-9]' /etc/mpd.conf; then
+        fail "mpd.conf référence une carte par NUMÉRO (hw:N) — instable d'un boot à l'autre"
+        grep -nE '^[^#]*device[^#]*"hw:[0-9]' /etc/mpd.conf | sed 's/^/     /'
+    elif grep -qE '^[^#]*device[^#]*"eq(hp|casque)"' /etc/mpd.conf; then
+        pass "mpd.conf : sorties dirigées vers les plugins alsaequal (eqhp/eqcasque)"
+    else
+        warn "mpd.conf : sorties ni numérotées ni sur eqhp/eqcasque — à relire"
+    fi
+else
+    warn "/etc/mpd.conf illisible — contrôle des sorties MPD sauté"
+fi
+
+# ── États binaires alsaequal ──────────────────────────────────────────────
+# 840 octets = sain. Un fichier vide ou tronqué fait planter alsaequal en
+# SIGBUS (mmap sur taille 0), ce qui peut emporter MPD et griller le
+# disjoncteur de mpd.socket — incident TICKET-030, récupération en §6.4.1.
+for prof in hp casque; do
+    f="$ROOT/data/alsaequal_$prof.bin"
+    if [ ! -f "$f" ]; then
+        warn "alsaequal_$prof.bin absent (normal si l'égaliseur n'a jamais tourné)"
+    else
+        taille=$(stat -c %s "$f")
+        if [ "$taille" -eq 840 ]; then
+            pass "alsaequal_$prof.bin sain (840 octets)"
+        else
+            fail "alsaequal_$prof.bin fait $taille octets au lieu de 840 — risque de SIGBUS, voir §6.4.1"
+        fi
+    fi
+done
+
+# ── Sécurité auditive de l'enfant ─────────────────────────────────────────
+# speakers_max ≤ 80 est un invariant, pas un réglage. Et le gain casque
+# (TICKET-124) doit rester dans 0..6 dB : au-delà, l'écrêtage devient
+# systématique et la distorsion audible.
+sortie_vol=$(python3 - "$ROOT" <<'PY' 2>&1
+import json, sys, pathlib
+root = pathlib.Path(sys.argv[1])
+faute = False
+detail = []
+
+try:
+    cfg = json.loads((root / "web/lecteur/config.json").read_text())
+    smax = cfg.get("volume", {}).get("speakers_max")
+    if smax is None:
+        detail.append("speakers_max absent de config.json")
+    elif smax > 80:
+        detail.append(f"speakers_max = {smax} > 80 — INVARIANT DE SÉCURITÉ AUDITIVE")
+        faute = True
+    else:
+        detail.append(f"speakers_max = {smax}")
+except Exception as e:
+    detail.append(f"config.json illisible ({e})")
+
+eqp = root / "data/audio_eq.json"
+if eqp.exists():
+    try:
+        gain = json.loads(eqp.read_text()).get("profiles", {}).get("casque", {}).get("gain_db", 0)
+        if not (0 <= gain <= 6):
+            detail.append(f"gain casque = {gain} dB hors de 0..6")
+            faute = True
+        else:
+            detail.append(f"gain casque = {gain} dB")
+    except Exception as e:
+        detail.append(f"audio_eq.json illisible ({e})")
+
+print(" · ".join(detail))
+sys.exit(1 if faute else 0)
+PY
+)
+if [ $? -eq 0 ]; then
+    pass "limites de volume conformes — $sortie_vol"
+else
+    fail "limite de volume violée — $sortie_vol"
 fi
 
 titre "Résultat"

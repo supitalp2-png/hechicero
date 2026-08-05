@@ -61,6 +61,29 @@
       - **Attention particulière** à `audio_eq_apply` : `alsaequal` écrit des états binaires (`data/alsaequal_hp.bin`, `data/alsaequal_casque.bin`), et l'incident `mpd.socket` de TICKET-030 montre que cette chaîne est fragile.
       - **Règle à graver** ensuite dans `docs/70-SERVICES_SYSTEMD.md` : un service durci ne doit jamais écrire dans le dépôt. Répertoire de travail volatil → `RuntimeDirectory=` (systemd le crée, le rend inscriptible malgré `ProtectSystem=strict`, et le nettoie). État persistant → `data/`, déjà en `ReadWritePaths`.
 
+- [ ] TICKET-125 — audio/infra — Le périphérique ALSA par défaut est référencé par numéro de carte (2026-08-05)
+      - **Trouvé** par la nouvelle garde Z6 du smoke test, alors qu'on cherchait autre chose.
+      - `/etc/asound.conf` contient `pcm.!default { slave.pcm "hw:2,0" }` et `ctl.!default { card 2 }`. **Les numéros de carte ALSA dérivent d'un boot à l'autre** — vécu le 2026-07-03, cartes 2 et 3 inversées.
+      - **MPD n'est pas concerné** : ses deux sorties pointent vers les plugins `eqhp`/`eqcasque`, qui nomment correctement les cartes (`plughw:CARD=sndrpihifiberry`, `plughw:CARD=Audio`). C'est d'ailleurs pour ça que le piège est passé inaperçu.
+      - **Ce qui est concerné** : tout ce qui n'indique pas `-D` et emprunte le périphérique par défaut — **son de démarrage**, `aplay`, Chromium. Après une ré-énumération, le chime de boot sortirait par le HDMI au lieu des haut-parleurs.
+      - **Rien n'est cassé aujourd'hui**, d'où l'avertissement et non l'échec dans le smoke test. Mais c'est un bug latent typique du projet : invisible jusqu'au jour où l'ordre des cartes change, ou sur une image SD fraîchement restaurée.
+      - 🛠️ **Correctif** : remplacer `hw:2,0` par `hw:CARD=sndrpihifiberry,DEV=0` et `card 2` par `card sndrpihifiberry`. Deux lignes — mais dans `asound.conf`, donc zone Z6 : une erreur de syntaxe coupe **tout** le son. À faire avec MPD arrêté et une vérification `aplay -D default` derrière.
+      - ⚠️ `/etc/asound.conf` est hors du dépôt : à capturer dans la sauvegarde ghost (TICKET-085) et à documenter dans `docs/20-SETUP_SYSTEME.md` §6.4.
+
+- [~] TICKET-124 — audio/UX — Gain général du casque, séparé de la courbe d'égalisation (2026-08-05)
+      - **Demande de Thomas**, après avoir trouvé l'astuce lui-même : il avait monté les dix bandes de +5 dB à la main. Il veut **un seul curseur de 0 à 6 dB** qui décale toutes les fréquences du casque, et pouvoir ensuite charger un profil de forme par-dessus.
+      - **Le problème que ça règle** : `bands_db` mélangeait la **forme** et le **niveau**. Charger « Voix claire » écrasait le gain réglé pour la voiture, et il fallait tout remonter à la main.
+      - 💡 **Pourquoi ce gain marche là où monter le volume ne suffisait plus** : le boost alsaequal intervient **après** l'étage de volume de MPD (déjà à 100) et après le mixer du DAC (déjà à 0 dB). C'est la dernière marge de la chaîne — cf. TICKET-116, où le DAC KT USB Audio a été identifié comme facteur limitant.
+      - **Décisions prises avec Thomas** :
+        - **Additif avec écrêtage par bande** : résultat = profil + gain, chaque bande plafonnée à +12 dB (limite alsaequal). Conséquence assumée : sur un profil déjà haut, les bandes saturées s'alignent et la courbe s'aplatit. L'IHM prévient **avant** d'enregistrer en nommant les bandes concernées, et `audio_eq_apply.py` les journalise.
+        - **Casque uniquement.** Les haut-parleurs restent tenus par `speakers_max ≤ 80` — invariant de sécurité auditive, pas de porte dérobée.
+        - **Dans la page Égaliseur**, en haut de l'onglet Casque, à côté des presets. Pas d'accès depuis l'IHM enfant.
+        - **Le gain persiste** comme tout réglage. ⚠️ Corollaire à garder en tête : un gain de +6 dB réglé pour la voiture reste actif à la maison, dans le calme.
+      - 🛠️ **Implémenté le 2026-08-05** : champ `gain_db` distinct dans `data/audio_eq.json` (profil casque), curseur 0–6 dB dans `web/admin/audio_eq.php` avec avertissement d'écrêtage en direct, application dans `scripts/audio_eq_apply.py`.
+      - 🐛 **Piège évité au passage** : le JavaScript de la page sélectionnait les curseurs par `input[type=range]`. Le curseur de gain aurait été pris pour une onzième bande — écrasé par les presets et envoyé dans `bands_db`. Sélecteur restreint à `input[type=range][name="bands[]"]`.
+      - 🛡️ **Zone Z6 enfin couverte** : elle n'avait aucune garde automatique malgré TICKET-030. Smoke test §8 — `hw:CARD=` dans `mpd.conf` (échec si un `hw:[0-9]` traîne), taille des `.bin` à 840 octets, `speakers_max ≤ 80`, `gain_db` dans 0..6.
+      - ⏳ **Reste** : écoute réelle au casque, puis test en voiture. Le smoke test ne saura jamais juger un niveau sonore.
+
 - [~] TICKET-116 — audio — Gain casque trop faible en écoute nomade (voiture) (2026-08-03)
       - Demande de Thomas : niveau au casque insuffisant en voiture.
       - 🔍 Chaîne vérifiée de bout en bout, **aucune atténuation cachée** : mixer `Headphone` du DAC KT USB Audio à 100 % / 0.00 dB, EQ plat à 50, mapping IHM correct (`headphones_max = 100`), `mpc volume` atteint bien 100.

@@ -241,11 +241,37 @@ par la séquence `mpd.socket` (Z1).
 **Historique** : bug sortie HP/casque (cartes instables) · TICKET-030 (EQ 10 bandes,
 2 profils) · TICKET-116 (gain casque)
 
-**Test de garde** : ⚠️ **manquant**. À écrire : `grep hw:CARD= /etc/mpd.conf` (et absence
-de `hw:[0-9]`), taille des deux `.bin`, et `speakers_max ≤ 80` dans `config.json`.
+**Le gain casque est séparé de la courbe (TICKET-124, 2026-08-05)** : `bands_db` porte la
+**forme**, `gain_db` porte le **niveau**. Les mélanger faisait perdre le gain réglé pour la
+voiture dès qu'on chargeait un preset. Le gain n'existe **que** sur le profil casque, borné
+à 0..6 dB : les haut-parleurs restent tenus par `speakers_max ≤ 80`, et on ne leur ouvre
+pas de porte dérobée.
 
-**Règle de sécurité enfant** : `speakers_max` ne dépasse jamais 80. C'est un invariant,
-pas un réglage.
+Pourquoi ce gain fonctionne là où monter le volume ne suffisait plus : le boost alsaequal
+intervient **après** l'étage de volume de MPD, déjà à 100, et après le mixer du DAC, déjà à
+0 dB. C'est la dernière marge disponible dans la chaîne.
+
+Écrêtage assumé : chaque bande est plafonnée indépendamment à +12 dB. Sur un profil déjà
+haut, les bandes saturées s'alignent et **la courbe s'aplatit**. L'IHM prévient avant
+d'enregistrer, et `audio_eq_apply.py` journalise les bandes écrêtées.
+
+**Où vit réellement la référence matérielle** (constaté le 2026-08-05, contre-intuitif) :
+`mpd.conf` ne contient **aucun** `hw:`. Depuis TICKET-030, ses deux sorties pointent vers
+les plugins alsaequal `eqhp` / `eqcasque`, et c'est `/etc/asound.conf` qui nomme les
+cartes — correctement, par `plughw:CARD=sndrpihifiberry` et `plughw:CARD=Audio`.
+
+⚠️ **Piège résiduel dans `asound.conf`** : le périphérique **par défaut** est encore
+numéroté (`slave.pcm "hw:2,0"`, `card 2`). MPD ne l'emprunte pas, mais **tout ce qui ne
+précise pas `-D` le fait** : son de démarrage, `aplay`, Chromium. Après une
+ré-énumération des cartes, le chime de boot partirait dans le HDMI. Non corrigé à ce jour.
+
+**Test de garde** : smoke test §8 — sorties MPD dirigées vers `eqhp`/`eqcasque` et non
+vers du matériel numéroté · `hw:CARD=` présent dans `asound.conf` · avertissement si le
+périphérique par défaut reste numéroté · taille des deux `.bin` à 840 octets ·
+`speakers_max ≤ 80` · `gain_db` dans 0..6.
+
+**Règle de sécurité enfant** : `speakers_max` ne dépasse jamais 80, et le gain casque ne
+dépasse jamais 6 dB. Ce sont des invariants, pas des réglages.
 
 ---
 
@@ -377,7 +403,7 @@ Par ordre d'urgence. C'est la liste de travail de ce document.
 | Zone | Ce qui manque | Ticket |
 |------|---------------|--------|
 | Z2 services durcis | Prouver qu'un service recrée ses fichiers de travail après suppression (les directives d'unité sont désormais couvertes, §6 du smoke test) | TICKET-121 |
-| Z6 audio | `hw:CARD=` dans `mpd.conf`, taille des `.bin`, `speakers_max ≤ 80` | — |
+| ~~Z6 audio~~ | ✅ **couvert** depuis le 2026-08-05 (smoke test §8) | TICKET-124 |
 | Z3 boutons | Prouver qu'un appui produit une action (pas juste « service actif ») | — |
 | Z7 hors réseau | Lecture d'un podcast local, réseau coupé | — |
 | Z9 intégrité | Intégrer `check_integrity.py` au smoke test | — |

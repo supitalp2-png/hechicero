@@ -79,22 +79,50 @@ def list_controls(ctl_name: str) -> None:
     print(result.stdout or result.stderr)
 
 
-def apply_profile(ctl_name: str, bands_db: list[float], dry_run: bool = False) -> None:
+def apply_profile(ctl_name: str, bands_db: list[float], gain_db: float = 0.0,
+                  dry_run: bool = False) -> None:
+    """Applique la courbe du profil, décalée d'un gain global uniforme.
+
+    TICKET-124 (2026-08-05) — pourquoi un gain séparé des bandes :
+    au casque, en voiture, le niveau était insuffisant alors que tout le reste
+    était déjà à fond (mixer du DAC à 0 dB, `mpc volume` à 100). Le boost
+    alsaequal intervient APRÈS l'étage de volume de MPD : c'est donc du gain
+    réellement supplémentaire, et c'est la seule marge qui restait.
+
+    Le garder dans un champ distinct de `bands_db` évite qu'il soit écrasé au
+    moindre changement de profil : `bands_db` porte la FORME, `gain_db` porte
+    le NIVEAU. Charger « Voix claire » ne fait plus perdre le gain.
+
+    Écrêtage par bande (choix de Thomas) : chaque bande est plafonnée
+    indépendamment à +12 dB, limite d'alsaequal. Conséquence assumée — sur un
+    profil déjà haut, les bandes saturées s'alignent et la courbe s'aplatit.
+    C'est pourquoi on journalise explicitement les bandes écrêtées.
+    """
+    ecretees = []
     for label, db in zip(BAND_LABELS, bands_db):
-        value = db_to_amixer(db)
+        total = db + gain_db
+        if total > 12.0:
+            ecretees.append(label)
+        value = db_to_amixer(total)
         # sset (interface "simple", celle listée par scontrols) prend le nom du
         # contrôle tel quel en argument positionnel — pas cset/name=, qui relève
         # de l'interface "raw" (iface=MIXER,name=...) et échoue sur ces contrôles
         # simples (confirmé en conditions réelles le 2026-07-18, "Cannot find the
         # given element from control eqhp" avec cset).
         cmd = ["amixer", "-D", ctl_name, "sset", label, str(value)]
-        LOGGER.info("%s: %s -> %sdB (amixer=%s)", ctl_name, label, db, value)
+        LOGGER.info("%s: %s -> %s dB (%+g bande %+g gain, amixer=%s)",
+                    ctl_name, label, min(12.0, total), db, gain_db, value)
         if dry_run:
             print(" ".join(cmd))
             continue
         result = subprocess.run(cmd, capture_output=True, text=True)
         if result.returncode != 0:
             LOGGER.error("Échec amixer %s %s: %s", ctl_name, label, result.stderr.strip())
+
+    if ecretees:
+        LOGGER.warning("%s: %d bande(s) écrêtée(s) à +12 dB par le gain de %+g dB — "
+                       "la courbe du profil est aplatie sur : %s",
+                       ctl_name, len(ecretees), gain_db, ", ".join(ecretees))
 
 
 def main() -> int:
@@ -121,7 +149,22 @@ def main() -> int:
         if len(bands_db) != 10:
             LOGGER.warning("Profil %s: bands_db invalide (%d valeurs, 10 attendues) — ignoré", name, len(bands_db))
             continue
-        apply_profile(ctl_name, bands_db, dry_run=args.dry_run)
+
+        # Gain global : casque uniquement (décision Thomas, TICKET-124). Les
+        # haut-parleurs restent bornés par speakers_max ≤ 80, invariant de
+        # sécurité auditive — on n'ouvre pas de porte dérobée pour le contourner.
+        gain_db = 0.0
+        if name == "casque":
+            try:
+                gain_db = max(0.0, min(6.0, float(profile.get("gain_db", 0.0))))
+            except (TypeError, ValueError):
+                LOGGER.warning("Profil casque: gain_db illisible (%r) — ramené à 0",
+                               profile.get("gain_db"))
+                gain_db = 0.0
+            if gain_db:
+                LOGGER.info("Profil casque: gain global de %+g dB appliqué aux 10 bandes", gain_db)
+
+        apply_profile(ctl_name, bands_db, gain_db=gain_db, dry_run=args.dry_run)
 
     return 0
 
