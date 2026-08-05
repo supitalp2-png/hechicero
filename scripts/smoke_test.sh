@@ -281,7 +281,7 @@ else
     warn "dérive dépôt ↔ /etc/systemd/system :$derive — recopier puis daemon-reload"
 fi
 
-titre "6. Vie privée du dépôt public (zone Z10)"
+titre "7. Vie privée du dépôt public (zone Z10)"
 
 # Le dépôt est public : un prénom réel parti dans un commit reste dans
 # l'historique git, ça ne se rattrape pas. Une fuite a déjà dû être neutralisée

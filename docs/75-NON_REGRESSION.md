@@ -286,7 +286,11 @@ dû être neutralisée en juillet 2026 (TICKET-118).
 de config, ni commentaires, ni messages de commit. On écrit `le petit`, `papa`, `la maman`.
 Seul `private/` (exclu par `.gitignore`) accepte les vrais prénoms.
 
-**Test de garde** : `scripts/check_privacy.sh`, intégré au smoke test (§6).
+**Test de garde** : `scripts/check_privacy.sh`, intégré au smoke test (§7).
+`private/forbidden_names.txt` **existe depuis le 2026-08-05** — la garde est donc active,
+et non plus seulement branchée. Ne jamais y ajouter le prénom de l'auteur : il est partout
+légitimement (`/home/thomas`, README, unités systemd, auteur des commits) et noierait le
+test sous des milliers de faux positifs.
 
 **La difficulté de conception, et sa solution** : un script versionné **ne peut pas
 contenir le prénom qu'il cherche** — le filet deviendrait la fuite. Les motifs vivent donc
