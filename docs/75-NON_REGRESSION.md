@@ -113,8 +113,25 @@ C'est le pire type de bug du projet : latent, invisible, et **non couvert par la
 **Historique** : TICKET-011 (durcissement) → TICKET-120 (boutons physiques morts 2 semaines
 plus tard, découvert par hasard) → TICKET-121 (audit des 7 autres, **ouvert**)
 
-**Test de garde** : ⚠️ **manquant**. Le smoke test vérifie que le service est *actif*, ce
-qui est exactement le faux positif de TICKET-120.
+**Deuxième piège de la même zone, confirmé le 2026-08-05 (TICKET-122)** : `Requires=`
+ne fait pas qu'ordonner le démarrage, il **propage l'arrêt**. `buttons_daemon`,
+`play_tracker` et `audio_eq_apply` le portaient sur `mpd.service` : réparer MPD — ou
+simplement le redémarrer — éteignait les boutons physiques et arrêtait le suivi
+d'écoute. Pour `play_tracker` c'est silencieux : on perdrait des semaines de
+statistiques sans rien voir. Les trois sont passés en `Wants=`.
+
+Ces deux pièges ont la même origine : le durcissement de juillet a été appliqué **en
+recopiant un modèle d'unité d'un service à l'autre**, sans vérifier ce que chaque
+directive impliquait pour ce service précis. L'audit doit donc porter sur **toutes** les
+directives, pas seulement `ReadWritePaths`.
+
+**Test de garde** : smoke test §6 — quatre contrôles statiques : absence de
+`Requires=mpd`, `WorkingDirectory` sous `/run` avec `RuntimeDirectory=` pour
+`buttons_daemon`, absence de `PrivateDevices=`, et **dérive entre le dépôt et
+`/etc/systemd/system/`** (une unité corrigée mais jamais recopiée donne l'illusion que le
+correctif est livré).
+⚠️ **Reste non couvert** : la preuve qu'un service recrée son fichier de travail après
+suppression. C'est le faux positif de TICKET-120, et c'est l'objet de TICKET-121.
 
 **Règles** :
 - Un service durci **n'écrit jamais dans le dépôt**.
@@ -269,8 +286,20 @@ dû être neutralisée en juillet 2026 (TICKET-118).
 de config, ni commentaires, ni messages de commit. On écrit `le petit`, `papa`, `la maman`.
 Seul `private/` (exclu par `.gitignore`) accepte les vrais prénoms.
 
-**Test de garde** : ⚠️ **manquant**. À écrire : un `grep -ri` du prénom sur les fichiers
-suivis par git, en pré-commit.
+**Test de garde** : `scripts/check_privacy.sh`, intégré au smoke test (§6).
+
+**La difficulté de conception, et sa solution** : un script versionné **ne peut pas
+contenir le prénom qu'il cherche** — le filet deviendrait la fuite. Les motifs vivent donc
+dans `private/forbidden_names.txt` (hors dépôt), une expression régulière par ligne. Le
+script vérifie d'abord que ce fichier est bien ignoré par git : si `private/` cessait
+d'être exclu, c'est la liste elle-même qui partirait sur GitHub.
+
+**Écrire les motifs avec des limites de mot** (`\bprenom\b`). Sans elles, un prénom court
+se retrouve à cheval sur deux mots dans les identifiants d'épisodes espagnols de
+`data.json` (`...microbio` + `ma el` + `universo...`) et le test crie au loup.
+
+Le balayage porte sur `git ls-files`, pas sur le disque : seul ce qui part réellement sur
+GitHub compte.
 
 ---
 
@@ -321,8 +350,7 @@ Par ordre d'urgence. C'est la liste de travail de ce document.
 
 | Zone | Ce qui manque | Ticket |
 |------|---------------|--------|
-| Z2 services durcis | Prouver qu'un service recrée ses fichiers de travail après suppression | TICKET-121 |
-| Z10 vie privée | `grep` du prénom réel sur les fichiers suivis par git | — |
+| Z2 services durcis | Prouver qu'un service recrée ses fichiers de travail après suppression (les directives d'unité sont désormais couvertes, §6 du smoke test) | TICKET-121 |
 | Z6 audio | `hw:CARD=` dans `mpd.conf`, taille des `.bin`, `speakers_max ≤ 80` | — |
 | Z3 boutons | Prouver qu'un appui produit une action (pas juste « service actif ») | — |
 | Z7 hors réseau | Lecture d'un podcast local, réseau coupé | — |

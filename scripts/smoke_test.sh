@@ -138,15 +138,32 @@ if [ -n "$(log_lire | head -1)" ]; then
     n_poll=$(log_lire | tail -n 300 | grep -c "data_version")
     if [ "$n_poll" -gt 0 ]; then
         pass "le kiosque interroge bien data_version ($n_poll appels récents)"
-        lignes_avant=$(log_lire | wc -l)
-        echo "     … touch data.json puis attente de 15 s"
-        touch "$DATA_JSON"
-        sleep 15
-        nouveaux=$(log_lire | tail -n +$((lignes_avant + 1)))
-        if echo "$nouveaux" | grep -q "lecteur/data.json"; then
-            pass "changement détecté ET catalogue rechargé par le kiosque — TICKET-114 vivant"
+        # `data.json` est régénéré tantôt par l'ingestion (thomas), tantôt par
+        # l'admin PHP (www-data) : son propriétaire n'est donc pas garanti.
+        # Un `touch` refusé ne prouve RIEN sur TICKET-114 — le test n'a
+        # simplement pas pu s'exécuter. D'où le warn et non le fail
+        # (faux échec constaté le 2026-08-05).
+        if touch "$DATA_JSON" 2>/dev/null; then
+            declencheur="direct"
+        elif sudo -n touch "$DATA_JSON" 2>/dev/null; then
+            declencheur="sudo"
         else
-            fail "aucun rechargement de data.json en 15 s — la détection ne fonctionne pas"
+            declencheur=""
+        fi
+
+        if [ -z "$declencheur" ]; then
+            warn "touch impossible sur data.json ($(stat -c '%U:%G %a' "$DATA_JSON" 2>/dev/null)) — test de rechargement sauté, PAS une panne de TICKET-114"
+        else
+            lignes_avant=$(log_lire | wc -l)
+            echo "     … touch data.json ($declencheur) puis attente de 15 s"
+            touch "$DATA_JSON" 2>/dev/null || sudo -n touch "$DATA_JSON" 2>/dev/null
+            sleep 15
+            nouveaux=$(log_lire | tail -n +$((lignes_avant + 1)))
+            if echo "$nouveaux" | grep -q "lecteur/data.json"; then
+                pass "changement détecté ET catalogue rechargé par le kiosque — TICKET-114 vivant"
+            else
+                fail "aucun rechargement de data.json en 15 s — la détection ne fonctionne pas"
+            fi
         fi
     else
         warn "aucun appel data_version récent : le kiosque tourne-t-il ? (relancer Chromium)"
@@ -203,6 +220,84 @@ if ou=$(service_actif mpd_watchdog "mpd_watchdog.py"); then
     pass "mpd_watchdog actif ($ou)"
 else
     warn "mpd_watchdog inactif — un MPD figé ne serait plus détecté (TICKET-122)"
+fi
+
+titre "6. Unités systemd — pièges de la zone Z2"
+
+# Zone Z2 du registre docs/75-NON_REGRESSION.md. Ces quatre contrôles sont
+# statiques et instantanés, mais ils couvrent des pannes qui ont réellement
+# coûté cher — et surtout des pannes LATENTES, invisibles tant qu'un vieux
+# fichier traîne ou tant que personne ne redémarre le service dont elles
+# dépendent.
+
+# ── Garde TICKET-122 : `Requires=` propage l'ARRÊT ────────────────────────
+# buttons_daemon, play_tracker et audio_eq_apply portaient
+# `Requires=mpd.service`. Conséquence : réparer MPD (ou simplement le
+# redémarrer) éteignait les boutons physiques ET arrêtait le suivi d'écoute,
+# silencieusement pour ce dernier. Ce test échoue sur le code d'avant le
+# correctif du 2026-08-05 — c'est ce qui en fait un vrai test de garde.
+coupables=$(grep -l '^Requires=mpd' "$ROOT"/scripts/*.service 2>/dev/null | xargs -r -n1 basename | tr '\n' ' ')
+if [ -z "$coupables" ]; then
+    pass "aucune unité ne porte Requires=mpd.service (pas de propagation d'arrêt)"
+else
+    fail "Requires=mpd.service dans : $coupables → un redémarrage de MPD les tuera. Utiliser Wants="
+fi
+
+# ── Garde TICKET-120 : un service durci n'écrit pas dans le dépôt ─────────
+# lgpio crée son tube .lgd-nfy<N> dans le répertoire courant. Avec
+# WorkingDirectory dans scripts/ — non inscriptible depuis le durcissement —
+# buttons_daemon ne pouvait plus le recréer, et ne survivait que grâce à un
+# fichier antérieur. Panne armée pendant deux semaines.
+if grep -q '^WorkingDirectory=/run/' "$ROOT/scripts/buttons_daemon.service" 2>/dev/null \
+   && grep -q '^RuntimeDirectory=' "$ROOT/scripts/buttons_daemon.service" 2>/dev/null; then
+    pass "buttons_daemon : répertoire de travail volatil sous /run (tube lgpio recréable)"
+else
+    fail "buttons_daemon : WorkingDirectory doit être sous /run avec RuntimeDirectory= — sinon lgpio ne peut plus créer son tube"
+fi
+
+# ── Garde : PrivateDevices casse GPIO et audio ────────────────────────────
+# Règle absolue du registre (Z2). Vécu sur l'égaliseur (/dev/snd) et
+# potentiellement sur /dev/gpiochip*.
+if grep -l '^PrivateDevices=\(yes\|true\)' "$ROOT"/scripts/*.service >/dev/null 2>&1; then
+    fail "PrivateDevices= présent dans une unité — casse l'accès GPIO et audio"
+else
+    pass "aucun PrivateDevices= dans les unités"
+fi
+
+# ── Garde : dérive entre le dépôt et ce qui tourne réellement ─────────────
+# Une unité corrigée dans le dépôt mais jamais recopiée dans
+# /etc/systemd/system/ donne l'illusion que le correctif est livré. Le test
+# comparerait alors du code qui ne tourne pas.
+derive=""
+for u in "$ROOT"/scripts/*.service; do
+    nom=$(basename "$u")
+    installe="/etc/systemd/system/$nom"
+    [ -f "$installe" ] || continue
+    cmp -s "$u" "$installe" || derive="$derive $nom"
+done
+if [ -z "$derive" ]; then
+    pass "unités installées identiques à celles du dépôt"
+else
+    warn "dérive dépôt ↔ /etc/systemd/system :$derive — recopier puis daemon-reload"
+fi
+
+titre "6. Vie privée du dépôt public (zone Z10)"
+
+# Le dépôt est public : un prénom réel parti dans un commit reste dans
+# l'historique git, ça ne se rattrape pas. Une fuite a déjà dû être neutralisée
+# (TICKET-118). La liste des prénoms cherchés vit dans private/ (hors dépôt) —
+# elle ne peut pas être écrite dans un script versionné.
+if [ -x "$ROOT/scripts/check_privacy.sh" ] || [ -f "$ROOT/scripts/check_privacy.sh" ]; then
+    sortie=$(bash "$ROOT/scripts/check_privacy.sh" 2>&1)
+    code=$?
+    case $code in
+        0) pass "$(echo "$sortie" | tail -1 | sed 's/^✅ //')" ;;
+        1) fail "prénom réel trouvé dans des fichiers suivis par git — NE PAS COMMITTER"
+           echo "$sortie" | sed 's/^/     /' ;;
+        *) warn "vérification vie privée impossible — $(echo "$sortie" | head -1)" ;;
+    esac
+else
+    warn "scripts/check_privacy.sh absent — aucun filet contre une fuite de prénom"
 fi
 
 titre "Résultat"
