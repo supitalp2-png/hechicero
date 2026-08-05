@@ -243,6 +243,14 @@
             "lang": "es",
             "url": "https://27403.live.streamtheworld.com/TROPICANAAAC.aac",
             "image": "images/radio/tropicana.jpg"
+        },
+        {
+            "id": "lamusiquedefranceinter",
+            "name": "La Musique de France Inter",
+            "desc": "Musique",
+            "lang": "fr",
+            "url": "https://stream.radiofrance.fr/franceinterlamusiqueinter/franceinterlamusiqueinter_hifi.m3u8",
+            "image": "images/radio/lamusiquedefranceinter.jpg"
         }
     ]
 }

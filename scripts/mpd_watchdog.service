@@ -1,0 +1,32 @@
+[Unit]
+Description=Hechicero MPD Watchdog (detecte un MPD fige et le relance, TICKET-122)
+# Volontairement PAS de Requires=mpd.service : ce chien de garde doit survivre
+# à un MPD arrêté ou en échec — c'est précisément là qu'il sert.
+After=network.target mpd.socket
+Wants=mpd.socket
+
+[Service]
+Type=simple
+User=root
+ExecStart=/usr/bin/python3 /home/thomas/hechicero/scripts/mpd_watchdog.py
+Restart=always
+RestartSec=10
+
+# ── Durcissement (modèle TICKET-011, corrigé par les leçons TICKET-120) ───
+# `data/` est le SEUL endroit inscriptible : le journal du chien de garde y va.
+# Aucune écriture dans le dépôt — c'est exactement le piège qui avait mis
+# buttons_daemon à genoux (lgpio créait son tube dans scripts/, devenu
+# non inscriptible après le durcissement).
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/thomas/hechicero/data
+
+# Ce service DOIT pouvoir piloter systemd (stop/start/reset-failed sur mpd) :
+# il passe par /run/systemd/private, que ProtectSystem=strict laisse
+# accessible. Ne pas ajouter PrivateDevices ni ProtectKernelTunables sans
+# revérifier ce chemin.
+
+[Install]
+WantedBy=multi-user.target

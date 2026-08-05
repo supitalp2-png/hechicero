@@ -1,7 +1,13 @@
 [Unit]
 Description=Hechicero Play Tracker (MPD idle)
 After=mpd.service
-Requires=mpd.service
+# ⚠️ `Wants=` et pas `Requires=` (corrigé le 2026-08-05, TICKET-122) :
+# `Requires=` propage l'arrêt, donc un redémarrage de MPD — y compris par le
+# chien de garde `mpd_watchdog` — emportait ce service avec lui, et le suivi
+# d'écoute s'arrêtait définitivement sans que personne ne le remarque.
+# Ici c'est sans risque : `Restart=always` ci-dessous relance le tracker s'il
+# perd sa connexion MPD et sort.
+Wants=mpd.service
 
 [Service]
 Type=simple

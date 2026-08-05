@@ -1,7 +1,11 @@
 [Unit]
 Description=Hechicero Audio EQ Apply (alsaequal, TICKET-030)
 After=mpd.service
-Requires=mpd.service
+# `Wants=` et pas `Requires=` (corrigé le 2026-08-05, TICKET-122) : cohérence
+# avec les autres services, et surtout pas de propagation d'arrêt depuis MPD.
+# Sans conséquence fonctionnelle ici — les réglages alsaequal vivent au niveau
+# ALSA, pas dans MPD, et survivent donc à un redémarrage de ce dernier.
+Wants=mpd.service
 
 [Service]
 Type=oneshot

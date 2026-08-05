@@ -186,10 +186,23 @@ verifier_service battery_tracker "battery_tracker.py"
 verifier_service play_tracker    "play_tracker.py"
 verifier_service battery_watchdog "battery_watchdog.py"
 
-if mpc status >/dev/null 2>&1; then
-    pass "MPD répond ($(mpc status | head -1 | cut -c1-50))"
+# ⚠️ NE PAS revenir à `mpc status` ici (TICKET-122, 2026-08-05). Quand MPD se
+# fige — thread principal bloqué sur un verrou, socket d'écoute qui n'accepte
+# plus — `mpc` ne renvoie pas une erreur : il attend, et le smoke test se fige
+# avec lui sans jamais rien rapporter. C'est exactement ce qui a permis à un
+# MPD bloqué de passer 24 h inaperçu. On sonde donc le socket Unix (le même que
+# radio.php) avec un délai de garde.
+if reponse=$(timeout 10 python3 "$ROOT/scripts/mpd_watchdog.py" --probe 2>&1 | tail -1); then
+    pass "MPD répond — $reponse"
 else
-    fail "MPD ne répond pas"
+    fail "MPD ne répond pas — $reponse"
+    echo "     → récupération : sudo python3 scripts/mpd_watchdog.py --recover"
+fi
+
+if ou=$(service_actif mpd_watchdog "mpd_watchdog.py"); then
+    pass "mpd_watchdog actif ($ou)"
+else
+    warn "mpd_watchdog inactif — un MPD figé ne serait plus détecté (TICKET-122)"
 fi
 
 titre "Résultat"

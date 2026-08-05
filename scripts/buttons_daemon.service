@@ -1,7 +1,14 @@
 [Unit]
 Description=Hechicero Buttons Daemon (8 boutons physiques GPIO, TICKET-091/101)
 After=network.target mpd.service
-Requires=mpd.service
+# ⚠️ `Wants=` et surtout PAS `Requires=` (corrigé le 2026-08-05, TICKET-122).
+# `Requires=` propage l'ARRÊT : quand mpd.service tombe — panne, ou SIGKILL du
+# chien de garde qui le répare — systemd arrête aussi ce service, et tous les
+# boutons physiques meurent avec MPD. Vécu en direct : MPD tué pour le
+# débloquer, boutons HS dans la foulée.
+# Les boutons doivent fonctionner même MPD absent : leurs actions passent par
+# radio.php, qui gère déjà l'erreur de connexion proprement.
+Wants=mpd.service
 
 [Service]
 Type=simple

@@ -27,8 +27,37 @@ Objectif : garantir un système **robuste**, **prévisible**, **auto‑récupér
 | `wifi_watch.service` | `scripts/wifi_watch.service` | Logger diagnostic coupures Wi-Fi (TICKET-109) — TEMPORAIRE | ✅ |
 | `wifi_roam.service` | `scripts/wifi_roam.service` | Roaming auto multi-AP box/répéteur, hors DFS (TICKET-110) | à installer |
 | `audio_eq_apply.service` | `scripts/audio_eq_apply.service` | Réapplique l'égaliseur alsaequal au boot (TICKET-030) | à installer, jamais testé |
+| `mpd_watchdog.service` | `scripts/mpd_watchdog.service` | Détecte un MPD figé et le relance ; arrêt préventif d'un flux réseau (TICKET-122) | ✅ |
 
 > `hechicero-monitor.service` (ancien service batterie basé sur `get_status.py`) — **désactivé session 11**. Remplacé par `battery_tracker.service`. Ne pas réactiver.
+
+### ⚠️ `Requires=` propage l'arrêt — utiliser `Wants=` (2026-08-05, TICKET-122)
+
+`buttons_daemon`, `play_tracker` et `audio_eq_apply` portaient tous
+`Requires=mpd.service`. Cette directive ne fait pas qu'ordonner le démarrage :
+elle **propage l'arrêt**. Dès que `mpd.service` tombe — panne, redémarrage
+manuel, ou `SIGKILL` du chien de garde qui vient justement le réparer —
+systemd arrête aussi ces trois services.
+
+Constaté en direct : MPD tué pour le débloquer, **tous les boutons physiques
+morts dans la foulée**. `play_tracker` est le plus sournois des trois, parce
+que son arrêt ne se voit pas : on aurait perdu des semaines de statistiques
+d'écoute sans rien remarquer.
+
+Les trois sont passés en **`Wants=mpd.service`** : l'ordonnancement au
+démarrage est conservé, la propagation d'arrêt disparaît.
+
+**Règle** : n'utiliser `Requires=` que si le service est réellement incapable
+de fonctionner sans sa dépendance **et** qu'il n'y a aucun intérêt à le laisser
+tourner pendant que celle-ci redémarre. Dans Hechicero, ce n'est le cas
+d'aucun service — MPD peut redémarrer, les autres doivent y survivre.
+
+Vérification :
+```bash
+sudo systemctl kill -s KILL mpd.service
+sleep 5
+systemctl is-active buttons_daemon play_tracker   # doivent rester "active"
+```
 
 ---
 
