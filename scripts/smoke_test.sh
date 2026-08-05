@@ -18,7 +18,11 @@
 ROOT="/home/thomas/hechicero"
 DATA_JSON="$ROOT/web/lecteur/data.json"
 ACCESS_LOG="/var/log/apache2/access.log"
-SCREEN_MD5_ATTENDU="933e04d7a2b435b333d7de67b5f1a247"
+# md5 de référence de screen_dpms.sh. À mettre à jour à CHAQUE modification du
+# script, sinon le test passe en avertissement et on finit par l'ignorer.
+# 2026-08-04 933e04d7… — réécriture TICKET-115bis (off/on/rescue/status)
+# 2026-08-05 270794ad… — TICKET-123, journalisation de l'appelant
+SCREEN_MD5_ATTENDU="270794add9264a94d72422b66fc4631e"
 
 export WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-0}"
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"

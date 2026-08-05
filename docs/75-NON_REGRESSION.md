@@ -177,8 +177,30 @@ s'éteignait jamais.
 (`off`/`on`/`rescue`/`status`), syntaxe bash, et vérification du no-op anti-clignotement
 dans `data/screen_dpms.log`.
 
+**Troisième piège, le plus contre-intuitif (2026-08-05, TICKET-123)** : `swayidle`
+n'observe **que les entrées Wayland**. Il ne sait pas si la dalle est allumée, et il ne
+voit **jamais** les boutons GPIO, lus par un processus Python. Son cycle est : compter le
+délai → lancer `off` → **rester en état « déjà expiré »** jusqu'à une entrée réelle →
+lancer `resume` → et seulement alors réarmer.
+
+Donc **réveiller la dalle autrement que par le tactile laisse `swayidle` bloqué**, et
+l'écran reste allumé indéfiniment. Prouvé : trois `on` à 18:34, 18:38 et 18:41 n'ont pas
+empêché l'extinction programmée de 18:52.
+
+⚠️ **Conséquence pour toute évolution** : appeler `screen_dpms.sh on` **ne remplace pas**
+un événement d'entrée. Tout nouveau déclencheur de réveil (bouton, capteur, commande
+distante) doit aussi signaler l'activité au compositeur, sinon il fige le cycle de veille.
+
+**Deux délais distincts, à ne pas confondre** : `sleep_delay` (120 s) pilote l'overlay de
+veille JS, `screen_off_delay` (1200 s) pilote l'extinction physique via `swayidle`. Entre
+les deux, l'écran de veille s'affiche sur une dalle allumée — c'est normal, pas un bug.
+
 **Règle** : toute nouvelle boucle périodique côté IHM doit être vérifiée contre
 `sleep_delay` avant d'être ajoutée.
+
+**Instrumentation disponible** : depuis TICKET-123, `data/screen_dpms.log` préfixe chaque
+ligne de l'appelant sur deux niveaux (`[père<-aïeul]`). Un réveil inexpliqué s'attribue
+désormais en une ligne.
 
 ---
 

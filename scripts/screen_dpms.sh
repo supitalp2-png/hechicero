@@ -46,6 +46,19 @@
 #
 # ⚠️ Avant de modifier l'action `on`, se rappeler qu'elle est aussi le chemin du
 # bouton GPIO23 : tout effet visible y sera ressenti à chaque appui.
+#
+# ── TICKET-123 (2026-08-05) — pourquoi on journalise l'appelant ───────────
+# Ce script ne réarme PAS le compte à rebours de swayidle : celui-ci n'observe
+# que les entrées Wayland, et les boutons GPIO sont lus par un processus Python
+# que le compositeur ne voit jamais. Conséquence : réveiller la dalle autrement
+# que par le tactile laisse swayidle bloqué dans son état « déjà expiré », et
+# l'écran reste allumé indéfiniment. Prouvé le 2026-08-05 : trois `on` à 18:34,
+# 18:38 et 18:41 n'ont pas empêché l'extinction programmée de 18:52.
+#
+# Le 2026-08-05 à 14:24, la dalle s'est rallumée maison vide, et il a été
+# impossible d'attribuer l'appel — d'où cette instrumentation. On remonte deux
+# niveaux : le parent direct est souvent un simple `sh -c`, le vrai demandeur
+# (swayidle, buttons_daemon, un humain en SSH) se trouve au-dessus.
 
 OUTPUT="HDMI-A-1"
 MODE="1024x600@59.821"       # mode natif du JRP7003
@@ -57,11 +70,19 @@ LOGFILE="/home/thomas/hechicero/data/screen_dpms.log"
 export WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-0}"
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 
+# Calculé une fois : PPID ne change pas pendant la vie du script.
+_pere=$(ps -o comm= -p "$PPID" 2>/dev/null | tr -d ' []')
+_aieul_pid=$(ps -o ppid= -p "$PPID" 2>/dev/null | tr -d ' ')
+_aieul=$(ps -o comm= -p "${_aieul_pid:-0}" 2>/dev/null | tr -d ' []')
+APPELANT="${_pere:-?}<-${_aieul:-?}"
+
 log_dpms() {
     # Instrumentation TICKET-115 : le bug était intermittent et n'a été
     # diagnostiqué qu'en attrapant l'état pendant la panne. On garde une trace
     # de chaque bascule pour pouvoir corréler en cas de récidive.
-    echo "$(date '+%Y-%m-%d %H:%M:%S') $*" >> "$LOGFILE" 2>/dev/null
+    # TICKET-123 : on y ajoute l'appelant, sans quoi un réveil inexpliqué reste
+    # inexplicable.
+    echo "$(date '+%Y-%m-%d %H:%M:%S') [$APPELANT] $*" >> "$LOGFILE" 2>/dev/null
 }
 
 # Renvoie "yes", "no", ou "" si l'état n'a pas pu être lu.
