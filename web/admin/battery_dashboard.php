@@ -243,16 +243,25 @@ $currentPage = basename($_SERVER['PHP_SELF'] ?? 'battery_dashboard.php');
           n'en est qu'une lecture de table. Le <strong>courant</strong> est positif en charge,
           négatif en décharge — c'est son signe qui décide de l'état depuis le 2026-08-17.
         </div>
-        <div class="ha-chart">
+        <?php if ($recentPoints): ?>
           <?php if ($pointsAvecTension >= 2): ?>
-            <canvas id="volt-chart"></canvas>
+            <div class="ha-chart" style="height:200px;">
+              <canvas id="volt-chart"></canvas>
+            </div>
           <?php else: ?>
-            <div class="ha-empty">
-              La tension n'est enregistrée que depuis le 2026-08-17 (TICKET-133).
-              Le graphe apparaîtra dès les prochains relevés.
+            <div class="ha-stat-note" style="margin:8px 0 12px;color:var(--muted);">
+              Courbe de tension à venir : elle n'est enregistrée que depuis le
+              2026-08-17 (TICKET-133) et se remplira au fil des relevés.
             </div>
           <?php endif; ?>
-        </div>
+          <div class="ha-chart" style="height:200px;">
+            <canvas id="amp-chart"></canvas>
+          </div>
+        <?php else: ?>
+          <div class="ha-chart">
+            <div class="ha-empty">Aucun relevé sur les dernières 24 h.</div>
+          </div>
+        <?php endif; ?>
       </section>
     </div>
 
@@ -535,78 +544,63 @@ $currentPage = basename($_SERVER['PHP_SELF'] ?? 'battery_dashboard.php');
     createRelativeChart('charge-chart', chargeCurves, ['#3dba6a', '#86efac', '#f0be4f', '#38bdf8', '#fb7185']);
 
     // ── TICKET-133 — tension et courant sur 24 h ──────────────────────────
-    // Deux axes : la tension (V) à gauche, le courant (mA) à droite. Les deux
-    // grandeurs sont réellement mesurées par l'INA219 ; le pourcentage affiché
-    // partout ailleurs n'est qu'une conversion de la première.
-    // Le zéro du courant est la frontière charge/décharge — d'où la ligne à 0.
-    (function () {
-      const el = document.getElementById('volt-chart');
+    // DEUX GRAPHES EMPILÉS, pas un double axe. Première version essayée : les
+    // deux séries superposées avec un axe à gauche et un à droite. Illisible,
+    // et pour une raison structurelle : le courant couvre −4000 à +2000 mA
+    // quand la tension tient dans 60 mV. Le courant écrasait tout, la tension
+    // se réduisait à un trait. Deux cadres partageant l'axe du temps laissent
+    // chaque grandeur à son échelle.
+    function grapheSerie(id, cle, label, couleur, titreY, ligneZero) {
+      const el = document.getElementById(id);
       if (!window.Chart || !el) return;
-      const volts = recentPoints
-        .filter(p => p.voltage_v !== null && p.voltage_v !== undefined)
-        .map(p => ({ x: new Date(p.t).getTime(), y: p.voltage_v }));
-      const amps = recentPoints
-        .filter(p => p.current_ma !== null && p.current_ma !== undefined)
-        .map(p => ({ x: new Date(p.t).getTime(), y: p.current_ma }));
-      if (volts.length < 2) return;
+      const pts = recentPoints
+        .filter(p => p[cle] !== null && p[cle] !== undefined)
+        .map(p => ({ x: new Date(p.t).getTime(), y: p[cle] }));
+      if (pts.length < 2) return;
+
+      const datasets = [{
+        label: label, data: pts,
+        borderColor: couleur, backgroundColor: couleur,
+        borderWidth: 2, pointRadius: 0, tension: 0.25,
+      }];
+
+      // Le zéro du courant est la frontière charge/décharge — c'est LA lecture
+      // utile de ce graphe depuis que le signe décide de l'état.
+      if (ligneZero) {
+        const xs = pts.map(p => p.x);
+        datasets.push({
+          label: 'charge ↑ / décharge ↓',
+          data: [{ x: Math.min(...xs), y: 0 }, { x: Math.max(...xs), y: 0 }],
+          borderColor: '#6b89a8', borderDash: [5, 4],
+          borderWidth: 1, pointRadius: 0, fill: false,
+        });
+      }
 
       new Chart(el, {
         type: 'line',
-        data: {
-          datasets: [
-            {
-              label: 'Tension (V)', data: volts, yAxisID: 'yV',
-              borderColor: '#f0be4f', backgroundColor: '#f0be4f',
-              borderWidth: 2, pointRadius: 0, tension: 0.25,
-            },
-            {
-              label: 'Courant (mA)', data: amps, yAxisID: 'yA',
-              borderColor: '#4a9eff', backgroundColor: '#4a9eff',
-              borderWidth: 1.5, pointRadius: 0, tension: 0.25,
-            },
-          ]
-        },
+        data: { datasets: datasets },
         options: {
           responsive: true, maintainAspectRatio: false, parsing: false,
           interaction: { mode: 'index', intersect: false },
           scales: {
             x: {
               type: 'linear',
-              title: { display: true, text: 'Heure', color: '#86a5c0' },
-              ticks: { color: '#86a5c0', callback: v => fmtTime(v) },
+              ticks: { color: '#86a5c0', callback: v => fmtTime(v), maxTicksLimit: 8 },
               grid: { color: 'rgba(32,66,100,0.25)' }
             },
-            yV: {
-              position: 'left',
-              title: { display: true, text: 'Tension (V)', color: '#f0be4f' },
-              ticks: { color: '#f0be4f' },
+            y: {
+              title: { display: true, text: titreY, color: couleur },
+              ticks: { color: '#86a5c0' },
               grid: { color: 'rgba(32,66,100,0.25)' }
-            },
-            yA: {
-              position: 'right',
-              title: { display: true, text: 'Courant (mA)', color: '#4a9eff' },
-              ticks: { color: '#4a9eff' },
-              // Pas de quadrillage à droite : il se superposerait à celui de
-              // gauche et rendrait les deux illisibles.
-              grid: { drawOnChartArea: false },
             },
           },
-          plugins: {
-            legend: { labels: { color: '#e8f0f6' } },
-            tooltip: {
-              callbacks: {
-                afterBody: (items) => {
-                  const a = items.find(i => i.dataset.yAxisID === 'yA');
-                  if (!a) return '';
-                  return a.parsed.y >= 0 ? 'Courant positif → charge'
-                                         : 'Courant négatif → décharge';
-                }
-              }
-            }
-          }
+          plugins: { legend: { labels: { color: '#e8f0f6', boxWidth: 12 } } }
         }
       });
-    })();
+    }
+
+    grapheSerie('volt-chart', 'voltage_v', 'Tension (V)', '#f0be4f', 'Tension (V)', false);
+    grapheSerie('amp-chart', 'current_ma', 'Courant (mA)', '#4a9eff', 'Courant (mA)', true);
   </script>
 </body>
 </html>
