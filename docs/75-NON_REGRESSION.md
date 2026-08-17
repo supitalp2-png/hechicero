@@ -572,7 +572,10 @@ Par ordre d'urgence. C'est la liste de travail de ce document.
 | Z7 hors réseau | Lecture d'un podcast local, réseau coupé | — |
 | ~~Z9 intégrité~~ | ✅ **couvert** depuis le 2026-08-17 : `check_integrity.py` intégré au smoke test §9, sous `timeout 25`. Il existait depuis longtemps mais n'était lancé qu'à la main, donc jamais. ⚠️ **Le tri par gravité est essentiel** : le script classe en `ERR` autant « un épisode du catalogue sans son fichier » (cassé → `fail`) que « des fichiers hors catalogue » (poids mort → `warn`). Sans ce tri, 9 podcasts retirés de la config faisaient passer 359 lignes en `ERR` et la suite entière au rouge, alors que tout fonctionnait. | — |
 | Z11 domotique | Cohérence lumière entre `domotique.php` et `lecteur/index.html` | — |
-| Z8 batterie | Cohérence des cycles. **Le comportement d'arrêt est désormais couvert en statique** (TICKET-121, smoke test §5), mais il reste **un test réel d'arrêt sous 15 % à faire une fois, en étant présent** — c'est la seule preuve qui vaille, et elle inclut la coupure matérielle du HAT (TICKET-128, différé non prouvé). | TICKET-121 · TICKET-128 |
+| ~~Z8 batterie — arrêt d'urgence~~ | ✅ **PROUVÉ EN RÉEL le 2026-08-17** : décharge complète jusqu'à **15 %**, le Pi s'est éteint. Premier exercice réussi du chemin réparé par TICKET-121 (le `shutdown` sans `sudo`). Marge relevée : ≈ 3,49 V sous −2038 mA, contre 3,15 V au seuil constructeur. | TICKET-121 |
+| ~~Z8 batterie — cycles~~ | ✅ **couvert** depuis le 2026-08-17 : `scripts/test_batterie.py`, 24 assertions sur les mesures réelles (détection charge/décharge par le signe + bande morte, clôture de cycle interrompue par l'arrêt). Smoke test §5. | TICKET-133 |
+| Z8 batterie — modèle d'autonomie | Les estimations reposent sur un seul cycle, lui-même faussé avant le correctif de TICKET-133. À réévaluer après plusieurs cycles complets — c'est aussi à ce moment-là que le seuil de coupure de 15 % pourra être réinterrogé. | TICKET-133 |
+| Z8 batterie — coupure HAT | Le registre `0x2d` est détecté et armé avant l'arrêt, mais **rien ne prouve que la coupure soit différée** et non immédiate. `--simulate-critical` s'arrête volontairement avant l'écriture I2C. | TICKET-128 |
 
 ---
 

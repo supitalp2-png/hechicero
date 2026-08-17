@@ -13,6 +13,13 @@ from typing import Any
 
 DEFAULT_CONFIG = {
     "battery_check_interval_seconds": 60,
+    # TICKET-133 : bande morte (±mA) autour de zéro. Le SIGNE du courant décide
+    # de la charge ou de la décharge ; cette bande n'absorbe que le bruit de
+    # l'INA219 autour de zéro. Remplace `charge_threshold_ma`, un seuil unique
+    # qui classait « décharge » des courants positifs jusqu'à +300 mA.
+    "charge_deadband_ma": 10,
+    # ⚠️ Conservé pour ne pas casser un config.json existant qui le contient,
+    # mais PLUS UTILISÉ depuis le 2026-08-17. Ne pas s'en servir.
     "charge_threshold_ma": 50,
     "warn_threshold_percent": 20,
     "shutdown_threshold_percent": 8,
@@ -124,7 +131,66 @@ def init_ina219(addr: int) -> Any | None:
         return None
 
 
-def read_sensor_snapshot(sensor: Any, config: dict[str, Any]) -> dict[str, Any]:
+def detecter_charge(current_ma: float, deadband_ma: float, precedent: bool | None) -> bool:
+    """Charge ou décharge ? Signe du courant, avec une bande morte à hystérésis.
+
+    ── POURQUOI CETTE FONCTION EXISTE (TICKET-133, 2026-08-17) ────────────────
+    L'ancienne règle tenait en une ligne, et elle était fausse :
+
+        charging = current_ma > charge_threshold_ma      # seuil unique à 300 mA
+
+    Un seuil UNIQUE n'a pas de zone morte : tout ce qui est en dessous est
+    déclaré « décharge », **y compris un courant positif**. Mesuré le
+    2026-08-17, appareil sur secteur et cellule presque pleine (phase CV) :
+
+        15:25  current_ma = +257,71  ->  classé « décharge »   (257 < 300)
+        15:26  current_ma =  +17,83  ->  classé « décharge »   (17  < 300)
+        15:47  current_ma = +683,67  ->  classé « charge »     (683 > 300)
+
+    Les trois courants sont POSITIFS — le courant entre dans la batterie dans
+    les trois cas. La classification basculait au gré des oscillations du
+    chargeur, fabriquant de faux cycles de décharge pendant lesquels le niveau
+    *montait* (84 % -> 86 %, 82 % -> 86 %, 85 % -> 88 %). C'est le bug de
+    juillet 2026 qui revenait.
+
+    ── LA RÈGLE, DEMANDÉE PAR THOMAS ─────────────────────────────────────────
+    Le signe du courant décide, avec une bande morte de ±deadband_ma :
+        courant > +bande   -> charge
+        courant < -bande   -> décharge
+        entre les deux     -> on GARDE l'état précédent (hystérésis)
+
+    C'est physiquement juste : le signe dit dans quel sens l'énergie circule.
+    La bande morte n'est là que pour absorber le bruit de mesure de l'INA219
+    autour de zéro, pas pour arbitrer entre charge et décharge.
+
+    ⚠️ `precedent=None` (premier échantillon, ou capteur qui vient d'être
+    réinitialisé) et courant dans la bande morte -> on répond **charge**.
+    Ce n'est pas arbitraire : `battery_watchdog` se sert de ce booléen pour
+    décider d'éteindre le Pi. Un courant quasi nul signifie que la batterie ne
+    se vide pratiquement pas ; répondre « décharge » risquerait un arrêt
+    injustifié, répondre « charge » ne fait que différer un arrêt qui n'est de
+    toute façon pas urgent. En cas de doute, on ne coupe pas le courant à un
+    appareil qu'un enfant est peut-être en train d'écouter.
+    """
+    if current_ma > deadband_ma:
+        return True
+    if current_ma < -deadband_ma:
+        return False
+    return True if precedent is None else precedent
+
+
+def read_sensor_snapshot(
+    sensor: Any,
+    config: dict[str, Any],
+    previous_charging: bool | None = None,
+) -> dict[str, Any]:
+    """Lecture instantanée du capteur.
+
+    `previous_charging` : état de charge du relevé précédent, nécessaire à
+    l'hystérésis de detecter_charge(). Les appelants qui bouclent (tracker,
+    watchdog) DOIVENT le transmettre — sans lui, l'hystérésis n'existe pas et
+    on retombe sur le comportement à seuil unique.
+    """
     if sensor is None:
         raise RuntimeError("INA219 unavailable")
 
@@ -132,7 +198,12 @@ def read_sensor_snapshot(sensor: Any, config: dict[str, Any]) -> dict[str, Any]:
     current_ma = float(-sensor.getCurrent_mA())
     power_w = float(sensor.getPower_W())
     level = percent_from_voltage(voltage_v)
-    charging = current_ma > float(config.get("charge_threshold_ma", 50))
+
+    # `charge_threshold_ma` (ancien seuil unique) n'est plus utilisé. Il reste
+    # toléré dans config.json sans effet — voir DEFAULT_CONFIG et TICKET-133.
+    deadband = float(config.get("charge_deadband_ma", 10))
+    charging = detecter_charge(current_ma, deadband, previous_charging)
+
     return {
         "level": level,
         "voltage_v": round(voltage_v, 3),

@@ -6,9 +6,9 @@
     "chime_enabled": true,
     "chime_volume": 3,
     "sleep_enabled": true,
-    "sleep_delay": 120,
+    "sleep_delay": 60,
     "sleep_mode": "retro_clock",
     "screen_off_enabled": true,
-    "screen_off_delay": 1200,
+    "screen_off_delay": 600,
     "chime_sound": "boot_orgue.wav"
 }

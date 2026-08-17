@@ -31,6 +31,21 @@ SHUTDOWN_LEVEL_PCT = 7    # doit correspondre à DEFAULT_CRITICAL_LEVEL dans bat
 MIN_CYCLE_DEPTH_PCT = 3   # décharge minimum pour qu'un cycle soit valide (évite les micro-cycles CV)
 MIN_CYCLE_DURATION_MIN = 5  # durée minimum en minutes
 REAL_DISCHARGE_MA_THRESHOLD = -50  # même seuil de bruit que estimated_autonomy_minutes_live
+# TICKET-133 : au-delà de ce trou, le tracker NE TOURNAIT PAS — appareil hors
+# tension (arrêt d'urgence) ou service arrêté.
+#
+# ⚠️ Le trou se mesure sur `stats["last_updated"]`, PAS sur l'écart entre deux
+# datapoints. Raison : `should_record_point()` n'enregistre un point que sur
+# transition ou variation de niveau, donc plusieurs minutes peuvent séparer
+# deux points pendant une décharge stable — un simple rebranchement aurait été
+# signalé comme un arrêt. `battery_stats.json` est en revanche réécrit à
+# CHAQUE tour de boucle (60 s), qu'un point soit retenu ou non : un écart
+# important y est sans ambiguïté.
+#
+# 3 minutes = trois tours manqués. Le vrai trou mesuré le 2026-08-17 entre
+# l'arrêt d'urgence et le rebranchement était de 5 minutes ; un seuil à 10
+# l'aurait laissé passer.
+GAP_MINUTES_THRESHOLD = 3
 
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -100,6 +115,12 @@ def append_datapoint(cycle: dict[str, Any], sample: dict[str, Any]) -> None:
             "mpd_mode": sample["mpd_mode"],
             "screen": sample["screen_on"],
             "current_ma": sample.get("current_ma"),
+            # TICKET-133 : la TENSION est la mesure primaire — le niveau n'en
+            # est qu'une lecture de table (percent_from_voltage). Sans elle,
+            # impossible de rejouer un diagnostic après coup ni de vérifier la
+            # marge réelle au moment d'une coupure. Deux octets de plus par
+            # point, et on cesse de raisonner sur une valeur dérivée.
+            "voltage_v": sample.get("voltage_v"),
         }
     )
 
@@ -145,12 +166,52 @@ def dominant_mode_for_cycle(cycle: dict[str, Any]) -> str:
     return max(counts.items(), key=lambda item: item[1])[0]
 
 
-def close_discharge(cycle: dict[str, Any], sample: dict[str, Any]) -> None:
+def close_discharge(cycle: dict[str, Any], sample: dict[str, Any],
+                    gap_minutes: int | None = None) -> None:
+    """Ferme la phase de décharge d'un cycle.
+
+    ── TICKET-133 (2026-08-17) — pourquoi ce n'est pas `sample` qui fait foi ──
+    L'ancienne version figeait `level_end` et `discharge_end` sur l'échantillon
+    de BASCULE vers la charge. Or une décharge profonde se termine par l'arrêt
+    d'urgence du Pi : la bascule n'est observée qu'au **redémarrage**, une fois
+    rebranché. Résultat, mesuré sur le premier vrai cycle du 2026-08-17 :
+
+        réel     : 85 %  ->  15 %   (arrêt à 20:07, ~212 min de lecture)
+        enregistré : 85 % -> 28 %   avec 212 min incluant le temps hors tension
+
+    `level_end: 28` était le niveau APRÈS rebranchement (la tension remonte dès
+    que la charge cesse), pas le point bas atteint. Le ratio minutes/% en était
+    faussé, donc l'autonomie estimée aussi.
+
+    ⚠️ Ce n'est pas un cas rare : **tout** cycle profond finit par un arrêt,
+    donc tous étaient faussés de la même façon — précisément ceux qui portent
+    le plus d'information.
+
+    On retient donc le **minimum réellement observé** et l'horodatage du
+    **dernier point de décharge**, pas ceux de la bascule.
+    """
     if not cycle.get("discharge_start"):
         cycle["discharge_start"] = sample["timestamp"]
         cycle["level_start"] = sample["level"]
-    cycle["discharge_end"] = sample["timestamp"]
-    cycle["level_end"] = sample["level"]
+
+    points_decharge = [p for p in cycle.get("datapoints", []) if not p.get("charging", False)]
+
+    if points_decharge:
+        niveaux = [p.get("level") for p in points_decharge if isinstance(p.get("level"), (int, float))]
+        cycle["level_end"] = min(niveaux) if niveaux else sample["level"]
+        cycle["discharge_end"] = points_decharge[-1].get("t") or sample["timestamp"]
+        # Trou = le tracker ne tournait pas : Pi éteint (arrêt d'urgence) ou
+        # service arrêté. Mesuré sur `stats["last_updated"]` par l'appelant, et
+        # non sur l'écart entre datapoints — voir GAP_MINUTES_THRESHOLD.
+        # On le rend explicite plutôt que de le noyer dans la durée : un cycle
+        # avec `gap_minutes` se relit sans avoir à recalculer.
+        if gap_minutes is not None and gap_minutes >= GAP_MINUTES_THRESHOLD:
+            cycle["gap_minutes"] = gap_minutes
+            cycle["gap_reason"] = "tracker à l'arrêt (appareil hors tension ?) entre le dernier relevé et la reprise"
+    else:
+        cycle["level_end"] = sample["level"]
+        cycle["discharge_end"] = sample["timestamp"]
+
     cycle["duration_minutes"] = minutes_between(cycle.get("discharge_start"), cycle.get("discharge_end"))
     cycle["dominant_mode"] = dominant_mode_for_cycle(cycle)
     cycle["charge_start"] = sample["timestamp"]
@@ -301,7 +362,8 @@ def compute_estimates(history: dict[str, Any], stats: dict[str, Any], window: in
     return stats
 
 
-def build_sample(sensor: Any, config: dict[str, Any], simulate: bool = False) -> dict[str, Any]:
+def build_sample(sensor: Any, config: dict[str, Any], simulate: bool = False,
+                 previous_charging: bool | None = None) -> dict[str, Any]:
     if simulate:
         stats = load_stats()
         status = stats.get("status") or "discharging"
@@ -316,7 +378,11 @@ def build_sample(sensor: Any, config: dict[str, Any], simulate: bool = False) ->
             "status": status,
         }
     else:
-        sensor_data = read_sensor_snapshot(sensor, config)
+        # TICKET-133 : l'état précédent alimente l'hystérésis de la bande morte.
+        # Il est relu depuis battery_stats.json à chaque tour — le tracker n'a
+        # pas d'état en mémoire, c'est le disque qui fait foi (cf. la procédure
+        # de remise à zéro de TICKET-126).
+        sensor_data = read_sensor_snapshot(sensor, config, previous_charging=previous_charging)
 
     mpd = read_mpd_status()
     screen_on = read_screen_on()
@@ -342,12 +408,18 @@ def update_history_and_stats(sample: dict[str, Any], *, compute_only: bool = Fal
         if datapoints:
             last_point = datapoints[-1]
 
+    # TICKET-133 : le tracker a-t-il cessé de tourner depuis le dernier relevé ?
+    # `stats["last_updated"]` est réécrit à chaque tour (60 s), même sans
+    # datapoint retenu — c'est donc le seul témoin fiable d'un appareil hors
+    # tension. Calculé ici, où l'on dispose encore de l'ancien `stats`.
+    gap_minutes = minutes_between(stats.get("last_updated"), sample["timestamp"])
+
     record_point, transitioned = should_record_point(stats, sample, last_point)
     if not compute_only and record_point:
         cycle = ensure_open_cycle(history, sample)
         if transitioned and cycle.get("datapoints"):
             if sample["status"] == "charging":
-                close_discharge(cycle, sample)
+                close_discharge(cycle, sample, gap_minutes=gap_minutes)
             else:
                 close_charge(cycle, sample)
                 cycle = new_cycle(sample)
@@ -407,7 +479,10 @@ def _shutdown_pct_from_config(config: dict[str, Any]) -> int:
 
 
 def collect_once(sensor: Any, config: dict[str, Any], simulate: bool = False, compute_only: bool = False) -> tuple[dict[str, Any], dict[str, Any], bool]:
-    sample = build_sample(sensor, config, simulate=simulate)
+    # TICKET-133 : état de charge du relevé précédent, lu sur disque.
+    etat_precedent = load_stats().get("charging")
+    sample = build_sample(sensor, config, simulate=simulate,
+                          previous_charging=etat_precedent if isinstance(etat_precedent, bool) else None)
     history, stats, recorded = update_history_and_stats(sample, compute_only=compute_only)
     compute_estimates(
         history, stats,

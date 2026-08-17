@@ -209,14 +209,24 @@ def perform_shutdown_sequence(battery_level: int | None, simulate: bool = False)
     return payload
 
 
-def read_level(sensor: Any, config: dict[str, Any]) -> tuple[int | None, bool, Any]:
+def read_level(sensor: Any, config: dict[str, Any], previous_charging: bool | None = None) -> tuple[int | None, bool, Any]:
     """
     Lit le niveau batterie. Retourne (level, charging, sensor).
     En cas d'errno 121 (INA219 I2C timeout), tente une ré-initialisation et retourne (None, False, nouveau_sensor).
     Toute autre exception retourne (None, False, sensor) sans planter le watchdog.
+
+    ⚠️ TICKET-133 : `previous_charging` alimente l'hystérésis de la bande morte.
+    Sans lui, un courant quasi nul serait tranché arbitrairement à chaque
+    relevé — et ce booléen décide de l'extinction du Pi. La boucle principale
+    le transmet d'un tour à l'autre.
+
+    ⚠️ En cas d'ERREUR de lecture, on renvoie `charging=False`, comme avant.
+    C'est volontairement conservateur du point de vue de la mesure — mais sans
+    conséquence sur l'arrêt, car `level` vaut alors `None` et la boucle ne
+    déclenche rien tant qu'elle n'a pas un niveau valide.
     """
     try:
-        snapshot = read_sensor_snapshot(sensor, config)
+        snapshot = read_sensor_snapshot(sensor, config, previous_charging=previous_charging)
         return int(snapshot["level"]), bool(snapshot["charging"]), sensor
     except OSError as e:
         if e.errno == 121:
@@ -270,14 +280,24 @@ def main() -> int:
             return 0
 
         LOGGER.info("Battery watchdog started")
+        # TICKET-133 : l'état de charge précédent alimente l'hystérésis de la
+        # bande morte. `None` au premier tour — detecter_charge() répond alors
+        # « charge » dans la bande morte, ce qui évite un arrêt injustifié au
+        # démarrage sur un courant quasi nul.
+        charging: bool | None = None
         while True:
             triggered = gpio_monitor.triggered()
-            level, charging, sensor = read_level(sensor, config)
+            level, charging_lu, sensor = read_level(sensor, config, previous_charging=charging)
+            # On ne mémorise l'état que si la lecture a réussi : en cas
+            # d'erreur capteur, read_level() renvoie False par défaut, et le
+            # garder fausserait l'hystérésis du tour suivant.
+            if level is not None:
+                charging = charging_lu
             if triggered:
                 LOGGER.warning("Critical battery GPIO triggered")
                 perform_shutdown_sequence(level, simulate=False)
                 return 0
-            if level is not None and not charging and level < critical_level:
+            if level is not None and not charging_lu and level < critical_level:
                 LOGGER.warning("Critical battery level detected: %s%%", level)
                 perform_shutdown_sequence(level, simulate=False)
                 return 0

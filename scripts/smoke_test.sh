@@ -422,6 +422,36 @@ if [ -f "$LS" ] && grep -q '"shutdown_reason": *"battery_critical"' "$LS" 2>/dev
     echo "     → effacer : rm data/last_session.json"
 fi
 
+# ── TICKET-133 — détection charge/décharge et clôture de cycle ─────────────
+# Bugs surveillés, tous deux mesurés le 2026-08-17 :
+#  · un SEUIL UNIQUE à 300 mA classait « décharge » des courants POSITIFS
+#    (+257 mA, +17 mA en phase CV), fabriquant de faux cycles où le niveau
+#    montait — et ce booléen sert au watchdog pour décider d'éteindre le Pi ;
+#  · toute décharge profonde se termine par l'arrêt d'urgence, donc la bascule
+#    vers la charge n'est vue qu'au redémarrage : le point bas enregistré était
+#    celui d'APRÈS rebranchement (28 % au lieu de 15 %), et la durée incluait
+#    le temps hors tension. Les cycles les plus instructifs étaient les plus faux.
+# Tests unitaires : aucun capteur, aucun fichier, aucun réseau.
+BATT_TEST="$ROOT/scripts/test_batterie.py"
+if [ -f "$BATT_TEST" ]; then
+    if sortie_batt=$(timeout 15 python3 "$BATT_TEST" 2>&1); then
+        pass "batterie : $(echo "$sortie_batt" | grep -c '^  ok') test(s) unitaire(s) OK (TICKET-133)"
+    else
+        fail "batterie : test unitaire en échec — détection de charge ou clôture de cycle fausse"
+        echo "$sortie_batt" | grep -A2 'ÉCHEC' | head -12 | sed 's/^/     /'
+    fi
+else
+    warn "test_batterie.py absent — détection charge/décharge non couverte (TICKET-133)"
+fi
+
+# Le seuil unique ne doit pas revenir : c'est lui qui classait « décharge »
+# des courants positifs.
+if grep -q 'charging = current_ma > float(config.get("charge_threshold_ma"' "$ROOT/scripts/battery_common.py" 2>/dev/null; then
+    fail "battery_common : retour au seuil unique — les courants positifs faibles seront classés décharge (TICKET-133)"
+else
+    pass "détection de charge par le signe du courant + bande morte (TICKET-133)"
+fi
+
 # Coupure matérielle du HAT (TICKET-128). --check-hat ne fait qu'une DÉTECTION,
 # aucune écriture i2cset : lançable pendant que l'enfant écoute.
 if hat=$(timeout 10 python3 "$ROOT/scripts/battery_watchdog.py" --check-hat 2>&1 | head -1); then

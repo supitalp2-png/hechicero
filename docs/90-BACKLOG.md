@@ -11,6 +11,34 @@
 
 # 🔥 Priorité haute
 
+- [~] TICKET-133 — bug/batterie — Détection charge/décharge par le signe du courant, et cycles faussés par l'arrêt d'urgence (2026-08-17)
+      - ✅ **D'ABORD, LA BONNE NOUVELLE : l'arrêt d'urgence FONCTIONNE.** La décharge complète du 2026-08-17 est descendue à **15 %** et le Pi s'est éteint. C'est la preuve en conditions réelles du correctif de TICKET-121 — le `shutdown` sans `sudo`, bloqué en silence par `NoNewPrivileges` depuis juillet. Ce chemin n'avait jamais été exercé.
+        - 📌 **Et j'avais lu les données de travers** : `battery_history.json` annonçait `level_end: 28`, j'en ai conclu que la décharge s'était arrêtée à 28 %. C'est le **graphique de l'admin** montré par Thomas qui a rétabli la vérité — la descente allait bien jusqu'à 15. Leçon : lire les points de mesure, pas les champs agrégés qui en dérivent.
+      - 🔋 **Marge au moment de la coupure, pour la question du seuil** : niveau 15 % ⇒ **≈ 3,49 V** (table `_LIPO_TABLE`), sous une charge de **−2038 mA** (webradio + écran). La démonstration du fabricant, elle, ne coupe qu'en dessous de **3,15 V** maintenue 30 s. **Il reste donc une marge confortable** et le seuil de 15 % est prudent — descendre à 10 % (≈ 3,44 V) resterait au-dessus du seuil constructeur même avec l'affaissement sous forte charge. ⚠️ **Décision de Thomas : on ne touche à aucun seuil pour l'instant**, à réinterroger après plusieurs cycles.
+      - ═══ DÉFAUT 1 — un seuil unique classait « décharge » des courants POSITIFS ═══
+      - **Mesures du 2026-08-17**, appareil sur secteur, cellule presque pleine (phase CV) :
+        | Heure | Courant | Ancienne classification |
+        |---|---|---|
+        | 15:25:02 | **+257,71 mA** | décharge (257 < 300) |
+        | 15:26:02 | **+17,83 mA** | décharge (17 < 300) |
+        | 15:47:03 | +683,67 mA | charge |
+      - **Les trois courants sont positifs** — le courant ENTRE dans la batterie dans les trois cas. La règle `charging = current_ma > charge_threshold_ma` n'a **pas de zone morte** : tout ce qui est sous le seuil est déclaré décharge, y compris un courant positif. D'où trois faux cycles en 75 min, pendant lesquels **le niveau montait** (84→86 %, 82→86 %, 85→88 %). C'est le bug de juillet 2026 qui revenait, et le point de surveillance ouvert le matin même par TICKET-126.
+      - ⚠️ **Ce n'était pas qu'un problème de statistiques** : `battery_watchdog` se sert du même booléen (`if not charging and level < critical_level`). Un courant faible mais positif était vu comme « pas en charge » — donc un arrêt possible alors que l'appareil est branché. Combinaison peu probable en pratique (à bas niveau le chargeur est en phase CC, à fort courant), mais le mécanisme était bien sur le chemin de l'arrêt d'urgence.
+      - 🛠️ **Correctif — `battery_common.detecter_charge()`**, règle demandée par Thomas : le **signe** du courant décide, avec une bande morte de **±10 mA** (`charge_deadband_ma`) dans laquelle on **conserve l'état précédent** (hystérésis). C'est physiquement juste — le signe dit dans quel sens l'énergie circule ; la bande morte n'absorbe que le bruit de l'INA219 autour de zéro. `charge_threshold_ma` n'est plus utilisé (toléré dans un config.json existant, sans effet).
+        - **Amorçage sûr** : sans état précédent et dans la bande morte, la fonction répond **charge**. Un courant quasi nul signifie que la batterie ne se vide pratiquement pas ; répondre « décharge » risquerait un arrêt injustifié. En cas de doute, on ne coupe pas le courant à un appareil qu'un enfant écoute peut-être.
+        - Les deux appelants transmettent désormais l'état précédent : le tracker le relit dans `battery_stats.json` (le disque fait foi, cf. TICKET-126), le watchdog le garde d'un tour de boucle à l'autre — et ne le mémorise que si la lecture capteur a réussi.
+      - ═══ DÉFAUT 2 — tout cycle profond était mal enregistré ═══
+      - `close_discharge()` figeait `level_end` et `discharge_end` sur l'échantillon de **bascule** vers la charge. Or une décharge profonde se termine par l'arrêt du Pi : la bascule n'est observée qu'au **redémarrage**, une fois rebranché, quand la tension est déjà remontée.
+        | | Réel | Enregistré |
+        |---|---|---|
+        | Décharge | 85 % → **15 %** | 85 % → **28 %** |
+        | Durée | ~207 min | 212 min, **temps hors tension inclus** |
+      - ⚠️ **Systématique, pas occasionnel** : *toute* décharge profonde finit par un arrêt, donc **tous** les cycles profonds étaient faussés de la même façon — précisément ceux qui portent le plus d'information. L'`estimated_autonomy_minutes: 43` calculé sur ce cycle ne valait donc rien.
+      - 🛠️ **Correctif** : on retient le **minimum réellement observé** parmi les points de décharge et l'horodatage du **dernier relevé**, pas ceux de la bascule. Un trou de plus de 10 minutes est signalé explicitement (`gap_minutes`, `gap_reason`) plutôt que noyé dans la durée.
+      - 📈 **Compréhension — la tension est désormais enregistrée à chaque point** (`voltage_v` dans les `datapoints`). Le niveau n'est qu'une lecture de table à partir d'elle (`percent_from_voltage`) ; sans la tension, impossible de rejouer un diagnostic ou de vérifier une marge après coup. C'est ce qui a manqué ce soir pour répondre directement à la question du HAT.
+      - ✅ **Tests unitaires — `scripts/test_batterie.py`, 22 assertions**, sur les mesures réelles du jour : les courants +257 et +17 mA, la bande morte dans les deux sens, l'amorçage sûr pour le watchdog, la clôture avec trou (point bas 15, durée 207, gap 5 min), un cycle normal inchangé, et le micro-cycle CV toujours invalidé. Intégrés au smoke test §5, plus une garde qui échoue si le seuil unique revient.
+      - ⏳ **Reste** : les cycles de charge/décharge de Thomas alimenteront un modèle enfin correct. Le seuil de coupure sera réinterrogé à ce moment-là, pas avant.
+
 - [x] TICKET-131 — bug — Les épisodes des « Explorateurs de l'Univers » s'affichaient à l'envers (2026-08-17) — ✅ **CORRIGÉ**
       - **Signalé par le petit** : « les épisodes des Explorateurs de l'Univers, ils sont à l'envers ». Il avait raison, et **le tri n'était pas en cause**.
       - 🔍 **La cause est dans les données.** L'éditeur a téléversé les neuf épisodes le même soir, à **une minute d'écart, en commençant par le dernier** : épisode 8 à 19:59, épisode 7 à 20:00, … épisode 1 à 20:06, la présentation à 20:07. Les dates de publication sont donc **exactement l'inverse de l'ordre narratif**, et notre tri chronologique croissant — correct en soi — rendait 8, 7, 6 … 1.
@@ -22,7 +50,7 @@
       - 🧹 **Cause racine annexe corrigée — le tri était DUPLIQUÉ** entre `parse_rss()` et `merge_episodes()`. Deux copies de la même logique, donc deux occasions de diverger, et un ordre potentiellement différent selon qu'on recharge le flux ou qu'on fusionne l'historique (TICKET-107). C'est désormais **une seule fonction appelée des deux côtés**.
       - ✅ **PREMIERS TESTS UNITAIRES DU PROJET** — `scripts/rss_ingest/test_tri_episodes.py`, **13 assertions**, sans fichier ni réseau. Ils prouvent dans le même mouvement que le cas cassé est réparé **et** que les cas qui marchaient n'ont pas bougé : Olma (numérotation qui redémarre) et Tina (saisons) sont des cas de non-régression **réels, pas inventés**. Intégrés au smoke test §9.
       - 📌 **Leçon** : un correctif qui touche l'ordre d'affichage de **tous** les podcasts ne se valide pas à l'œil sur celui qui était cassé. La condition d'unicité n'est venue qu'en allant relire les titres d'un autre podcast.
-      - ⏳ **Reste** : ré-ingérer puis vérifier à l'écran que les Explorateurs sortent 1 → 8 et qu'Olma est inchangé.
+      - ✅ **Clos le 2026-08-17 par Thomas.**
 
 - [ ] TICKET-132 — hygiène — `buttons_daemon` journalise un avertissement à chaque appui play/pause (2026-08-17)
       - **Constaté** en validant TICKET-123 : chaque appui sur GPIO12 produit `WARNING Appel radio.php échoué (action=pause) : Expecting value: line 1 column 1`.
