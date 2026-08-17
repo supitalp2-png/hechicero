@@ -57,6 +57,14 @@ data/tracking.db-wal
 # TICKET-127 : état du battement de cœur du kiosque, réécrit toutes les 15 s.
 # (data/kiosk_freeze.log est déjà couvert par la règle *.log plus haut.)
 data/kiosk_heartbeat.json
+# TICKET-130 : sauvegardes automatiques des configs écrites par l'admin.
+# Ce sont des copies de sécurité locales, pas de l'historique à versionner —
+# git a déjà le sien. Une de ces copies s'est glissée dans le commit
+# e081296 parce qu'elle n'était pas ignorée : c'est exactement le genre de
+# fichier runtime que la passe du 2026-08-04 avait entrepris d'exclure.
+data/config_backups/
+data/*.avant_restauration_*
+data/*.json.bak-*
 
 # --- Photos originales (haute résolution, hors repo) ---
 Photos/
