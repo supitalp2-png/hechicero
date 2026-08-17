@@ -46,6 +46,11 @@ REAL_DISCHARGE_MA_THRESHOLD = -50  # même seuil de bruit que estimated_autonomy
 # l'arrêt d'urgence et le rebranchement était de 5 minutes ; un seuil à 10
 # l'aurait laissé passer.
 GAP_MINUTES_THRESHOLD = 3
+# TICKET-134 : en dessous de ce niveau, on enregistre chaque échantillon sans
+# filtre de variation. Le coude de fin de décharge est rapide et ne se rejoue
+# pas — mieux vaut quelques centaines de points de plus qu'une courbe tronquée
+# là où elle est la plus instructive.
+VERBOSE_BELOW_LEVEL = 20
 
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -241,6 +246,23 @@ def ensure_open_cycle(history: dict[str, Any], sample: dict[str, Any]) -> dict[s
 def should_record_point(stats: dict[str, Any], sample: dict[str, Any], last_point: dict[str, Any] | None) -> tuple[bool, bool]:
     if last_point is None:
         return True, True
+
+    # ── TICKET-134 — tout enregistrer en bas de décharge ──────────────────
+    # On ne SAIT PAS comment ces cellules se comportent en fin de décharge :
+    # c'est précisément ce qu'on cherche à mesurer. Le filtre normal
+    # (variation >= 2 points) convient à la partie linéaire, mais si le coude
+    # final est rapide il l'échantillonnera trop grossièrement — et cette
+    # courbe-là ne se rejoue pas sans refaire 12 h de cycle.
+    # En dessous de ce niveau on enregistre donc TOUS les échantillons.
+    # Quelques centaines de points de plus contre le risque de rater la seule
+    # zone qui décide jusqu'où on peut descendre : le choix est vite fait.
+    # Repère, à lire avec précaution : les anciennes cellules (18650) chutaient
+    # de 49 % à 13 % en 4 min sous −2,9 A. Ce n'était PAS une défaillance mais
+    # de l'affaissement dû à leur résistance interne. Des cellules différentes
+    # donneront une autre pente — d'où la mesure.
+    if not sample.get("charging") and sample.get("level") is not None \
+            and sample["level"] <= VERBOSE_BELOW_LEVEL:
+        return True, stats.get("status") != sample["status"]
 
     transition = last_point.get("charging") != sample["charging"]
     mpd_changed = last_point.get("mpd_mode") != sample["mpd_mode"]

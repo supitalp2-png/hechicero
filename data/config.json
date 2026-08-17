@@ -4,5 +4,5 @@
   "warn_threshold_percent": 20,
   "shutdown_threshold_percent": 15,
   "grace_seconds_before_shutdown": 60,
-  "battery_capacity_mah": 6600
+  "battery_capacity_mah": 11200
 }

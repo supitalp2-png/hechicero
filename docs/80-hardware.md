@@ -46,12 +46,33 @@ audio retenus.
 - sortie enceintes passives  
 - pas de contrôle de volume matériel  
 → volume logiciel obligatoire  
+- **nom de carte ALSA : `sndrpihifiberry`** — c'est la sortie **haut-parleurs**
 
-### 🔹 Écran tactile — Waveshare 7" 1024×600
+### 🔹 DAC USB — KT USB Audio (sortie casque)
+- **Ajouté à cette liste le 2026-08-17** : il manquait, alors que c'est la
+  seconde sortie audio de l'appareil.
+- Assure la **sortie casque**, distincte de l'ampli HiFiBerry
+- **Nom de carte ALSA : `Audio`** (marque « KTMicro KT USB Audio »)
+- ⚠️ Identifié comme le **facteur limitant du niveau au casque** (TICKET-116) :
+  aucune atténuation cachée côté logiciel, c'est le DAC lui-même. D'où le gain
+  d'égalisation dédié (TICKET-124, réglé à 4 dB).
+- ⚠️ **Toujours le désigner par son NOM** (`hw:CARD=Audio`), jamais par un
+  numéro : les numéros de carte ALSA changent d'un démarrage à l'autre, et ce
+  périphérique est en USB — donc débranchable et déplaçable d'un port à
+  l'autre, ce qui décale toute la numérotation. Voir TICKET-125 et
+  `scripts/asound.conf`.
+
+### 🔹 Écran tactile — **JRP JRP7003** 7" 1024×600
 - interface enfant principale  
 - connecté en HDMI + USB (tactile)
 - nécessite Raspberry Pi OS avec bureau  
 - 4 trous de montage aux coins (vis M3)
+- ⚠️ **Corrigé le 2026-08-17** : ce document annonçait un Waveshare. L'EDID lu
+  par `wlr-randr` donne `HDMI-A-1 "JRP JRP7003 0"`. Le mode natif est
+  **1024x600@59.821**.
+- ⚠️ **Le nom de sortie dépend du port HDMI physique** (`HDMI-A-1` ou
+  `HDMI-A-2`), pas du modèle d'écran. Il est codé dans `scripts/screen_dpms.sh`
+  et doit être mis à jour si l'écran change de port. Vérifier avec `wlr-randr`.
 
 ### 🔹 Enceintes passives
 - 2 drivers avec chassis carré plastique (~50×50mm, 4 trous de fixation aux coins)
@@ -130,6 +151,43 @@ Les broches RUN sont situées sur un connecteur 2 broches dédié.
 ### 🔹 Comportement en cas de batterie vide
 - coupe physiquement l’alimentation  
 - le Pi s’éteint brutalement si aucun shutdown anticipé  
+
+### 🔹 Accumulateurs — remplacés le 2026-08-16 (TICKET-126)
+
+| | Valeur |
+|---|---|
+| Référence | **EVE INR21700/58E** — marquage `1QBM110H` |
+| Format | 21700 cylindrique, Li-ion NMC (`INR`) |
+| Capacité unitaire | **5600 mAh** — 20,16 Wh |
+| Nombre | **2**, montés en **parallèle** (système 1S : tensions observées 3,4 → 4,2 V) |
+| **Capacité totale** | **11 200 mAh — 40,3 Wh** |
+| Tension nominale | 3,6 V · pleine 4,2 V · coupure constructeur 2,5 V (**plancher pratique retenu : 3,0 V**) |
+
+⚠️ **`data/config.json` → `battery_capacity_mah` doit valoir 11200.** Il était
+resté à **6600** (l'ancien pack) jusqu'au 2026-08-17, alors que les cellules
+avaient déjà changé. Cette valeur ne sert qu'à `estimated_autonomy_minutes_live`
+(`capacité × niveau utilisable ÷ courant`) : avec 6600 au lieu de 11200,
+**l'autonomie temps réel était sous-estimée de 41 %**. C'est la capacité
+physique, pas un réglage — à corriger dès que les cellules changent.
+
+📌 **Ancien pack** : 18650, ~6600 mAh au total. Ils n'étaient **pas défaillants**,
+simplement inadaptés. Leur chute de 49 % à 13 % en 4 minutes sous −2,9 A était
+de l'**affaissement dû à la résistance interne**, pas une panne — un piège
+d'interprétation à ne pas refaire.
+
+🔬 **Conséquence des 21700 sur les mesures** : à 3 A de consommation totale, on
+tire 1,5 A par cellule, soit environ **0,27 C** — un régime très doux pour ces
+cellules. L'affaissement sous charge est donc **nettement plus faible** qu'avec
+les 18650. Le pourcentage affiché en pleine consommation est par conséquent
+**plus proche de l'état de charge réel** : il y a moins de marge cachée qu'avant
+sous un même pourcentage. À garder en tête pour tout réglage de seuil.
+
+⚠️ **`battery_common._LIPO_TABLE`** est une courbe d'accumulateur à poche. Elle
+reste acceptable pour du Li-ion NMC (chimie voisine : 4,2 V pleine, ~3,0 V vide),
+mais elle n'a **jamais été recalée sur ces cellules**. Toute décision fine de
+seuil devrait s'appuyer sur les tensions réellement enregistrées
+(`voltage_v` dans `data/battery_history.json` depuis le 2026-08-17), pas sur la
+conversion en pourcentage.
 
 ---
 
@@ -311,19 +369,41 @@ Tranche supérieure : 7 boutons-poussoirs identiques en ligne + 1 bouton isolé 
 emplacement de l'antenne + la prise jack casque (pas un bouton). Ordre en ligne confirmé par
 Thomas le 2026-07-08, du plus proche du jack au plus loin :
 
-| Position | Fonction | GPIO (BCM) | Statut |
-|---|---|---|---|
-| RUN (démarrage Pi 5) | — | RUN header | ✅ installé |
-| 1 (à côté du jack) | **Source** — bascule HP/casque manuelle, définitive (détection auto abandonnée, voir ci-dessus) | GPIO17 | ✅ câblé et validé (bring-up `scripts/buttons_daemon.py`) |
-| 2 | Volume − | à assigner | ✅ monté, câblage vers le Pi à confirmer |
-| 3 | Piste précédente | à assigner | ✅ monté |
-| 4 | Lecture/Pause (fusionnés en un seul bouton toggle, boîtier a un bouton de moins que prévu) | à assigner | ✅ monté |
-| 5 | Piste suivante | à assigner | ✅ monté |
-| 6 | Volume + | à assigner | ✅ monté |
-| 7 | Favori (réservé — fonction logicielle non câblée, TICKET-046 non fait) | à assigner | ✅ monté |
-| Bouton isolé (emplacement antenne) | Réserve complète, aucune fonction | — | ✅ monté, non câblé |
+✅ **MAPPING DÉFINITIF** — relevé le 2026-08-17 directement dans
+`scripts/buttons_daemon.py` (`PINS`, `HANDLERS`, `TAP_OR_HOLD`), qui fait foi.
+Tout est câblé et en service.
 
-⚠️ Les 7 boutons en ligne + le bouton isolé sont physiquement montés (photos `Photos/06-boutons-dessus/`, 2026-07-07), mais le câblage électrique vers le Pi (breakout Freenove visible sur les mêmes photos) et la correspondance GPIO ↔ bouton précis restent à confirmer avec Thomas avant de finaliser `scripts/buttons_daemon.py` (voir `docs/90-BACKLOG.md` TICKET-091 et `docs/70-SERVICES_SYSTEMD.md` §7ter).
+| Position | Fonction | GPIO (BCM) | Comportement |
+|---|---|---|---|
+| RUN (démarrage Pi 5) | — | broche RUN | appui = démarrage |
+| 1 (à côté du jack) | **Source** — bascule HP ↔ casque | **25** | appui simple |
+| 2 | Volume − | **13** | appui + répétition au maintien |
+| 3 | Épisode précédent | **17** | **tap** = épisode précédent · **maintien** = recul de 5 s par à-coup |
+| 4 | Lecture / Pause | **12** | appui simple (toggle) |
+| 5 | Épisode suivant | **27** | **tap** = épisode suivant · **maintien** = avance de 5 s par à-coup |
+| 6 | Volume + | **5** | appui + répétition au maintien |
+| 7 | **Favori** | **16** | **tap** = ajoute/retire le favori · **maintien** = ouvre l'écran Favoris |
+| Bouton isolé (emplacement antenne) | **Écran Chambre** (domotique lampe + volet) | **23** | appui simple (bascule) |
+
+`PINS = [17, 23, 27, 5, 6, 13, 16, 12, 25]` — **GPIO6 est déclaré mais sans
+fonction assignée** (tombe sur `handle_unassigned`). C'est la broche de réserve.
+
+⚠️ **GPIO4 volontairement absent** : réservé au MUTE de l'ampli sur le
+HiFiBerry Amp4 (documentation officielle HiFiBerry). Ne jamais l'utiliser pour
+un bouton.
+
+📌 **Détection par polling** (10 ms), pas `add_event_detect()` : peu fiable sur
+Pi 5 / puce RP1 — le premier appui est détecté, les suivants perdus. Anti-rebond
+à trois niveaux dans `buttons_daemon.py`.
+
+📌 **Depuis le 2026-08-17 (TICKET-123)** : tout front descendant, sur n'importe
+quelle broche, émet en plus une frappe clavier virtuelle (`wtype -k Shift_L`)
+pour signaler l'activité au compositeur. Sans ça `swayidle` ne voit jamais les
+boutons et le cycle de veille de l'écran se fige. Voir `docs/75-NON_REGRESSION.md`
+zone Z4.
+
+**Étiquetage (2026-07-17)** : étiquettes transparentes Dymo sur chaque bouton de
+la tranche supérieure (`Photos/06-boutons-dessus/13-boutons-etiquettes-dymo.jpg`).
 
 **Étiquetage (2026-07-17)** : étiquettes transparentes Dymo collées sur chacun des boutons de la tranche supérieure pour identifier leur fonction (voir `Photos/06-boutons-dessus/13-boutons-etiquettes-dymo.jpg`).
 
