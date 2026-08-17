@@ -36,6 +36,11 @@ function cycle_points(array $cycle, bool $charging): array {
         $points[] = [
             't' => $point['t'] ?? '',
             'level' => $point['level'] ?? null,
+            // TICKET-133 : la TENSION est la mesure primaire — le niveau n'en
+            // est qu'une lecture de table (percent_from_voltage). Les points
+            // enregistrés avant le 2026-08-17 ne l'ont pas : null accepté.
+            'voltage_v' => $point['voltage_v'] ?? null,
+            'current_ma' => $point['current_ma'] ?? null,
         ];
     }
     return $points;
@@ -91,12 +96,32 @@ foreach (array_reverse($cycles) as $cycle) {
     foreach ($cycle['datapoints'] ?? [] as $pt) {
         $ts = strtotime($pt['t'] ?? '');
         if ($ts && $ts >= $cutoff24h) {
-            $recentPoints[] = ['t' => $pt['t'], 'level' => $pt['level'] ?? null, 'charging' => $pt['charging'] ?? false];
+            $recentPoints[] = [
+                't' => $pt['t'],
+                'level' => $pt['level'] ?? null,
+                'charging' => $pt['charging'] ?? false,
+                'voltage_v' => $pt['voltage_v'] ?? null,
+                'current_ma' => $pt['current_ma'] ?? null,
+            ];
         }
     }
 }
 usort($recentPoints, fn($a, $b) => strcmp($a['t'], $b['t']));
 $recentPoints = array_values($recentPoints);
+
+// TICKET-133 — combien de points portent la tension ? Elle n'est enregistrée
+// que depuis le 2026-08-17 ; sans ce compte, le graphe « tension et courant »
+// paraîtrait vide ou cassé sur un historique ancien, au lieu d'expliquer.
+$pointsAvecTension = 0;
+foreach ($recentPoints as $pt) {
+    if ($pt['voltage_v'] !== null) $pointsAvecTension++;
+}
+
+// Seuil d'arrêt d'urgence, pour le tracer sur les courbes de décharge : sans
+// repère visuel, impossible de juger la marge restante d'un coup d'œil.
+$configBatt = read_json(PROJECT_ROOT . '/data/config.json');
+$seuilCoupure = (int)($configBatt['critical_level_percent']
+    ?? $configBatt['shutdown_threshold_percent'] ?? 15);
 
 $consumption = $stats['consumption_by_mode'] ?? [];
 $currentPage = basename($_SERVER['PHP_SELF'] ?? 'battery_dashboard.php');
@@ -189,6 +214,45 @@ $currentPage = basename($_SERVER['PHP_SELF'] ?? 'battery_dashboard.php');
         <div class="ha-chart">
           <canvas id="mode-chart"></canvas>
         </div>
+        <?php
+          // TICKET-133 : une batterie ne peut pas perdre plus de 100 %/h sans
+          // se vider en moins d'une heure. Une valeur au-dessus vient d'un
+          // cycle mal mesuré (le 2026-08-17 : « podcast 102 %/h », calculé sur
+          // une décharge dont la fin manquait). On le dit au lieu de l'afficher
+          // comme un fait.
+          $suspect = [];
+          foreach ($consumption as $mode => $v) {
+              if (is_numeric($v) && $v > 100) $suspect[] = $mode;
+          }
+        ?>
+        <?php if ($suspect): ?>
+          <div class="ha-stat-note" style="margin-top:10px;color:#e2a03f;">
+            ⚠ Valeur impossible pour <?php echo htmlspecialchars(implode(', ', $suspect)); ?> :
+            au-delà de 100 %/h la batterie se viderait en moins d'une heure.
+            Signe d'un cycle incomplet dans l'historique — voir la colonne « Fiabilité ».
+          </div>
+        <?php endif; ?>
+      </section>
+    </div>
+
+    <div class="ha-grid" style="margin-bottom:18px;">
+      <section class="ha-panel">
+        <h2>Tension et courant (24 h)</h2>
+        <div class="ha-stat-note" style="margin-bottom:10px;color:var(--muted);">
+          La <strong>tension</strong> est la seule grandeur réellement mesurée : le pourcentage
+          n'en est qu'une lecture de table. Le <strong>courant</strong> est positif en charge,
+          négatif en décharge — c'est son signe qui décide de l'état depuis le 2026-08-17.
+        </div>
+        <div class="ha-chart">
+          <?php if ($pointsAvecTension >= 2): ?>
+            <canvas id="volt-chart"></canvas>
+          <?php else: ?>
+            <div class="ha-empty">
+              La tension n'est enregistrée que depuis le 2026-08-17 (TICKET-133).
+              Le graphe apparaîtra dès les prochains relevés.
+            </div>
+          <?php endif; ?>
+        </div>
       </section>
     </div>
 
@@ -209,17 +273,34 @@ $currentPage = basename($_SERVER['PHP_SELF'] ?? 'battery_dashboard.php');
                 <th>Niveaux</th>
                 <th>Décharge</th>
                 <th>Mode</th>
+                <th>Fiabilité</th>
               </tr>
             </thead>
             <tbody>
             <?php foreach ($rows as $cycle): ?>
-              <?php $consumed = ($cycle['level_start'] ?? 0) - ($cycle['level_end'] ?? 0); ?>
+              <?php
+                $consumed = ($cycle['level_start'] ?? 0) - ($cycle['level_end'] ?? 0);
+                // TICKET-133 : un cycle dont le tracker s'est interrompu (arrêt
+                // d'urgence) est enregistré incomplet. Le signaler ICI plutôt
+                // que de laisser croire à une mesure propre — c'est exactement
+                // ce qui m'a fait lire « décharge jusqu'à 28 % » alors que la
+                // vraie descente allait à 15 %.
+                $trou = $cycle['gap_minutes'] ?? null;
+              ?>
               <tr>
                 <td><?php echo htmlspecialchars(substr((string)($cycle['discharge_start'] ?? '—'), 0, 16)); ?></td>
                 <td><?php echo htmlspecialchars(fmt_minutes($cycle['duration_minutes'] ?? null)); ?></td>
                 <td><?php echo htmlspecialchars(($cycle['level_start'] ?? '—') . '% → ' . ($cycle['level_end'] ?? '—') . '%'); ?></td>
                 <td><?php echo $consumed > 0 ? '-' . $consumed . '%' : '—'; ?></td>
                 <td><?php echo htmlspecialchars($cycle['dominant_mode'] ?? '—'); ?></td>
+                <td>
+                  <?php if ($trou !== null): ?>
+                    <span title="Le tracker ne tournait plus pendant <?php echo (int)$trou; ?> min — appareil probablement éteint (arrêt d'urgence). Le point bas et la durée sont sous-estimés."
+                          style="color:#e2a03f;">⚠ trou <?php echo (int)$trou; ?> min</span>
+                  <?php else: ?>
+                    <span style="color:var(--muted);">complet</span>
+                  <?php endif; ?>
+                </td>
               </tr>
             <?php endforeach; ?>
             </tbody>
@@ -286,6 +367,9 @@ $currentPage = basename($_SERVER['PHP_SELF'] ?? 'battery_dashboard.php');
     const dischargeCurves = <?php echo json_encode($dischargeCurves, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
     const chargeCurves = <?php echo json_encode($chargeCurves, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
     const consumption = <?php echo json_encode($consumption, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
+    // Seuil d'arrêt d'urgence, tracé sur les courbes de décharge : sans repère
+    // visuel, impossible de juger d'un coup d'œil la marge qui restait.
+    const SEUIL_COUPURE = <?php echo (int)$seuilCoupure; ?>;
 
     const GAP_MS = 2 * 3600 * 1000; // coupure de courbe si écart > 2h
 
@@ -377,11 +461,33 @@ $currentPage = basename($_SERVER['PHP_SELF'] ?? 'battery_dashboard.php');
       });
     }
 
-    function createRelativeChart(id, curves, palette) {
+    function createRelativeChart(id, curves, palette, seuil) {
       if (!window.Chart || !document.getElementById(id) || !curves.length) return;
+      const datasets = chartDatasetsRelative(curves, palette);
+
+      // Ligne horizontale du seuil d'arrêt d'urgence. Tracée comme un jeu de
+      // données à deux points plutôt qu'avec un greffon d'annotation : Chart.js
+      // est servi en local et sans extension (cf. /js/chart.min.js), donc on
+      // reste sur ce que la bibliothèque de base sait faire.
+      if (seuil) {
+        let xmax = 0;
+        datasets.forEach(d => d.data.forEach(p => { if (p && p.x > xmax) xmax = p.x; }));
+        if (xmax > 0) {
+          datasets.push({
+            label: 'Arrêt d’urgence (' + seuil + ' %)',
+            data: [{ x: 0, y: seuil }, { x: xmax, y: seuil }],
+            borderColor: '#e2574c',
+            borderDash: [6, 4],
+            borderWidth: 1.5,
+            pointRadius: 0,
+            fill: false,
+          });
+        }
+      }
+
       new Chart(document.getElementById(id), {
         type: 'line',
-        data: { datasets: chartDatasetsRelative(curves, palette) },
+        data: { datasets: datasets },
         options: {
           responsive: true,
           maintainAspectRatio: false,
@@ -425,8 +531,82 @@ $currentPage = basename($_SERVER['PHP_SELF'] ?? 'battery_dashboard.php');
     }
 
     createLineChart('current-cycle-chart', recentPoints.length ? [{ label: 'Niveau batterie 24h', points: recentPoints }] : [], ['#f0be4f']);
-    createRelativeChart('discharge-chart', dischargeCurves, ['#4a9eff', '#f0be4f', '#3dba6a', '#d97706', '#8b5cf6']);
+    createRelativeChart('discharge-chart', dischargeCurves, ['#4a9eff', '#f0be4f', '#3dba6a', '#d97706', '#8b5cf6'], SEUIL_COUPURE);
     createRelativeChart('charge-chart', chargeCurves, ['#3dba6a', '#86efac', '#f0be4f', '#38bdf8', '#fb7185']);
+
+    // ── TICKET-133 — tension et courant sur 24 h ──────────────────────────
+    // Deux axes : la tension (V) à gauche, le courant (mA) à droite. Les deux
+    // grandeurs sont réellement mesurées par l'INA219 ; le pourcentage affiché
+    // partout ailleurs n'est qu'une conversion de la première.
+    // Le zéro du courant est la frontière charge/décharge — d'où la ligne à 0.
+    (function () {
+      const el = document.getElementById('volt-chart');
+      if (!window.Chart || !el) return;
+      const volts = recentPoints
+        .filter(p => p.voltage_v !== null && p.voltage_v !== undefined)
+        .map(p => ({ x: new Date(p.t).getTime(), y: p.voltage_v }));
+      const amps = recentPoints
+        .filter(p => p.current_ma !== null && p.current_ma !== undefined)
+        .map(p => ({ x: new Date(p.t).getTime(), y: p.current_ma }));
+      if (volts.length < 2) return;
+
+      new Chart(el, {
+        type: 'line',
+        data: {
+          datasets: [
+            {
+              label: 'Tension (V)', data: volts, yAxisID: 'yV',
+              borderColor: '#f0be4f', backgroundColor: '#f0be4f',
+              borderWidth: 2, pointRadius: 0, tension: 0.25,
+            },
+            {
+              label: 'Courant (mA)', data: amps, yAxisID: 'yA',
+              borderColor: '#4a9eff', backgroundColor: '#4a9eff',
+              borderWidth: 1.5, pointRadius: 0, tension: 0.25,
+            },
+          ]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false, parsing: false,
+          interaction: { mode: 'index', intersect: false },
+          scales: {
+            x: {
+              type: 'linear',
+              title: { display: true, text: 'Heure', color: '#86a5c0' },
+              ticks: { color: '#86a5c0', callback: v => fmtTime(v) },
+              grid: { color: 'rgba(32,66,100,0.25)' }
+            },
+            yV: {
+              position: 'left',
+              title: { display: true, text: 'Tension (V)', color: '#f0be4f' },
+              ticks: { color: '#f0be4f' },
+              grid: { color: 'rgba(32,66,100,0.25)' }
+            },
+            yA: {
+              position: 'right',
+              title: { display: true, text: 'Courant (mA)', color: '#4a9eff' },
+              ticks: { color: '#4a9eff' },
+              // Pas de quadrillage à droite : il se superposerait à celui de
+              // gauche et rendrait les deux illisibles.
+              grid: { drawOnChartArea: false },
+            },
+          },
+          plugins: {
+            legend: { labels: { color: '#e8f0f6' } },
+            tooltip: {
+              callbacks: {
+                afterBody: (items) => {
+                  const a = items.find(i => i.dataset.yAxisID === 'yA');
+                  if (!a) return '';
+                  return a.parsed.y >= 0 ? 'Courant positif → charge'
+                                         : 'Courant négatif → décharge';
+                }
+              }
+            }
+          }
+        }
+      });
+    })();
   </script>
 </body>
 </html>
