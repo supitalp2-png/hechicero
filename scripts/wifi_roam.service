@@ -1,7 +1,17 @@
 [Unit]
 Description=Hechicero Wifi Roam (bascule auto vers le signal le plus fort, hors DFS) - TICKET-110
 After=network.target NetworkManager.service
-Requires=NetworkManager.service
+# ⚠️ `Wants=` et surtout PAS `Requires=` (corrigé le 2026-08-17, TICKET-121).
+# `Requires=NetworkManager.service` propageait l'ARRÊT : au moindre
+# redémarrage de NetworkManager — c'est-à-dire précisément quand le Wi-Fi va
+# mal — systemd arrêtait ce service, et ne le relançait PAS quand NM
+# revenait. Le service chargé de gérer le roaming mourait donc au moment
+# exact où il aurait servi.
+# Panne purement latente : ce service n'est pas encore installé, elle ne se
+# serait déclenchée qu'à la première installation, des semaines plus tard et
+# sans lien apparent. Même piège que buttons_daemon (TICKET-122), qui portait
+# `Requires=mpd.service` et mourait avec MPD.
+Wants=NetworkManager.service
 
 [Service]
 Type=simple

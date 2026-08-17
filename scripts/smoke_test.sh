@@ -332,6 +332,52 @@ else
     warn "data/kiosk_heartbeat.json absent — la page n'a jamais battu depuis l'ajout du traceur (recharger le kiosque)"
 fi
 
+# ── TICKET-121 — le chemin d'arrêt critique est-il exécutable ? ────────────
+# Bug surveillé : `battery_watchdog.py` appelait `sudo shutdown`, alors que son
+# unité porte NoNewPrivileges=true — qui casse sudo. L'appel échouait EN
+# SILENCE (run_command avale l'exception et le code de retour), donc la
+# protection contre la décharge profonde n'a jamais tourné depuis le
+# durcissement de juillet 2026. Et le seul chemin qui l'aurait révélé,
+# --simulate-critical, était cassé lui aussi (dépaquetage à 2 valeurs d'un
+# tuple de 3). Les deux défauts se couvraient l'un l'autre.
+# Ce contrôle est statique et sans effet de bord : il ne déclenche AUCUN arrêt.
+if grep -nE '^[^#]*run_command\(\["sudo"' "$ROOT/scripts/battery_watchdog.py" >/dev/null 2>&1; then
+    fail "battery_watchdog.py appelle encore sudo — NoNewPrivileges le bloquera en silence (TICKET-121)"
+else
+    pass "arrêt critique sans sudo (compatible NoNewPrivileges)"
+fi
+
+if grep -q "level, _, _ = read_level" "$ROOT/scripts/battery_watchdog.py"; then
+    pass "--simulate-critical dépaquette bien les 3 valeurs de read_level()"
+else
+    fail "dépaquetage de read_level() incorrect — --simulate-critical lèvera un ValueError (TICKET-121)"
+fi
+
+# Un test ne doit pas laisser de fausse trace : `--simulate-critical` écrivait
+# shutdown_reason=battery_critical, et le bureau d'admin affichait alors une
+# reprise après coupure batterie qui n'avait jamais eu lieu.
+if grep -q '"simulation" if simulate else "battery_critical"' "$ROOT/scripts/battery_watchdog.py"; then
+    pass "--simulate-critical marque last_session.json comme simulation (pas de fausse reprise admin)"
+else
+    fail "--simulate-critical écrit shutdown_reason=battery_critical — l'admin croira à une vraie coupure (TICKET-121)"
+fi
+
+# Et l'état actuel du fichier : une simulation oubliée doit être signalée.
+LS="$ROOT/data/last_session.json"
+if [ -f "$LS" ] && grep -q '"shutdown_reason": *"battery_critical"' "$LS" 2>/dev/null; then
+    quand=$(sed -n 's/.*"shutdown_at": *"\([^"]*\)".*/\1/p' "$LS")
+    warn "last_session.json annonce une coupure batterie ($quand) — si c'est un reste de test, la reprise admin est fausse"
+    echo "     → effacer : rm data/last_session.json"
+fi
+
+# Coupure matérielle du HAT (TICKET-128). --check-hat ne fait qu'une DÉTECTION,
+# aucune écriture i2cset : lançable pendant que l'enfant écoute.
+if hat=$(timeout 10 python3 "$ROOT/scripts/battery_watchdog.py" --check-hat 2>&1 | head -1); then
+    pass "coupure matérielle du HAT disponible — $hat"
+else
+    warn "HAT 0x2d non détecté — l'arrêt d'urgence n'arrêtera que l'OS, les cellules continueront de se vider ($hat)"
+fi
+
 titre "6. Unités systemd — pièges de la zone Z2"
 
 # Zone Z2 du registre docs/75-NON_REGRESSION.md. Ces quatre contrôles sont
@@ -351,6 +397,23 @@ if [ -z "$coupables" ]; then
     pass "aucune unité ne porte Requires=mpd.service (pas de propagation d'arrêt)"
 else
     fail "Requires=mpd.service dans : $coupables → un redémarrage de MPD les tuera. Utiliser Wants="
+fi
+
+# ── Garde TICKET-121 : généralisation à TOUT `Requires=` ───────────────────
+# Le contrôle ci-dessus ne cherchait que `Requires=mpd`. L'audit du
+# 2026-08-17 a trouvé `Requires=NetworkManager.service` dans
+# wifi_roam.service : même piège, autre dépendance. Un redémarrage de
+# NetworkManager — c'est-à-dire précisément quand le Wi-Fi va mal — arrêtait
+# le service chargé du roaming, sans le relancer.
+# Panne LATENTE : ce service n'est pas encore installé, elle se serait
+# déclenchée des semaines plus tard sans lien apparent.
+# Aucune unité de ce projet n'a de raison légitime de porter `Requires=` :
+# tout ce qu'on écrit doit survivre à la panne de ce dont il dépend.
+tous_requires=$(grep -l '^Requires=' "$ROOT"/scripts/*.service 2>/dev/null | xargs -r -n1 basename | tr '\n' ' ')
+if [ -z "$tous_requires" ]; then
+    pass "aucun Requires= dans les unités du dépôt (tout survit à sa dépendance)"
+else
+    fail "Requires= dans : $tous_requires → l'arrêt de la dépendance les tuera. Utiliser Wants="
 fi
 
 # ── Garde TICKET-120 : un service durci n'écrit pas dans le dépôt ─────────
@@ -432,13 +495,36 @@ if [ -r /etc/asound.conf ]; then
     fi
 
     # Le périphérique ALSA par défaut est un chemin distinct de celui de MPD.
-    # Tout ce qui ne précise pas -D l'emprunte : son de démarrage, aplay,
-    # Chromium. S'il est numéroté, une ré-énumération l'envoie sur la mauvaise
-    # carte — le chime de boot partirait dans le HDMI.
+    # ⚠️ MESSAGE CORRIGÉ LE 2026-08-17 (TICKET-125). L'ancien affirmait deux
+    # choses fausses, et un mauvais conseil dans un test de garde est pire
+    # qu'aucun conseil :
+    #   1. « le son de démarrage est concerné » — FAUX. play_chime.py passe par
+    #      MPD (« via MPD, pas de click DAC »), donc par eqhp/eqcasque.
+    #   2. « Remplacer par CARD=sndrpihifiberry » — FAUX et dangereux. La carte
+    #      numérotée était la 2, c'est-à-dire le DAC USB du CASQUE (`Audio`) ;
+    #      la HiFiBerry est la 3. Suivre ce conseil aurait déplacé la sortie par
+    #      défaut des écouteurs vers les haut-parleurs — un changement de
+    #      comportement déguisé en correction.
+    # Vérifié : aucun script du projet n'emprunte le périphérique par défaut
+    # (tous les amixer précisent -D). L'enjeu se limite à un aplay tapé à la
+    # main — d'où un `warn` et non un `fail`.
     if grep -qE '^\s*(slave\.pcm\s+"hw:[0-9]|card\s+[0-9])' /etc/asound.conf; then
-        warn "asound.conf : le périphérique par DÉFAUT est numéroté ($(grep -cE '^\s*(slave\.pcm\s+"hw:[0-9]|card\s+[0-9])' /etc/asound.conf) ligne(s)) — MPD n'est pas concerné, mais le son de démarrage si. Remplacer par CARD=sndrpihifiberry"
+        warn "asound.conf : le périphérique par DÉFAUT est numéroté — les numéros dérivent d'un boot à l'autre, et c'est un périphérique USB (débranchable). Installer scripts/asound.conf, qui le nomme CARD=Audio (= le DAC du casque, comportement inchangé)"
     else
         pass "asound.conf : périphérique par défaut référencé par nom"
+    fi
+
+    # Garde TICKET-125 : la copie versionnée doit rester alignée sur /etc.
+    # Sans ce contrôle, on corrige le dépôt en croyant avoir corrigé le Pi —
+    # exactement le piège de la zone Z12 (le fichier n'est pas ce qui tourne).
+    if [ -r "$ROOT/scripts/asound.conf" ]; then
+        if diff -q <(grep -vE '^\s*#|^\s*$' /etc/asound.conf) \
+                   <(grep -vE '^\s*#|^\s*$' "$ROOT/scripts/asound.conf") >/dev/null 2>&1; then
+            pass "asound.conf : /etc identique à la copie du dépôt"
+        else
+            warn "asound.conf : /etc DIFFÈRE de scripts/asound.conf — l'un des deux n'est pas à jour"
+            echo "     → comparer : diff /etc/asound.conf scripts/asound.conf"
+        fi
     fi
 else
     warn "/etc/asound.conf illisible — contrôle des cartes ALSA sauté"
@@ -519,6 +605,107 @@ if [ $? -eq 0 ]; then
     pass "limites de volume conformes — $sortie_vol"
 else
     fail "limite de volume violée — $sortie_vol"
+fi
+
+titre "9. Intégrité du catalogue (zone Z9)"
+
+# Dette de test de la zone Z9, ouverte depuis la création du registre :
+# `check_integrity.py` existait mais n'était lancé qu'à la main, donc jamais.
+# Il vérifie que chaque épisode de data.json a bien son fichier audio et son
+# image, repère les fichiers orphelins (présents sur le disque, absents du
+# catalogue), et détecte les .mp3 qui sont en réalité des .m4a — un piège qui
+# fait échouer la lecture sans message clair.
+#
+# Sûr à lancer pendant que l'enfant écoute : le script est en LECTURE SEULE,
+# il ne supprime ni ne réécrit rien. Codes de sortie : 0 sain, 1 avertissement,
+# 2 erreur.
+#
+# ⚠️ Sous `timeout` : le script parcourt tous les dossiers audio et lit des
+# en-têtes de fichiers. Sur un gros catalogue il peut s'allonger, et le smoke
+# test doit rester sous la minute — sinon il ne sera plus lancé du tout.
+INTEG="$ROOT/scripts/rss_ingest/check_integrity.py"
+if [ ! -f "$INTEG" ]; then
+    warn "check_integrity.py introuvable — intégrité du catalogue non vérifiée"
+else
+    sortie_integ=$(timeout 25 python3 "$INTEG" 2>&1)
+    code_integ=$?
+
+    if [ "$code_integ" -eq 124 ]; then
+        warn "check_integrity.py a dépassé 25 s — catalogue non vérifié (le lancer à la main)"
+    elif [ "$code_integ" -gt 2 ]; then
+        warn "check_integrity.py a échoué (code $code_integ) — $(echo "$sortie_integ" | tail -1)"
+    else
+        # ⚠️ TRI PAR GRAVITÉ RÉELLE — corrigé le 2026-08-17, le jour même de
+        # l'intégration. `check_integrity.py` classe en ERR **deux situations
+        # opposées**, et les confondre rend le test inutile :
+        #
+        #   (a) un épisode du catalogue dont le FICHIER manque
+        #       → l'enfant appuie et rien ne joue. C'est cassé. `fail`.
+        #   (b) des fichiers présents sur le disque dont le catalogue ne parle
+        #       pas ("absent de data.json") → le podcast a été retiré de
+        #       data/podcasts.json et ses fichiers sont restés. Rien n'est
+        #       cassé : c'est du poids mort sur la carte SD. `warn`.
+        #
+        # Au premier lancement, (b) produisait 359 lignes ERR pour 9 podcasts
+        # retirés de la config — la suite entière passait au rouge alors que
+        # tout fonctionnait. Un `fail` qui crie au loup fait ignorer les vrais.
+        err_reelles=$(echo "$sortie_integ" | grep '^\[ERR\]' | grep -v 'absent de data.json')
+        pods_hors_catalogue=$(echo "$sortie_integ" | grep '^\[ERR\].*podcast absent de data.json' \
+                              | sed 's/^\[ERR\] \([^ ]*\) .*/\1/' | sort -u)
+        n_reelles=$(echo "$err_reelles" | grep -c . )
+        n_pods=$(echo "$pods_hors_catalogue" | grep -c . )
+        n_orph=$(echo "$sortie_integ" | grep -c 'orphelin\|orpheline')
+
+        if [ "$n_reelles" -gt 0 ]; then
+            fail "catalogue : $n_reelles problème(s) RÉEL(S) — des épisodes du catalogue n'ont pas leur fichier"
+            echo "$err_reelles" | head -10 | sed 's/^/     /'
+        else
+            pass "catalogue : aucun épisode cassé (tous les fichiers référencés sont présents)"
+        fi
+
+        if [ "$n_pods" -gt 0 ]; then
+            warn "$n_pods podcast(s) sur disque mais hors catalogue — fichiers inutiles, rien de cassé"
+            echo "$pods_hors_catalogue" | sed 's/^/     · /'
+            echo "     → retirés de data/podcasts.json ; leurs fichiers occupent la carte SD"
+            echo "     → place occupée : du -sh podcasts/{$(echo "$pods_hors_catalogue" | paste -sd,)}"
+        fi
+
+        # ── TICKET-130 — la config a-t-elle perdu des podcasts ? ───────────
+        # Bug surveillé : entre le 2026-08-03 et le 2026-08-05, NEUF podcasts
+        # ont disparu de data/podcasts.json alors que tous leurs fichiers
+        # restaient sur le disque. Personne ne l'a vu pendant deux semaines —
+        # c'est le silence qui a coûté cher, pas la disparition.
+        #
+        # Cause : data/podcasts.json est **suivi par git ET réécrit par l'IHM
+        # admin**. Les neuf avaient été ajoutés depuis l'admin, donc jamais
+        # committés ; une opération git les a ramenés à l'état HEAD.
+        # Décision de Thomas (2026-08-17) : on garde le fichier versionné.
+        # Ce contrôle est donc le garde-fou qui rend le choix tenable — il
+        # transforme deux semaines de silence en une ligne de sortie.
+        #
+        # ⚠️ `warn` et non `fail` : un écart peut être légitime (podcast retiré
+        # volontairement dont on n'a pas encore effacé le dossier). Ce qui
+        # compte est qu'il soit VU.
+        n_cfg=$(python3 -c "import json;print(len(json.load(open('$ROOT/data/podcasts.json')).get('podcasts',[])))" 2>/dev/null)
+        n_dirs=$(find "$ROOT/podcasts" -maxdepth 2 -name meta.json 2>/dev/null | wc -l)
+        if [ -z "$n_cfg" ]; then
+            warn "data/podcasts.json illisible — impossible de vérifier la perte de podcasts (TICKET-130)"
+        elif [ "$n_cfg" -eq "$n_dirs" ]; then
+            pass "config et disque d'accord — $n_cfg podcast(s) configurés, autant sur disque"
+        elif [ "$n_cfg" -lt "$n_dirs" ]; then
+            warn "$((n_dirs - n_cfg)) podcast(s) sur disque absent(s) de la config — disparition possible (TICKET-130)"
+            echo "     → data/podcasts.json = $n_cfg entrées · podcasts/ = $n_dirs dossiers"
+            echo "     → restauration : python3 scripts/restore_lost_podcasts.py"
+            echo "     → penser à committer data/podcasts.json après tout ajout depuis l'admin"
+        else
+            warn "$((n_cfg - n_dirs)) podcast(s) configuré(s) sans dossier sur disque — jamais ingérés ?"
+        fi
+
+        if [ "$n_orph" -gt 0 ]; then
+            warn "$n_orph fichier(s) orphelin(s) — surtout des bandes-annonces écartées par TICKET-104/105"
+            echo "     → liste : python3 scripts/rss_ingest/check_integrity.py | grep orphelin"
+        fi
+    fi
 fi
 
 titre "Résultat"

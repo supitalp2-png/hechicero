@@ -4,7 +4,7 @@
         "headphones_max": 99
     },
     "chime_enabled": true,
-    "chime_volume": 6,
+    "chime_volume": 3,
     "sleep_enabled": true,
     "sleep_delay": 120,
     "sleep_mode": "retro_clock",

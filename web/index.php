@@ -30,9 +30,137 @@ function read_json(string $path): array {
     return is_array($d) ? $d : [];
 }
 
+// ── TICKET-130 (2026-08-17) — deux causes racines corrigées ici ─────────────
+//
+// Neuf podcasts ont disparu de data/podcasts.json en silence pendant deux
+// semaines. Le garde-fou du smoke test rend une disparition VISIBLE ; ces deux
+// fonctions s'attaquent à ce qui la PROVOQUE.
+//
+// CAUSE 1 — la mise à jour perdue. Toutes les modifications suivent le motif
+// lire → modifier en mémoire → réécrire le fichier ENTIER. Sans verrou, deux
+// requêtes qui se chevauchent (un ajout de podcast pendant un toggle_podcast,
+// par exemple) font que la seconde réécrit tout depuis une lecture périmée :
+// ce qui a été ajouté entre-temps disparaît, sans erreur. `rename()` garantit
+// qu'on n'aura jamais un fichier tronqué — il ne garantit rien sur le contenu.
+//   ➜ read_json_locked() / write_json_atomic() prennent un verrou exclusif sur
+//     un fichier .lock dédié, tenu pendant TOUT le cycle lire-modifier-écrire.
+//   ⚠️ Verrou sur un fichier séparé et non sur la cible : `rename()` remplace
+//     l'inode, un verrou posé sur l'ancien fichier serait relâché dans le vide.
+//
+// CAUSE 2 — la sauvegarde manquante. data/podcasts.json est suivi par git ET
+// réécrit ici : un `checkout`/`reset` le ramène à HEAD et efface tout ce qui
+// n'a pas été committé. Décision de Thomas : le fichier reste versionné. On
+// rend donc la perte RÉCUPÉRABLE plutôt qu'improbable.
+//   ➜ chaque écriture dépose une copie horodatée dans data/config_backups/,
+//     répertoire hors git (donc insensible aux opérations git) et purgé au-delà
+//     de MAX_BACKUPS. Ce sont des fichiers de quelques kilo-octets.
+//
+// ⚠️ Ne PAS revenir à une écriture sans verrou "parce que c'est plus simple" :
+// la panne que ça produit est silencieuse et se découvre des semaines plus tard.
+
+// ⚠️ `define()` et non `const` : PROJECT_ROOT est lui-même créé par define()
+// au moment de l'exécution. Un `const` au niveau du fichier est un contexte
+// d'expression constante, et faire dépendre l'un de l'autre est le genre de
+// subtilité qui casse selon la version de PHP. On reste sur le style déjà
+// utilisé en haut de ce fichier.
+define('CONFIG_BACKUP_DIR', PROJECT_ROOT . '/data/config_backups');
+define('MAX_BACKUPS', 30);
+
+// Fichiers dont chaque version mérite d'être conservée : ceux que l'admin
+// réécrit et dont la perte coûte cher. Comparaison sur le nom de base.
+define('BACKED_UP_FILES', ['podcasts.json', 'parental.json', 'config.json']);
+
+function json_lock_path(string $path): string {
+    return $path . '.lock';
+}
+
+/**
+ * Ouvre un verrou exclusif et le renvoie. À garder ouvert pendant toute la
+ * séquence lire-modifier-écrire, puis relâcher avec release_json_lock().
+ * Renvoie null si le verrou n'a pas pu être pris : l'appelant continue sans
+ * (mieux vaut une écriture non protégée qu'une admin bloquée).
+ */
+function acquire_json_lock(string $path) {
+    $fh = @fopen(json_lock_path($path), 'c');
+    if ($fh === false) return null;
+    if (!flock($fh, LOCK_EX)) { fclose($fh); return null; }
+    return $fh;
+}
+
+function release_json_lock($fh): void {
+    if ($fh) { flock($fh, LOCK_UN); fclose($fh); }
+}
+
+/** Lecture SOUS verrou déjà acquis — à utiliser dans un cycle read-modify-write. */
+function read_json_locked(string $path): array {
+    return read_json($path);
+}
+
+/**
+ * Copie horodatée avant écrasement, pour les fichiers de BACKED_UP_FILES.
+ * Silencieux : une sauvegarde qui échoue ne doit jamais empêcher d'enregistrer
+ * un réglage. Mais elle est tentée à chaque fois.
+ */
+function backup_config_file(string $path): void {
+    if (!file_exists($path)) return;                      // 1re création : rien à sauver
+    if (!in_array(basename($path), BACKED_UP_FILES, true)) return;
+    if (!is_dir(CONFIG_BACKUP_DIR)) @mkdir(CONFIG_BACKUP_DIR, 0775, true);
+    $cible = CONFIG_BACKUP_DIR . '/' . basename($path) . '.' . date('Ymd_His');
+    @copy($path, $cible);
+
+    // Purge : on garde les MAX_BACKUPS plus récentes de CE fichier.
+    $motif = CONFIG_BACKUP_DIR . '/' . basename($path) . '.*';
+    $liste = glob($motif) ?: [];
+    if (count($liste) > MAX_BACKUPS) {
+        sort($liste);                                     // horodatage triable
+        foreach (array_slice($liste, 0, count($liste) - MAX_BACKUPS) as $vieux) {
+            @unlink($vieux);
+        }
+    }
+}
+
+/**
+ * Cycle lire-modifier-écrire SOUS VERROU — le seul moyen sûr de modifier un
+ * fichier de config depuis l'admin.
+ *
+ * $muter reçoit le contenu actuel et renvoie le contenu à écrire, ou null pour
+ * annuler l'écriture (validation échouée, doublon détecté…).
+ *
+ * ⚠️ TOUTE nouvelle modification d'un JSON de config doit passer par ici.
+ * Un `read_json()` suivi d'un `write_json_atomic()` en dehors de ce helper
+ * rouvre exactement la faille de TICKET-130 : la lecture et l'écriture ne sont
+ * plus atomiques ensemble, et une requête concurrente perd son travail.
+ */
+function mutate_json(string $path, callable $muter): bool {
+    $verrou = acquire_json_lock($path);
+    try {
+        $avant = read_json_locked($path);
+        $apres = $muter($avant);
+        if ($apres === null) return false;
+        return write_json_atomic($path, $apres);
+    } finally {
+        release_json_lock($verrou);
+    }
+}
+
 function write_json_atomic(string $path, array $data): bool {
     $dir = dirname($path);
     if (!is_dir($dir)) mkdir($dir, 0755, true);
+
+    // Refus d'écrire une structure manifestement vide par-dessus un fichier
+    // qui ne l'est pas : read_json() renvoie [] sur TOUTE erreur de lecture,
+    // et un save_radios() malchanceux écrirait alors {"radios": []} en effaçant
+    // tous les podcasts. Ce garde-fou coûte deux lignes.
+    if (in_array(basename($path), BACKED_UP_FILES, true) && file_exists($path)) {
+        $avant = read_json($path);
+        if (!empty($avant) && empty($data)) {
+            error_log("write_json_atomic: refus d'écrire une structure vide sur $path");
+            return false;
+        }
+    }
+
+    backup_config_file($path);
+
     $tmp = $path . '.tmp';
     $ok  = file_put_contents($tmp, json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
     if ($ok === false) return false;
@@ -95,9 +223,13 @@ function get_radios(): array {
 }
 
 function save_radios(array $radios): bool {
-    $d = read_json(PODCASTS_JSON);
-    $d['radios'] = array_values($radios);
-    return write_json_atomic(PODCASTS_JSON, $d);
+    // TICKET-130 : sous verrou. C'est LE cycle le plus dangereux du fichier —
+    // il ne touche que la clé "radios" mais réécrit tout, y compris la liste
+    // des podcasts qu'il n'a pas modifiée.
+    return mutate_json(PODCASTS_JSON, function (array $d) use ($radios) {
+        $d['radios'] = array_values($radios);
+        return $d;
+    });
 }
 
 // Variante avec message d'erreur explicite

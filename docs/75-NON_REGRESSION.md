@@ -125,19 +125,67 @@ recopiant un modèle d'unité d'un service à l'autre**, sans vérifier ce que c
 directive impliquait pour ce service précis. L'audit doit donc porter sur **toutes** les
 directives, pas seulement `ReadWritePaths`.
 
-**Test de garde** : smoke test §6 — quatre contrôles statiques : absence de
-`Requires=mpd`, `WorkingDirectory` sous `/run` avec `RuntimeDirectory=` pour
-`buttons_daemon`, absence de `PrivateDevices=`, et **dérive entre le dépôt et
-`/etc/systemd/system/`** (une unité corrigée mais jamais recopiée donne l'illusion que le
-correctif est livré).
+**Test de garde** : smoke test §6 — absence de `Requires=mpd`, **absence de tout
+`Requires=`** (généralisé le 2026-08-17 : l'ancien test ne cherchait que `mpd`, c'est
+pourquoi `Requires=NetworkManager` dans `wifi_roam.service` était passé), `WorkingDirectory`
+sous `/run` avec `RuntimeDirectory=` pour `buttons_daemon`, absence de `PrivateDevices=`, et
+**dérive entre le dépôt et `/etc/systemd/system/`** (une unité corrigée mais jamais recopiée
+donne l'illusion que le correctif est livré).
+Plus, en §5 : absence de `sudo` dans le chemin d'arrêt critique, dépaquetage correct de
+`read_level()`, marquage `simulation` du fichier de reprise, alerte si un `battery_critical`
+traîne dans `last_session.json`, et détection du HAT. **Les quatre premiers échouent sur le
+code d'avant le 2026-08-17** — ce sont donc de vrais tests de garde.
 ⚠️ **Reste non couvert** : la preuve qu'un service recrée son fichier de travail après
-suppression. C'est le faux positif de TICKET-120, et c'est l'objet de TICKET-121.
+suppression (le faux positif de TICKET-120), et **le test réel d'arrêt critique** — laisser
+la batterie descendre sous 15 % en étant présent. Aucun contrôle statique ne prouvera que le
+Pi s'éteint vraiment.
+
+**Troisième piège, et le plus coûteux — un durcissement retire un privilège dont le CODE
+avait besoin (2026-08-17, TICKET-121)** : `NoNewPrivileges=true` **casse `sudo`**. Or
+`battery_watchdog.py` appelait `sudo shutdown -h now`. Le service tournant déjà en
+`User=root`, ce `sudo` n'apportait rien — et ne pouvait qu'échouer.
+
+**Pourquoi personne ne l'a vu pendant un mois** : `run_command()` (`battery_common.py`)
+avale l'exception **et** le code de retour, il ne renvoie que `stdout`. L'échec était donc
+totalement muet. La protection contre la décharge profonde n'a jamais fonctionné depuis le
+2026-07-19.
+
+**Et le pire** : `--simulate-critical`, le seul chemin permettant de l'éprouver, était cassé
+lui aussi (dépaquetage de deux valeurs sur un tuple de trois). **Les deux défauts se
+couvraient l'un l'autre** — le chemin réel muet, et le chemin de vérification inutilisable.
+D'où un service resté « le seul non prouvé » pendant un mois sans que ce soit un mystère.
+
+⚠️ **Règle qui en découle** : quand on ajoute une directive de durcissement, **chercher dans
+le code les endroits qui utilisaient le privilège retiré** — ne pas se contenter de relire
+l'unité. `grep -n "sudo" scripts/*.py` a trouvé en une seconde ce qu'un mois d'usage
+apparemment normal avait caché. Les candidats à vérifier : `sudo`, `setuid`, l'écriture hors
+`ReadWritePaths`, l'accès à `/dev`, et les sockets d'autres sessions.
+
+⚠️ **Corollaire sur les journaux** : un chemin d'urgence doit **journaliser son échec**. Un
+arrêt d'urgence qui rate en silence est pire que pas d'arrêt du tout, puisqu'on se croit
+protégé.
+
+⚠️ **Un test ne doit jamais laisser de fausse trace** : `--simulate-critical` écrivait
+`last_session.json` avec `shutdown_reason: "battery_critical"`, motif exact sur lequel
+`web/index.php::battery_resume_payload()` déclenche la bannière de reprise. Le bureau
+d'admin annonçait donc une coupure batterie qui n'avait jamais eu lieu. Le fichier est
+toujours écrit — c'est l'objet du test — mais avec le motif `simulation`.
+
+**Résultat de l'audit du 2026-08-17** : les 9 unités passées en revue sur toutes leurs
+directives. Trois défauts réels (le `sudo`, le dépaquetage, `Requires=NetworkManager` dans
+`wifi_roam.service`), un test menteur, un couplage inutile (`Wants=battery_tracker` dans
+`battery_watchdog.service`), et une fausse alerte instructive (`sudo poweroff` dans
+`INA219.py`, sous `__main__`, qui a mené à TICKET-128). Les 6 autres unités sont saines.
 
 **Règles** :
 - Un service durci **n'écrit jamais dans le dépôt**.
 - Répertoire de travail volatil → `RuntimeDirectory=` (systemd le crée et le nettoie).
 - État persistant → `data/`, déjà dans `ReadWritePaths`.
 - **Jamais `PrivateDevices=`** (casse l'accès GPIO et audio).
+- **Jamais `Requires=`** : aucune unité de ce projet n'a de raison d'être arrêtée parce que
+  sa dépendance redémarre. `Wants=` + `After=`.
+- **Jamais `sudo` dans un script lancé par une unité durcie** — `NoNewPrivileges` le bloque.
+  Si le privilège est nécessaire, c'est `User=root` ou `runuser`.
 - Validation d'un durcissement = **supprimer le fichier de travail, redémarrer, vérifier
   qu'il se recrée**. Pas « le service est vert ».
 
@@ -492,9 +540,9 @@ Par ordre d'urgence. C'est la liste de travail de ce document.
 | Z4 écran — cause du gel | Le battement **date** le gel, il ne l'**explique** pas. La cause reste à établir sur l'instantané du prochain épisode. | TICKET-127 |
 | Z3 boutons | Prouver qu'un appui produit une action (pas juste « service actif ») | — |
 | Z7 hors réseau | Lecture d'un podcast local, réseau coupé | — |
-| Z9 intégrité | Intégrer `check_integrity.py` au smoke test | — |
+| ~~Z9 intégrité~~ | ✅ **couvert** depuis le 2026-08-17 : `check_integrity.py` intégré au smoke test §9, sous `timeout 25`. Il existait depuis longtemps mais n'était lancé qu'à la main, donc jamais. ⚠️ **Le tri par gravité est essentiel** : le script classe en `ERR` autant « un épisode du catalogue sans son fichier » (cassé → `fail`) que « des fichiers hors catalogue » (poids mort → `warn`). Sans ce tri, 9 podcasts retirés de la config faisaient passer 359 lignes en `ERR` et la suite entière au rouge, alors que tout fonctionnait. | — |
 | Z11 domotique | Cohérence lumière entre `domotique.php` et `lecteur/index.html` | — |
-| Z8 batterie | Cohérence des cycles ; comportement d'arrêt de `battery_watchdog` | TICKET-011 |
+| Z8 batterie | Cohérence des cycles. **Le comportement d'arrêt est désormais couvert en statique** (TICKET-121, smoke test §5), mais il reste **un test réel d'arrêt sous 15 % à faire une fois, en étant présent** — c'est la seule preuve qui vaille, et elle inclut la coupure matérielle du HAT (TICKET-128, différé non prouvé). | TICKET-121 · TICKET-128 |
 
 ---
 
