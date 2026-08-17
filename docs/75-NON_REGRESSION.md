@@ -239,6 +239,36 @@ empêché l'extinction programmée de 18:52.
 un événement d'entrée. Tout nouveau déclencheur de réveil (bouton, capteur, commande
 distante) doit aussi signaler l'activité au compositeur, sinon il fige le cycle de veille.
 
+✅ **Corrigé le 2026-08-17** : `buttons_daemon.signaler_activite()` émet une frappe clavier
+virtuelle (`wtype -k Shift_L`, protocole Wayland) à **tout front descendant, sur n'importe
+quelle broche**. Le compositeur la compte comme de l'activité, swayidle sort de son état
+expiré et réarme.
+
+**Détails qui comptent** :
+- Le signal est posé dans la **boucle de polling**, pas dans les handlers : un seul point
+  couvre les neuf boutons, y compris les « tap ou maintien » dispatchés à part, et un futur
+  bouton en bénéficiera sans qu'on y pense.
+- `Shift_L` est une modificatrice **seule** : aucun caractère inséré, aucun clic, donc aucun
+  effet possible sur l'IHM enfant. On signale une présence, on ne pilote pas la page.
+- **Étranglé à 5 s** : un rebond GPIO ou un bouton maintenu ne doit pas lancer une rafale de
+  sous-processus.
+- Best-effort en thread détaché, comme `wake_screen()` : ne jamais ralentir la boucle GPIO.
+- `wtype` absent → un `warning` une seule fois, et le daemon continue.
+
+**Bénéfice secondaire, au moins aussi important au quotidien** : un enfant qui n'utilise
+**que** les boutons physiques voyait son écran s'éteindre au bout de 20 minutes alors qu'il
+était en train de s'en servir. Ce n'est plus le cas.
+
+💡 **Méthode de test à réutiliser** — le premier essai a demandé 25 minutes d'attente pour
+rien. Il y a beaucoup plus rapide : quand swayidle est **déjà bloqué en état expiré**, le
+premier vrai événement d'entrée déclenche son `resume` **immédiatement**, donc une ligne
+`[sh<-swayidle] on` dans `data/screen_dpms.log` en une seconde. Cette ligne suffit à prouver
+qu'il s'est débloqué — inutile d'attendre l'extinction suivante.
+
+**Test de garde** : smoke test §5 — présence de `signaler_activite()` dans
+`buttons_daemon.py` et de l'exécutable `wtype`. Les deux en `fail` : sans l'un ou l'autre, le
+cycle de veille se refige silencieusement.
+
 **Deux délais distincts, à ne pas confondre** : `sleep_delay` (120 s) pilote l'overlay de
 veille JS, `screen_off_delay` (1200 s) pilote l'extinction physique via `swayidle`. Entre
 les deux, l'écran de veille s'affiche sur une dalle allumée — c'est normal, pas un bug.
@@ -538,7 +568,7 @@ Par ordre d'urgence. C'est la liste de travail de ce document.
 | ~~Z6 audio~~ | ✅ **couvert** depuis le 2026-08-05 (smoke test §8) | TICKET-124 |
 | ~~Z4 écran — page vivante~~ | ✅ **couvert** depuis le 2026-08-17 : le battement de cœur détecte un kiosque qui n'exécute plus de JS (smoke test §3 et §5) | TICKET-127 |
 | Z4 écran — cause du gel | Le battement **date** le gel, il ne l'**explique** pas. La cause reste à établir sur l'instantané du prochain épisode. | TICKET-127 |
-| Z3 boutons | Prouver qu'un appui produit une action (pas juste « service actif ») | — |
+| Z3 boutons | Prouver qu'un appui produit une action (pas juste « service actif »). **Partiellement couvert** depuis le 2026-08-17 : le smoke test vérifie que `signaler_activite()` est présent et que `wtype` est installé, mais pas qu'un appui déclenche bien sa commande MPD. | TICKET-132 |
 | Z7 hors réseau | Lecture d'un podcast local, réseau coupé | — |
 | ~~Z9 intégrité~~ | ✅ **couvert** depuis le 2026-08-17 : `check_integrity.py` intégré au smoke test §9, sous `timeout 25`. Il existait depuis longtemps mais n'était lancé qu'à la main, donc jamais. ⚠️ **Le tri par gravité est essentiel** : le script classe en `ERR` autant « un épisode du catalogue sans son fichier » (cassé → `fail`) que « des fichiers hors catalogue » (poids mort → `warn`). Sans ce tri, 9 podcasts retirés de la config faisaient passer 359 lignes en `ERR` et la suite entière au rouge, alors que tout fonctionnait. | — |
 | Z11 domotique | Cohérence lumière entre `domotique.php` et `lecteur/index.html` | — |

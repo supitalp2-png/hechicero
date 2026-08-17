@@ -105,7 +105,28 @@ function backup_config_file(string $path): void {
     if (!file_exists($path)) return;                      // 1re création : rien à sauver
     if (!in_array(basename($path), BACKED_UP_FILES, true)) return;
     if (!is_dir(CONFIG_BACKUP_DIR)) @mkdir(CONFIG_BACKUP_DIR, 0775, true);
-    $cible = CONFIG_BACKUP_DIR . '/' . basename($path) . '.' . date('Ymd_His');
+
+    // ⚠️ Deux corrections du 2026-08-17, trouvées en testant le mécanisme :
+    //
+    // 1. HORODATAGE À LA MILLISECONDE. Avec une précision à la seconde, deux
+    //    écritures rapprochées produisaient le MÊME nom de fichier et la
+    //    seconde écrasait la première : une seule copie survivait. Or le cas
+    //    qui nous intéresse est justement la rafale d'écritures — celle contre
+    //    laquelle le verrou protège. Garder une copie sur cinq, et la plus
+    //    récente (donc potentiellement déjà abîmée), n'aurait servi à rien.
+    //
+    // 2. HEURE LOCALE explicite. PHP tourne en UTC (TICKET-129), donc les noms
+    //    affichaient 145507 pendant que `ls` montrait 16:55 — deux heures
+    //    d'écart dans un listing de répertoire qu'on consulte en urgence.
+    //    On ne change pas le fuseau global, on le pose ici.
+    $maintenant = DateTime::createFromFormat('U.u', sprintf('%.6F', microtime(true)));
+    if ($maintenant === false) {                 // repli défensif, jamais attendu
+        $horo = date('Ymd_His') . '_000';
+    } else {
+        $maintenant->setTimezone(new DateTimeZone('Europe/Paris'));
+        $horo = $maintenant->format('Ymd_His_v');   // v = millisecondes
+    }
+    $cible = CONFIG_BACKUP_DIR . '/' . basename($path) . '.' . $horo;
     @copy($path, $cible);
 
     // Purge : on garde les MAX_BACKUPS plus récentes de CE fichier.

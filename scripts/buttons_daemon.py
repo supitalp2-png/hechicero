@@ -56,6 +56,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 import re
 import subprocess
 import threading
@@ -252,6 +253,79 @@ def wake_screen() -> None:
     threading.Thread(target=_run, daemon=True).start()
 
 
+# ── TICKET-123 — signaler l'activité au compositeur ────────────────────────
+# LE PROBLÈME, mesuré le 2026-08-17 : `swayidle` n'observe que les entrées
+# Wayland. Les neuf boutons GPIO sont lus par ce daemon, un processus Python
+# que le compositeur ne voit jamais. Son cycle est : compter 1200 s → lancer
+# `off` → RESTER en état « déjà expiré » jusqu'à une vraie entrée → lancer
+# `resume` → et seulement alors réarmer.
+#
+# Conséquence : réveiller la dalle par un bouton laisse swayidle bloqué. Test
+# fait en réel — réveil par le bouton antenne seul, puis 25 minutes sans
+# toucher l'écran : AUCUN `off`. Confirmé.
+#
+# ⚠️ Appeler `screen_dpms.sh on` ne remplace PAS un événement d'entrée : ça
+# rallume la dalle sans rien dire au compositeur. C'est la règle déjà inscrite
+# en zone Z4 du registre, et c'est exactement le piège dans lequel TICKET-112
+# est tombé.
+#
+# LA CORRECTION : émettre une vraie frappe clavier virtuelle (`wtype`, protocole
+# Wayland). Le compositeur la compte comme de l'activité, swayidle sort de son
+# état expiré, réarme son compte à rebours, et l'écran s'éteint de nouveau
+# normalement 20 minutes plus tard.
+#
+# Bénéfice secondaire, au moins aussi important au quotidien : un enfant qui
+# n'utilise QUE les boutons physiques voyait son écran s'éteindre au bout de
+# 20 minutes alors qu'il était en train de s'en servir. Ce n'est plus le cas.
+#
+# `Shift_L` : touche modificatrice seule. Elle n'insère aucun caractère, ne
+# déclenche aucun clic, et ne peut donc rien changer dans l'IHM enfant — on
+# veut signaler une présence, pas piloter la page.
+WTYPE_BIN = "/usr/bin/wtype"
+ACTIVITE_THROTTLE_S = 5.0     # une frappe virtuelle au plus toutes les 5 s
+_derniere_activite = 0.0
+_wtype_manquant_signale = False
+
+
+def signaler_activite() -> None:
+    """Dit au compositeur « quelqu'un est là ». Best-effort, ne lève jamais.
+
+    Étranglé à une frappe toutes les ACTIVITE_THROTTLE_S : un rebond GPIO ou
+    un bouton maintenu ne doit pas déclencher une rafale de sous-processus.
+    Le but est de signaler une présence, pas de compter les appuis.
+
+    Thread détaché, comme wake_screen() : ne JAMAIS bloquer la boucle de
+    polling GPIO, sinon les autres boutons deviennent mous.
+    """
+    global _derniere_activite, _wtype_manquant_signale
+    maintenant = time.monotonic()
+    if maintenant - _derniere_activite < ACTIVITE_THROTTLE_S:
+        return
+    _derniere_activite = maintenant
+
+    if not os.path.exists(WTYPE_BIN):
+        if not _wtype_manquant_signale:
+            LOGGER.warning(
+                "wtype absent (%s) — swayidle ne verra pas les boutons, "
+                "l'écran restera allumé après un réveil non tactile (TICKET-123). "
+                "Installer : sudo apt install wtype", WTYPE_BIN,
+            )
+            _wtype_manquant_signale = True
+        return
+
+    def _run():
+        try:
+            env_prefix = [f"{k}={v}" for k, v in SCREEN_ENV.items()]
+            subprocess.run(
+                ["runuser", "-u", SCREEN_USER, "--", "env", *env_prefix, WTYPE_BIN, "-k", "Shift_L"],
+                timeout=5, check=False,
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            )
+        except Exception as e:
+            LOGGER.warning("Signal d'activité échoué (non bloquant) : %s", e)
+    threading.Thread(target=_run, daemon=True).start()
+
+
 def handle_chambre(pin: int) -> None:
     """Bouton Chambre (GPIO23, TICKET-112) — toggle de l'écran domotique.
     Deux effets, indépendants et tous deux best-effort :
@@ -365,6 +439,21 @@ def main() -> int:
                 state = GPIO.input(pin)
                 if state != st.last_state:
                     LOGGER.debug("Broche GPIO%s : %s -> %s", pin, "HIGH" if st.last_state else "LOW", "HIGH" if state else "LOW")
+                    # TICKET-123 : tout front descendant, sur N'IMPORTE QUELLE
+                    # broche, signale une présence au compositeur.
+                    #
+                    # Placé ICI et non dans les handlers, volontairement :
+                    #   · un seul point d'insertion couvre les neuf boutons,
+                    #     y compris les « tap ou maintien » dispatchés à part ;
+                    #   · c'est indépendant de la logique de dispatch, donc un
+                    #     futur bouton en bénéficiera sans qu'on y pense ;
+                    #   · aucun risque de rendre la boucle molle (fonction
+                    #     étranglée + thread détaché).
+                    # Volontairement AVANT l'anti-rebond : un rebond parasite
+                    # reste le signe que quelqu'un a touché l'appareil, et le
+                    # throttle de 5 s absorbe les rafales.
+                    if state == GPIO.LOW:
+                        signaler_activite()
 
                 if pin in REPEAT_PINS:
                     # Logique dédiée par hystérésis : un bouton maintenu peut rebondir

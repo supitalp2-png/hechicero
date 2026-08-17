@@ -135,6 +135,37 @@ else
     warn "garde-fou 'player/radio-player' non trouvé sous sa forme attendue — à relire"
 fi
 
+# ── TICKET-130 — le filet de sauvegarde des configs est-il réellement armé ?
+# Bug surveillé : neuf podcasts ont disparu de data/podcasts.json en silence.
+# Le verrou de fichier empêche la mise à jour perdue, les copies horodatées
+# rendent une perte récupérable. Mais un mécanisme de protection livré sans
+# avoir jamais tourné est une fausse sécurité — c'était le cas au commit
+# e081296, où data/config_backups/ n'existait même pas.
+# Contrôle purement passif : on regarde, on n'écrit pas.
+if grep -q "acquire_json_lock" "$ROOT/web/index.php" \
+   && grep -q "mutate_json" "$ROOT/web/index.php"; then
+    pass "admin : verrou de fichier présent sur les écritures de config"
+else
+    fail "admin : verrou de fichier absent — les écritures concurrentes peuvent perdre des entrées (TICKET-130)"
+fi
+
+# Précision de l'horodatage : à la seconde, deux écritures rapprochées
+# écrasaient la même sauvegarde et il n'en restait qu'une sur cinq.
+if grep -q "Ymd_His_v" "$ROOT/web/index.php"; then
+    pass "admin : sauvegardes horodatées à la milliseconde (rafale préservée)"
+else
+    warn "admin : horodatage des sauvegardes à la seconde — une rafale d'écritures n'en laissera qu'une (TICKET-130)"
+fi
+
+BK="$ROOT/data/config_backups"
+if [ -d "$BK" ]; then
+    n_bk=$(find "$BK" -type f 2>/dev/null | wc -l)
+    pass "admin : $n_bk sauvegarde(s) de config disponible(s) dans data/config_backups/"
+else
+    warn "data/config_backups/ absent — le filet n'a jamais servi, donc jamais été prouvé (TICKET-130)"
+    echo "     → l'exercer : curl -s \"http://localhost/?action=toggle_podcast&id=olma&enabled=1\""
+fi
+
 # ── TICKET-127 — le code servi est-il bien celui du disque ? ───────────────
 # Bug surveillé : le 2026-08-17, une modification d'index.html a été déployée,
 # vérifiée sur le disque et validée par un smoke test vert… sans jamais
@@ -330,6 +361,27 @@ if [ -f "$BEAT" ]; then
     fi
 else
     warn "data/kiosk_heartbeat.json absent — la page n'a jamais battu depuis l'ajout du traceur (recharger le kiosque)"
+fi
+
+# ── TICKET-123 — les boutons signalent-ils l'activité au compositeur ? ─────
+# Bug surveillé : swayidle n'observe que les entrées Wayland et ne voit jamais
+# les boutons GPIO, lus par un processus Python. Après un réveil non tactile
+# il reste bloqué en état « déjà expiré » et l'écran ne s'éteint plus jamais.
+# Prouvé le 2026-08-17 : réveil par le bouton antenne, puis 25 min sans
+# toucher l'écran, aucun `off`.
+# ⚠️ Rappel de la zone Z4 : appeler screen_dpms.sh on ne remplace PAS un
+# événement d'entrée. Tout nouveau déclencheur de réveil doit signaler
+# l'activité, sinon il fige de nouveau le cycle de veille.
+if grep -q "signaler_activite()" "$ROOT/scripts/buttons_daemon.py"; then
+    pass "boutons : activité signalée au compositeur (swayidle peut réarmer)"
+else
+    fail "buttons_daemon ne signale plus l'activité — l'écran ne s'éteindra plus après un réveil bouton (TICKET-123)"
+fi
+
+if [ -x /usr/bin/wtype ]; then
+    pass "wtype installé (frappe virtuelle pour le signal d'activité)"
+else
+    fail "wtype absent — le signal d'activité est inopérant. sudo apt install wtype (TICKET-123)"
 fi
 
 # ── TICKET-121 — le chemin d'arrêt critique est-il exécutable ? ────────────
@@ -699,6 +751,28 @@ else
             echo "     → penser à committer data/podcasts.json après tout ajout depuis l'admin"
         else
             warn "$((n_cfg - n_dirs)) podcast(s) configuré(s) sans dossier sur disque — jamais ingérés ?"
+        fi
+
+        # ── TICKET-131 — ordre des épisodes ────────────────────────────────
+        # Bug surveillé : les Explorateurs de l'Univers s'affichaient à
+        # l'envers (8, 7, 6 … 1). Cause dans les DONNÉES, pas dans le tri :
+        # l'éditeur a publié les neuf épisodes à une minute d'écart en
+        # commençant par le dernier, donc les dates sont l'inverse de l'ordre
+        # narratif.
+        # Le correctif touche l'ordre d'affichage de TOUS les podcasts, d'où
+        # de vrais tests unitaires : ils prouvent que le cas cassé est réparé
+        # ET qu'Olma (numérotation qui redémarre) et Tina (saisons) n'ont pas
+        # bougé. Aucun effet de bord : ni fichier, ni réseau.
+        TRI="$ROOT/scripts/rss_ingest/test_tri_episodes.py"
+        if [ -f "$TRI" ]; then
+            if sortie_tri=$(timeout 15 python3 "$TRI" 2>&1); then
+                pass "tri des épisodes : $(echo "$sortie_tri" | grep -c '^  ok') test(s) unitaire(s) OK (TICKET-131)"
+            else
+                fail "tri des épisodes : test unitaire en échec — l'ordre d'affichage est faux quelque part"
+                echo "$sortie_tri" | grep -A2 'ÉCHEC' | head -12 | sed 's/^/     /'
+            fi
+        else
+            warn "test_tri_episodes.py absent — l'ordre des épisodes n'est plus couvert (TICKET-131)"
         fi
 
         if [ "$n_orph" -gt 0 ]; then

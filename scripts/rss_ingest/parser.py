@@ -45,6 +45,106 @@ def detect_season(entry, title: str) -> tuple[Optional[str], Optional[int]]:
         return m.group(1).strip(), ep_num
     return None, None
 
+# ── TICKET-131 — épisodes numérotés dont les dates sont à l'envers ──────────
+# Signalé par le petit : « les épisodes des Explorateurs de l'Univers, ils sont
+# à l'envers ». Il avait raison, et le tri n'était pas en cause.
+#
+# L'éditeur a téléversé les neuf épisodes le même soir, à UNE MINUTE d'écart,
+# EN COMMENÇANT PAR LE DERNIER :
+#     Episode 8 → 19:59   Episode 7 → 20:00   …   Episode 1 → 20:06
+# Les dates de publication sont donc exactement l'inverse de l'ordre narratif,
+# et notre tri chronologique croissant — correct en soi — rend 8, 7, 6 … 1.
+#
+# Même famille que le bug TINA (republication en lot avec dates incohérentes),
+# mais le correctif TINA ne s'applique qu'à l'intérieur d'une SAISON détectée,
+# et `_SEASON_EP_RE` attend le motif « Nom N/M : ». Ici les titres disent
+# « Episode 8 : » ou « Episode 7. » — aucune saison, donc repli sur la date.
+_EP_NUM_SEUL_RE = re.compile(r"^\s*[ÉEée]pisode\s*(\d+)\s*[:.\-–]", re.IGNORECASE)
+
+
+def numero_episode_explicite(title: str) -> Optional[int]:
+    """Numéro d'un titre de la forme « Episode 8 : … » ou « Episode 7. … ».
+
+    Volontairement strict : le numéro doit être en TÊTE de titre et suivi d'un
+    séparateur. Sans cette exigence, « Pourquoi y a-t-il 8 planètes » donnerait
+    un faux numéro.
+    """
+    m = _EP_NUM_SEUL_RE.match(title or "")
+    return int(m.group(1)) if m else None
+
+
+def tri_par_numero_applicable(items) -> bool:
+    """Peut-on faire confiance aux numéros de titre plutôt qu'aux dates ?
+
+    items : [(sort_key, season, ep_num_saison, Episode), …]
+
+    Trois conditions, et les trois sont nécessaires — sans elles ce correctif
+    casse plus qu'il ne répare :
+
+    1. **Aucune saison détectée.** Si `_SEASON_EP_RE` a reconnu des saisons, le
+       tri à deux niveaux existant est déjà le bon et fait ses preuves depuis
+       TICKET-104. On n'y touche pas.
+
+    2. **Numéros UNIQUES sur tout le podcast.** C'est la condition qui protège
+       Olma : ses titres sont aussi « Episode N. … », mais la numérotation
+       REDÉMARRE à chaque série (1→32, puis 1→20). Trier par numéro y
+       entrelacerait deux séries — une régression sur 55 épisodes pour en
+       réparer 9. Des doublons signifient « plusieurs séries », donc on garde
+       la date.
+
+    3. **Au moins deux tiers des épisodes numérotés.** Un seul titre commençant
+       par « Episode 1 » dans un podcast qui n'en a pas l'usage ne doit pas
+       faire basculer tout l'ordre d'affichage.
+    """
+    if any(season is not None for _sk, season, _en, _ep in items):
+        return False
+
+    numeros = [numero_episode_explicite(ep.title) for _sk, _s, _en, ep in items]
+    presents = [n for n in numeros if n is not None]
+    if len(presents) < 2:
+        return False
+    if len(set(presents)) != len(presents):        # numérotation qui redémarre
+        return False
+    return len(presents) >= (2 * len(items)) // 3
+
+
+def trier_episodes(items) -> list:
+    """Tri unique, partagé par parse_rss() et merge_episodes().
+
+    ⚠️ Les deux fonctions DOIVENT trier de la même façon. Avant TICKET-131 la
+    logique était dupliquée : toute divergence produisait un ordre différent
+    selon qu'on venait de recharger le flux ou de fusionner l'historique —
+    un bug intermittent et très pénible à comprendre.
+    """
+    if tri_par_numero_applicable(items):
+        # Les épisodes numérotés d'abord, dans l'ordre des numéros ; les autres
+        # (présentations, hors-séries) à la suite, par date. Un `0` / `1` en
+        # tête de clé suffit à séparer les deux groupes.
+        def cle(item):
+            sort_key, _season, _ep_num, ep = item
+            n = numero_episode_explicite(ep.title)
+            return (0, n, 0) if n is not None else (1, 0, sort_key)
+        return sorted(items, key=cle)
+
+    # Comportement historique, inchangé : groupement par saison ordonné sur la
+    # date la plus ancienne de la saison, puis numéro d'épisode dans la saison,
+    # repli sur la date individuelle.
+    season_min_date: dict[str, int] = {}
+    for sort_key, season, _ep_num, _ep in items:
+        if season is None:
+            continue
+        if season not in season_min_date or sort_key < season_min_date[season]:
+            season_min_date[season] = sort_key
+
+    def cle_historique(item):
+        sort_key, season, ep_num, _ep = item
+        group_key = season_min_date[season] if season is not None else sort_key
+        secondary_key = ep_num if (season is not None and ep_num is not None) else sort_key
+        return (group_key, secondary_key)
+
+    return sorted(items, key=cle_historique)
+
+
 def parse_duration(raw) -> Optional[int]:
     """Convertit itunes_duration en secondes (int).
     Accepte : 'HH:MM:SS', 'MM:SS', ou un entier brut."""
@@ -148,20 +248,11 @@ def parse_rss(podcast_config):
     #    le place a tort avant l'episode 1. Le numero de titre n'a pas ce
     #    probleme. Repli sur la date individuelle si pas de saison detectee
     #    (ex: Professeur Caillou, Bestioles) — comportement inchange pour eux.
-    season_min_date: dict[str, int] = {}
-    for sort_key, season, _ep_num, _ep in raw_episodes:
-        if season is None:
-            continue
-        if season not in season_min_date or sort_key < season_min_date[season]:
-            season_min_date[season] = sort_key
-
-    def final_sort_key(item):
-        sort_key, season, ep_num, _ep = item
-        group_key = season_min_date[season] if season is not None else sort_key
-        secondary_key = ep_num if (season is not None and ep_num is not None) else sort_key
-        return (group_key, secondary_key)
-
-    raw_episodes.sort(key=final_sort_key)
+    # TICKET-131 : tri délégué à trier_episodes(), partagé avec
+    # merge_episodes(). La logique était dupliquée ici et là-bas ; toute
+    # divergence entre les deux donnait un ordre différent selon le chemin
+    # emprunté (rechargement du flux ou fusion de l'historique).
+    raw_episodes = trier_episodes(raw_episodes)
     keyed_episodes = [(sort_key, ep) for sort_key, _season, _ep_num, ep in raw_episodes]
     # Retourne aussi l'image du podcast au niveau du <channel> (feed_image) :
     # bug 2026-07-09 (La Discomobile) — ingest.py utilisait episodes[0].image_url
@@ -217,18 +308,6 @@ def merge_episodes(existing: list[Episode], fresh: list[Episode]) -> list[Episod
         ep_num = int(m.group(2)) if m else None
         items.append((sort_key, ep.season, ep_num, ep))
 
-    season_min_date: dict[str, int] = {}
-    for sort_key, season, _ep_num, _ep in items:
-        if season is None:
-            continue
-        if season not in season_min_date or sort_key < season_min_date[season]:
-            season_min_date[season] = sort_key
-
-    def final_sort_key(item):
-        sort_key, season, ep_num, _ep = item
-        group_key = season_min_date[season] if season is not None else sort_key
-        secondary_key = ep_num if (season is not None and ep_num is not None) else sort_key
-        return (group_key, secondary_key)
-
-    items.sort(key=final_sort_key)
+    # TICKET-131 : même tri que parse_rss(), via la fonction partagée.
+    items = trier_episodes(items)
     return [ep for _, _, _, ep in items]
