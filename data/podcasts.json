@@ -216,6 +216,87 @@
             "language": "fr",
             "image": "images/lesexplorateursdelunivers.jpg",
             "max_episodes": 999
+        },
+        {
+            "id": "minivulgaire",
+            "label": "Mini Vulgaire",
+            "rss": "https://rss-rf.aerion.me/rss/49ba63ae-c4d4-44a3-a89d-dcce0c25726d",
+            "enabled": true,
+            "language": "fr",
+            "image": "images/minivulgaire.jpg",
+            "max_episodes": 999
+        },
+        {
+            "id": "lesptitsbateaux",
+            "label": "Les P'tits Bateaux",
+            "rss": "https://rss-rf.aerion.me/rss/3d680a63-ec3d-11e1-a7b7-782bcb76618d",
+            "enabled": true,
+            "language": "fr",
+            "image": "images/lesptitsbateaux.jpg",
+            "max_episodes": 999
+        },
+        {
+            "id": "lesptitsbateauxlesinventions",
+            "label": "Les P'tits Bateaux : les inventions",
+            "rss": "https://rss-rf.aerion.me/rss/e925175e-3237-4333-aa9e-d15ad20fa7b9",
+            "enabled": true,
+            "language": "fr",
+            "image": "images/lesptitsbateauxlesinventions.jpg",
+            "max_episodes": 999
+        },
+        {
+            "id": "thomaspesquetdanslesptitsbateaux",
+            "label": "Thomas Pesquet dans \"Les P'tits Bateaux\"",
+            "rss": "https://rss-rf.aerion.me/rss/09c60cfd-221d-4251-b2cd-3b756991a9e3",
+            "enabled": true,
+            "language": "fr",
+            "image": "images/thomaspesquetdanslesptitsbateaux.jpg",
+            "max_episodes": 999
+        },
+        {
+            "id": "cestlarentreedesptitsbateaux",
+            "label": "C'est la rentrée des P'tits Bateaux",
+            "rss": "https://rss-rf.aerion.me/rss/7390026d-4850-4bcb-b054-30290a0593fa",
+            "enabled": true,
+            "language": "fr",
+            "image": "images/cestlarentreedesptitsbateaux.jpg",
+            "max_episodes": 999
+        },
+        {
+            "id": "concdecuentacuentos",
+            "label": "Con C de Cuentacuentos",
+            "rss": "https://anchor.fm/s/eb445b60/podcast/rss",
+            "enabled": true,
+            "language": "es",
+            "image": "images/concdecuentacuentos.jpg",
+            "max_episodes": 999
+        },
+        {
+            "id": "sapiensantes",
+            "label": "Sapiensantes",
+            "rss": "https://api.rtve.es/api/adapter/programas/1000883/audios.rss",
+            "enabled": true,
+            "language": "es",
+            "image": "images/sapiensantes.jpg",
+            "max_episodes": 999
+        },
+        {
+            "id": "laestacionazuldelosninoslean",
+            "label": "La estación azul de los niños: LEAN",
+            "rss": "https://api.rtve.es/api/programas/50172/audios.rss",
+            "enabled": true,
+            "language": "es",
+            "image": "images/laestacionazuldelosninoslean.jpg",
+            "max_episodes": 999
+        },
+        {
+            "id": "cometacolin",
+            "label": "Cometa colín",
+            "rss": "https://anchor.fm/s/fc0c894/podcast/rss",
+            "enabled": true,
+            "language": "es",
+            "image": "images/cometacolin.jpg",
+            "max_episodes": 999
         }
     ],
     "radios": [
