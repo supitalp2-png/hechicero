@@ -135,6 +135,65 @@ else
     warn "garde-fou 'player/radio-player' non trouvé sous sa forme attendue — à relire"
 fi
 
+# ── TICKET-127 — le code servi est-il bien celui du disque ? ───────────────
+# Bug surveillé : le 2026-08-17, une modification d'index.html a été déployée,
+# vérifiée sur le disque et validée par un smoke test vert… sans jamais
+# atteindre l'écran. Chromium servait sa copie en cache. Aucun contrôle ne
+# pouvait le voir, parce que tous regardaient le FICHIER, jamais la RÉPONSE.
+# C'est la pire famille de panne du projet : on croit avoir corrigé, et c'est
+# l'ancien code qui tourne — ce qui fausse en plus tous les diagnostics
+# suivants.
+if md5_disque=$(md5sum "$IDX" 2>/dev/null | cut -d' ' -f1); then
+    md5_servi=$(curl -sf --max-time 5 http://localhost/lecteur/ | md5sum | cut -d' ' -f1)
+    if [ -z "$md5_servi" ] || [ "$md5_servi" = "d41d8cd98f00b204e9800998ecf8427e" ]; then
+        warn "page /lecteur/ illisible depuis le serveur — contrôle du cache sauté (Apache tourne-t-il ?)"
+    elif [ "$md5_disque" = "$md5_servi" ]; then
+        pass "la page servie est identique au fichier du disque (pas de cache serveur)"
+    else
+        fail "la page SERVIE diffère du fichier sur le disque — une modification d'index.html n'atteindrait pas l'écran"
+        echo "     → disque=$md5_disque  servi=$md5_servi"
+    fi
+fi
+
+# En-tête anti-cache (TICKET-127). C'est le filet qui empêche Chromium de
+# resservir un ancien index.html depuis son profil, que `restart-kiosk.sh`
+# ne remet pas à zéro (pas de --incognito).
+# ⚠️ La conf Apache est encadrée par <IfModule headers_module> : si mod_headers
+# n'est pas chargé, elle ne s'applique PAS et Apache démarre quand même. Le
+# silence est donc possible — d'où ce contrôle, qui lit la réponse réelle.
+entetes=$(curl -sf -I --max-time 5 http://localhost/lecteur/ 2>/dev/null)
+if [ -z "$entetes" ]; then
+    warn "en-têtes de /lecteur/ illisibles — contrôle anti-cache sauté"
+elif echo "$entetes" | grep -qi "cache-control:.*no-store"; then
+    pass "en-tête anti-cache présent sur la page du lecteur"
+else
+    warn "pas de Cache-Control no-store sur /lecteur/ — Chromium peut resservir un ancien index.html (TICKET-127)"
+    echo "     → sudo a2enmod headers && sudo a2enconf apache-hechicero-nocache && sudo systemctl reload apache2"
+fi
+
+# ── TICKET-127 — le battement de cœur est-il armé ? ────────────────────────
+if grep -q "setInterval(kioskHeartbeat, KIOSK_BEAT_MS)" "$IDX"; then
+    pass "battement de cœur du kiosque armé"
+else
+    fail "setInterval(kioskHeartbeat, ...) absent — un gel de la page redeviendrait indétectable"
+fi
+
+# ── Zone Z4 — le battement ne doit JAMAIS réarmer le timer de veille ───────
+# Bug surveillé : TICKET-102. `checkParentalTime` tournait toutes les 30 s et
+# appelait resetSleepTimer() à chaque passage ; comme 30 s < sleep_delay, le
+# compte à rebours d'inactivité était perpétuellement repoussé et l'écran de
+# veille ne pouvait JAMAIS s'afficher. Le battement de TICKET-127 tourne à
+# 15 s, soit encore plus vite : s'il touchait au timer, il rejouerait le même
+# bug en pire. On vérifie donc le corps de la fonction, pas le fichier entier.
+corps_beat=$(sed -n '/^function kioskHeartbeat()/,/^}/p' "$IDX")
+if [ -z "$corps_beat" ]; then
+    warn "fonction kioskHeartbeat() introuvable sous sa forme attendue — contrôle Z4 sauté"
+elif echo "$corps_beat" | grep -qE "resetSleepTimer|clearTimeout|sleepTimer"; then
+    fail "kioskHeartbeat() touche au timer de veille — l'écran ne s'endormira plus (piège TICKET-102)"
+else
+    pass "battement sans effet sur le timer de veille (zone Z4 préservée)"
+fi
+
 titre "4. Boucle de rafraîchissement vue depuis le serveur"
 
 # On ne peut pas observer le rendu du navigateur depuis le shell. En revanche,
@@ -237,6 +296,40 @@ if ou=$(service_actif mpd_watchdog "mpd_watchdog.py"); then
     pass "mpd_watchdog actif ($ou)"
 else
     warn "mpd_watchdog inactif — un MPD figé ne serait plus détecté (TICKET-122)"
+fi
+
+# ── TICKET-127 — le kiosque exécute-t-il encore du JavaScript ? ────────────
+# Bug surveillé : le 2026-08-17 la page a cessé d'exécuter du JS entre 07:52:48
+# et 07:57:48, en laissant l'overlay de veille comme dernière image peinte.
+# Écran noir figé, tactile sans effet — et TOUS les indicateurs habituels au
+# vert : mpd actif, boutons actifs, `wlr-randr` annonçant `Enabled: yes`, aucun
+# `off` dans screen_dpms.log. Aucun test existant ne pouvait voir ça, parce
+# qu'aucun ne regardait la page elle-même.
+# Le battement de cœur est le seul témoin : une page vivante écrit
+# data/kiosk_heartbeat.json toutes les 15 s.
+if ou=$(service_actif kiosk_freeze_watch "kiosk_freeze_watch.py"); then
+    pass "kiosk_freeze_watch actif ($ou)"
+else
+    warn "kiosk_freeze_watch inactif — un gel du kiosque ne laisserait aucune trace (TICKET-127)"
+fi
+
+BEAT="$ROOT/data/kiosk_heartbeat.json"
+if [ -f "$BEAT" ]; then
+    # `date -r` donne le mtime : ça mesure la dernière écriture réussie, pas ce
+    # que la page prétend. Indépendant du contenu du fichier, donc increvable.
+    age=$(( $(date +%s) - $(date -r "$BEAT" +%s) ))
+    ecran=$(sed -n 's/.*"screen":"\([^"]*\)".*/\1/p' "$BEAT")
+    veille=$(sed -n 's/.*"overlay":\([a-z]*\).*/\1/p' "$BEAT")
+    if [ "$age" -le 60 ]; then
+        pass "kiosque vivant — battement il y a ${age}s (écran=${ecran:-?} veille=${veille:-?})"
+    else
+        fail "kiosque MUET depuis ${age}s — la page n'exécute plus de JS (TICKET-127)"
+        echo "     → l'écran est probablement noir et figé sur sa dernière image"
+        echo "     → relevé : tail -60 data/kiosk_freeze.log"
+        echo "     → sortie de panne sans reboot : ./scripts/screen_dpms.sh rescue"
+    fi
+else
+    warn "data/kiosk_heartbeat.json absent — la page n'a jamais battu depuis l'ajout du traceur (recharger le kiosque)"
 fi
 
 titre "6. Unités systemd — pièges de la zone Z2"

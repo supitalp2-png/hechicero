@@ -54,6 +54,9 @@ data/alsaequal_casque.bin
 data/tracking.db
 data/tracking.db-shm
 data/tracking.db-wal
+# TICKET-127 : état du battement de cœur du kiosque, réécrit toutes les 15 s.
+# (data/kiosk_freeze.log est déjà couvert par la règle *.log plus haut.)
+data/kiosk_heartbeat.json
 
 # --- Photos originales (haute résolution, hors repo) ---
 Photos/

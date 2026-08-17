@@ -202,6 +202,49 @@ les deux, l'écran de veille s'affiche sur une dalle allumée — c'est normal, 
 ligne de l'appelant sur deux niveaux (`[père<-aïeul]`). Un réveil inexpliqué s'attribue
 désormais en une ligne.
 
+**Quatrième piège — un écran noir n'est pas forcément un écran éteint (2026-08-17,
+TICKET-127)** : la page peut **cesser d'exécuter du JavaScript** et rester affichée sur sa
+dernière image peinte. Si cette image était l'overlay de veille, on obtient un écran noir
+que rien ne lève — et **tous les indicateurs habituels restent au vert** : MPD joue, les
+boutons GPIO répondent (ils ne passent pas par la page), `wlr-randr` annonce `Enabled: yes`
+au mode natif, et `screen_dpms.log` ne contient aucun `off` puisque la dalle n'a jamais été
+éteinte. Seul un rechargement de la page rétablit l'image.
+
+⚠️ **Le réflexe de diagnostic à avoir**, dans cet ordre — il évite de repartir sur la
+mauvaise piste comme la première fois :
+
+| Observation | Ce que ça veut dire |
+|---|---|
+| un `off` récent dans `screen_dpms.log` | la dalle a été éteinte → piste DPMS, `screen_dpms.sh rescue` |
+| aucun `off`, et `Enabled: yes` | la dalle affiche quelque chose → **c'est la page**, pas l'écran |
+| `data/kiosk_heartbeat.json` vieux de plus de 60 s | la page n'exécute plus de JS → TICKET-127 |
+| battement frais mais écran noir | overlay de veille bien vivant → chercher côté événements d'entrée |
+
+**Comment on l'a prouvé, et pourquoi c'est solide** : dans `data/sleep_debug.log`, la boucle
+de 5 min a écrit `apply_sleep_config` à 07:47:48 puis 07:52:48, et plus jamais. Ce n'était
+pas une panne réseau : dans `loadParentalConfig()`, `applySleepConfig()` est appelé **hors
+du `try/catch`** — même fetch en échec, la ligne partait quand même. Son silence ne peut
+donc venir que de l'arrêt de l'exécution.
+
+**Instrumentation** : la page envoie un battement toutes les 15 s
+(`radio.php?action=kiosk_beat`) qui **écrase** `data/kiosk_heartbeat.json` — un état, pas un
+journal, donc pas de fichier qui gonfle. `scripts/kiosk_freeze_watch.py` le surveille et,
+au-delà de 60 s de silence, écrit **un seul** instantané dans `data/kiosk_freeze.log` :
+`vcgencmd get_throttled` (sous-tension — suspect nº 1 depuis le changement de cellules,
+TICKET-126), `wlr-randr`, état des processus Chromium (`stat`, `wchan`, RSS), `free -m`,
+`dmesg`, `journalctl` des 10 dernières minutes, sonde du socket MPD. **Il observe
+uniquement** : aucune relance de Chromium, aucun rebond de mode (décision de Thomas — un
+guetteur qui répare masque la panne).
+
+⚠️ **Contrainte sur le battement** : à 15 s il est bien plus rapide que `sleep_delay`
+(120 s). Il ne doit donc **jamais** appeler `resetSleepTimer()`, sinon il rejoue le piège de
+TICKET-102 en pire. Vérifié automatiquement : le smoke test §3 lit le corps de
+`kioskHeartbeat()` et échoue s'il y trouve `resetSleepTimer`, `clearTimeout` ou
+`sleepTimer`.
+
+**Test de garde** : smoke test §3 (battement armé + absence d'effet sur le timer de veille)
+et §5 (service actif + fraîcheur du battement, `fail` au-delà de 60 s).
+
 ---
 
 ### 🟠 Z5 — `data.json` et rafraîchissement du catalogue
@@ -396,6 +439,47 @@ sudo python3 ~/hechicero/scripts/mpd_watchdog.py --recover
 
 ---
 
+### 🔴 Z12 — Déploiement de l'IHM : le code servi n'est pas toujours le code du disque
+
+**Le piège**, et c'est le plus sournois du projet : **on peut modifier `index.html`, le vérifier
+sur le disque, lancer un smoke test tout vert, et voir l'ancien code tourner à l'écran.**
+Constaté le 2026-08-17 : deux allers-retours de diagnostic perdus à chercher un bug dans du
+code qui n'était pas exécuté. Rien ne le signalait — le fichier était bon, PHP était bon,
+Apache répondait 200.
+
+**Deux causes cumulées** :
+
+1. `restart-kiosk.sh` ne lance pas Chromium en `--incognito` (contrairement au `.desktop` du
+   mode kiosque), donc son profil et son cache HTTP survivent aux relances.
+2. Aucun en-tête anti-cache n'était envoyé sur le HTML du lecteur.
+
+**Pourquoi aucun test ne pouvait le voir** : tous les contrôles regardaient le **fichier**,
+jamais la **réponse**. C'est la leçon générale de cette zone — pour tout ce qui traverse un
+serveur ou un cache, vérifier ce qui arrive, pas ce qui est stocké.
+
+**Fichiers** : `scripts/apache-hechicero-nocache.conf`, `restart-kiosk.sh`,
+`/etc/apache2/conf-enabled/`
+
+**Historique** : TICKET-127
+
+**Correctif** : `mod_headers` + `Cache-Control: no-store` sur `^/lecteur/?$` et
+`^/lecteur/.+\.html$` via `<LocationMatch>` (indépendant du `DocumentRoot`, donc reproductible
+sur une image SD fraîche). Volontairement limité au HTML : polices, images et sons restent en
+cache, ils pèsent et ne changent presque jamais.
+
+⚠️ **La conf est encadrée par `<IfModule headers_module>`** : sans ce garde-fou, un
+`mod_headers` absent empêcherait Apache de démarrer et l'IHM de l'enfant serait morte. Mais
+cela rend l'échec **silencieux** — d'où l'obligation d'un test qui lit la réponse réelle.
+
+**Test de garde** : smoke test §3 — comparaison du `md5` d'`index.html` sur le disque avec
+celui de la page servie (`fail` si différence), et présence de `Cache-Control: no-store` dans
+les en-têtes réellement renvoyés (`warn` si absent).
+
+**Dépannage** : si le cache reprend malgré tout,
+`pkill chromium; rm -rf ~/.cache/chromium; ./restart-kiosk.sh`.
+
+---
+
 ## 5. Dette de test — zones sans garde automatique
 
 Par ordre d'urgence. C'est la liste de travail de ce document.
@@ -404,6 +488,8 @@ Par ordre d'urgence. C'est la liste de travail de ce document.
 |------|---------------|--------|
 | Z2 services durcis | Prouver qu'un service recrée ses fichiers de travail après suppression (les directives d'unité sont désormais couvertes, §6 du smoke test) | TICKET-121 |
 | ~~Z6 audio~~ | ✅ **couvert** depuis le 2026-08-05 (smoke test §8) | TICKET-124 |
+| ~~Z4 écran — page vivante~~ | ✅ **couvert** depuis le 2026-08-17 : le battement de cœur détecte un kiosque qui n'exécute plus de JS (smoke test §3 et §5) | TICKET-127 |
+| Z4 écran — cause du gel | Le battement **date** le gel, il ne l'**explique** pas. La cause reste à établir sur l'instantané du prochain épisode. | TICKET-127 |
 | Z3 boutons | Prouver qu'un appui produit une action (pas juste « service actif ») | — |
 | Z7 hors réseau | Lecture d'un podcast local, réseau coupé | — |
 | Z9 intégrité | Intégrer `check_integrity.py` au smoke test | — |

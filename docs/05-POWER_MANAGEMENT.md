@@ -68,6 +68,27 @@ Une seule question : *est-ce que j'ai assez de batterie pour ce que je veux fair
 > ⚠️ Ces fichiers sont dans `.gitignore` — jamais versionnés.
 > ⚠️ Permissions obligatoires : `rw-rw-r--` (664) — `battery_common.py` les applique après chaque écriture.
 
+### Remise à zéro des mesures après remplacement des cellules
+
+À faire **uniquement** quand la batterie est physiquement changée : l'historique décrit alors un accumulateur qui n'existe plus et fausse `estimated_autonomy_minutes` ainsi que `consumption_by_mode`. Procédure validée le 2026-08-17 (TICKET-126) :
+
+```bash
+sudo systemctl stop battery_tracker battery_watchdog
+rm -f ~/hechicero/data/{battery_history.json,battery_stats.json,last_session.json} \
+      ~/hechicero/data/battery_*.json.*
+sudo systemctl start battery_tracker battery_watchdog
+sleep 100 && python3 -c "import json;s=json.load(open('/home/thomas/hechicero/data/battery_stats.json'));print(s.get('cycles_recorded'), s.get('model_confidence'))"
+```
+
+Attendu : `0 low`.
+
+- ⚠️ **L'ordre n'est pas négociable.** `battery_tracker` écrit `battery_history.json` et `battery_stats.json` à **chaque** tour de boucle (60 s par défaut) ; `battery_watchdog` est le seul auteur de `last_session.json`. Supprimer à chaud, c'est voir un fichier réapparaître dans la minute et croire la remise à zéro faite.
+- Le glob `battery_*.json.*` récupère les fichiers temporaires orphelins de `atomic_write_text()` (`tempfile.mkstemp(prefix=path.name + ".")`), laissés derrière par une coupure d'alimentation en pleine écriture.
+- **Ne jamais toucher à `data/tracking.db`** : historique d'écoute, sans rapport avec la batterie.
+- **Le niveau (%) n'a pas besoin d'être réinitialisé** : `percent_from_voltage()` est une table tension→pourcentage, sans mémoire. Seul le modèle d'estimation réapprend.
+- **À faire branché au secteur**, pour que le premier cycle de décharge mesuré parte d'une batterie pleine.
+- **Vérifier ensuite `charge_threshold_ma`** (`data/config.json`, 300 mA) : ce seuil est calibré sur la phase CV des cellules *précédentes*. Des cellules neuves peuvent faire réapparaître les faux micro-cycles — le signe est une rafale de cycles de 1 à 2 minutes marqués `invalid` dans `battery_history.json`.
+
 ### Schéma `data/battery_history.json`
 
 ```json

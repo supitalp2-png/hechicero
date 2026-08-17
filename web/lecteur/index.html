@@ -3235,6 +3235,48 @@ setInterval(updateSleepClock, 10000);
 resetSleepTimer('page_load');
 logSleepEvent('page_load', `sleep_delay_default_ms=${SLEEP_DELAY}`);
 
+// ── Battement de cœur du kiosque (TICKET-127) ─────────────────────────────
+// Le 2026-08-17, la page a cessé d'exécuter du JavaScript entre 07:52:48 et
+// 07:57:48 en laissant l'overlay de veille comme dernière image peinte :
+// écran noir figé, tactile sans effet, alors que MPD et les boutons GPIO
+// allaient bien (ils ne passent pas par la page) et que wlr-randr annonçait
+// `Enabled: yes`. Impossible de dater la mort, ni de savoir dans quel état
+// l'IHM était juste avant.
+//
+// Preuve que le JS s'était bien arrêté, et pas seulement le réseau : la
+// boucle de 5 min (bas de fichier) appelle loadParentalConfig(), qui appelle
+// applySleepConfig() **hors du try/catch** — même fetch en échec, la ligne
+// apply_sleep_config partait quand même. Son silence ne peut donc venir que
+// de l'arrêt de l'exécution.
+//
+// ⚠️ RÈGLE ABSOLUE (zone Z4, piège de TICKET-102) : ce battement ne doit
+// JAMAIS appeler resetSleepTimer() ni toucher au timer de veille. Une boucle
+// périodique plus courte que sleep_delay qui réarme le compte à rebours
+// empêche l'écran de s'endormir pour toujours — c'est exactement ce que
+// checkParentalTime() faisait à 30 s. Ici : un fetch, rien d'autre.
+// Vérification associée : après cet ajout, l'overlay doit toujours
+// s'afficher au bout de sleep_delay (120 s) d'inactivité réelle.
+const KIOSK_BEAT_MS = 15000;
+const pageLoadedAt = Date.now();
+let kioskBeats = 0;
+function kioskHeartbeat() {
+  try {
+    kioskBeats += 1;
+    const params = new URLSearchParams({
+      action:     'kiosk_beat',
+      overlay:    getSleepOverlay()?.classList.contains('active') ? '1' : '0',
+      screen:     currentScreen ?? '?',
+      page_age_s: String(Math.round((Date.now() - pageLoadedAt) / 1000)),
+      beats:      String(kioskBeats),
+      mpd_state:  lastMpdState ?? '?',
+    });
+    // Fire-and-forget, comme logSleepEvent : ne doit jamais bloquer ni lever.
+    fetch('/lecteur/radio.php?' + params.toString(), { cache: 'no-store' }).catch(() => {});
+  } catch (_) {}
+}
+kioskHeartbeat();                          // un premier battement immédiat au chargement
+setInterval(kioskHeartbeat, KIOSK_BEAT_MS);
+
 // INIT
 // ═══════════════════════════════════════
 

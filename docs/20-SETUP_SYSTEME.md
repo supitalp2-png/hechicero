@@ -384,6 +384,40 @@ Fonctionnalités actuelles :
 - tests audio  
 - diagnostics simples  
 
+### Configuration Apache — relevé du 2026-08-17
+
+Ces valeurs n'étaient documentées nulle part, et les avoir ignorées a coûté deux
+allers-retours de diagnostic sur TICKET-127.
+
+| Élément | Valeur |
+|---|---|
+| Version | `Apache/2.4.68 (Debian)` — il n'existe pas d'Apache 3, la série stable est la 2.4 |
+| `DocumentRoot` | `/var/www/html` (`sites-enabled/000-default.conf`), où `~/hechicero/web` est lié |
+| `AllowOverride` | **`None`** partout dans `apache2.conf` → **les `.htaccess` sont ignorés** |
+| `mod_headers` | absent à l'origine, activé le 2026-08-17 (`sudo a2enmod headers`) |
+
+> 💡 `grep -r` **saute les liens symboliques** rencontrés en cours de récursion : un
+> `grep -r DocumentRoot /etc/apache2/sites-enabled/` ne renvoie rien, alors que
+> `grep -R` trouve le vhost. `sites-enabled/` ne contient que des liens.
+
+### En-tête anti-cache du lecteur (TICKET-127)
+
+Sans cet en-tête, **une modification d'`index.html` peut ne jamais atteindre l'écran** :
+Chromium ressert sa copie en cache, et `restart-kiosk.sh` ne remet pas son profil à zéro
+(pas de `--incognito`). Détail du piège : `docs/75-NON_REGRESSION.md` zone Z12.
+
+```bash
+sudo a2enmod headers
+sudo cp scripts/apache-hechicero-nocache.conf /etc/apache2/conf-available/
+sudo a2enconf apache-hechicero-nocache
+sudo apachectl configtest        # DOIT dire "Syntax OK" avant de recharger
+sudo systemctl reload apache2
+curl -sI http://localhost/lecteur/ | grep -i cache-control   # doit montrer no-store
+```
+
+À refaire sur toute réinstallation : la conf vit dans `/etc/apache2/`, hors du dépôt.
+Le smoke test §3 le détecte (comparaison du `md5` disque / page servie).
+
 ---
 
 ## 9. Lecteur embarqué (IHM enfant)

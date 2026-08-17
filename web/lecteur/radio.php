@@ -26,6 +26,16 @@ const UI_REQUEST_PATH = '/home/thomas/hechicero/data/ui_request.json';
 // (tap écran, appui physique) appellent la même action serveur, donc un seul
 // contexte côté serveur suffit à couvrir les deux.
 const NAV_CONTEXT_PATH = '/home/thomas/hechicero/data/nav_context.json';
+// TICKET-127 (2026-08-17) — battement de cœur du kiosque. Le 2026-08-17 la page
+// a CESSÉ d'exécuter du JavaScript entre 07:52:48 et 07:57:48, en laissant
+// l'overlay de veille comme dernière image peinte : écran noir figé, tactile
+// sans effet, alors que MPD, les boutons GPIO et wlr-randr allaient très bien
+// (`Enabled: yes`). Rien ne permettait de dater cette mort ni de savoir dans
+// quel état l'IHM se trouvait juste avant.
+// Ce fichier est ÉCRASÉ à chaque battement (jamais en append) : il ne grossit
+// pas, contrairement à data/sleep_debug.log qui a fini à plusieurs Mo avec des
+// octets NUL après une coupure de courant. C'est un état, pas un journal.
+const KIOSK_HEARTBEAT_PATH = '/home/thomas/hechicero/data/kiosk_heartbeat.json';
 
 function read_json_radio(string $path): array {
     if (!file_exists($path)) {
@@ -976,6 +986,46 @@ if (isset($_GET['action'])) {
         header('Content-Type: application/json; charset=utf-8');
         $d = read_json_radio(UI_REQUEST_PATH);
         echo json_encode(['screen' => $d['screen'] ?? null, 'ts' => $d['ts'] ?? 0]);
+        exit;
+    }
+
+    // Battement de cœur du kiosque (TICKET-127). Écriture ATOMIQUE et par
+    // ÉCRASEMENT : c'est un état courant, pas un historique — le fichier reste
+    // à quelques centaines d'octets pour toujours.
+    // ⚠️ Ne déclenche aucune action : ce point d'entrée doit rester purement
+    // passif. Il est appelé toutes les 15 s par une page dont on soupçonne
+    // qu'elle meurt ; tout effet de bord ici brouillerait la mesure.
+    if ($action === 'kiosk_beat') {
+        header('Content-Type: application/json; charset=utf-8');
+        // ⚠️ PIÈGE D'HORLOGE (constaté le 2026-08-17) : ce PHP tourne en UTC,
+        // alors que `data/screen_dpms.log` (shell `date`) et
+        // `data/kiosk_freeze.log` (Python `datetime.now()`) écrivent en heure
+        // locale. Deux heures d'écart entre les trois journaux qu'on croise
+        // justement pendant une panne. `data/sleep_debug.log` est en UTC lui
+        // aussi (même `date()` PHP) — c'est pour ça que son « 07:52:48 »
+        // correspond à 09:52:48 sur l'horloge de la maison.
+        // On expose donc les deux : `ts` en epoch (sans ambiguïté, c'est lui
+        // que le guetteur compare), `iso` en UTC, et `local` dans le même
+        // format que les autres journaux, pour pouvoir corréler à l'œil.
+        // Rien n'est changé globalement ici : toucher au fuseau de radio.php
+        // affecterait tous ses horodatages.
+        $localNow = (new DateTime('now', new DateTimeZone('Europe/Paris')))->format('Y-m-d H:i:s');
+        $payload = [
+            'ts'          => (int) round(microtime(true) * 1000),
+            'iso'         => date('c'),
+            'local'       => $localNow,
+            'overlay'     => ($_GET['overlay'] ?? '0') === '1',   // écran de veille affiché ?
+            'screen'      => substr((string)($_GET['screen'] ?? '?'), 0, 32),
+            'page_age_s'  => (int)($_GET['page_age_s'] ?? -1),    // secondes depuis le chargement de la page
+            'beats'       => (int)($_GET['beats'] ?? -1),         // nº de battement depuis le chargement
+            'mpd_state'   => substr((string)($_GET['mpd_state'] ?? '?'), 0, 16),
+        ];
+        $tmp = KIOSK_HEARTBEAT_PATH . '.tmp';
+        if (@file_put_contents($tmp, json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) . "\n") !== false) {
+            @rename($tmp, KIOSK_HEARTBEAT_PATH);
+            @chmod(KIOSK_HEARTBEAT_PATH, 0664);
+        }
+        echo json_encode(['ok' => true]);
         exit;
     }
 

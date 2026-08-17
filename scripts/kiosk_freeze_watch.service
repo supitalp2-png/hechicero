@@ -1,0 +1,39 @@
+[Unit]
+Description=Hechicero — guetteur de gel du kiosque (TICKET-127)
+After=network.target
+
+[Service]
+Type=simple
+User=thomas
+WorkingDirectory=/home/thomas/hechicero/scripts
+ExecStart=/usr/bin/python3 /home/thomas/hechicero/scripts/kiosk_freeze_watch.py
+Restart=on-failure
+RestartSec=15
+StandardOutput=journal
+StandardError=journal
+
+# ⚠️ PAS de Requires= sur une autre unité : la leçon de TICKET-121 est qu'un
+# Requires= propage l'arrêt et emporte des services qui n'ont rien demandé.
+# Ce guetteur doit survivre à tout, y compris à un redémarrage de mpd ou de la
+# session graphique — c'est précisément quand ça va mal qu'on a besoin de lui.
+
+# TICKET-127 — durcissement, dans l'esprit de TICKET-011.
+# Ce service lit data/kiosk_heartbeat.json, écrit data/kiosk_freeze.log, et
+# exécute des commandes de diagnostic en lecture seule (vcgencmd, wlr-randr,
+# ps, free, dmesg, journalctl) plus une sonde du socket MPD.
+#
+# PAS de PrivateDevices : casserait l'accès à /dev/vchiq, donc vcgencmd — or
+# le relevé de sous-tension est la principale raison d'être de ce service.
+# PAS de PrivateTmp : /tmp doit rester partagé pour voir l'environnement réel
+# de la session graphique (sockets Wayland sous XDG_RUNTIME_DIR).
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/thomas/hechicero/data
+
+# wlr-randr a besoin de joindre le compositeur de la session de thomas.
+Environment=WAYLAND_DISPLAY=wayland-0
+Environment=XDG_RUNTIME_DIR=/run/user/1000
+
+[Install]
+WantedBy=multi-user.target
