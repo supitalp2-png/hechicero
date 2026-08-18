@@ -166,6 +166,36 @@ else
     echo "     → l'exercer : curl -s \"http://localhost/?action=toggle_podcast&id=olma&enabled=1\""
 fi
 
+# ── TICKET-136 — plus personne ne lit le fichier d'état mort ───────────────
+# Bug surveillé : `web/status.json` était écrit par scripts/get_status.py,
+# supprimé en session 11. Son dernier horodatage datait du 2026-06-28 — la
+# page d'accueil de l'admin ET l'écran de l'enfant (en repli) ont affiché
+# CINQUANTE JOURS de données figées, sans que personne le remarque : les
+# valeurs restaient plausibles (91 %, 4,092 V).
+# Leçon : un repli vers des données périmées masque la panne au lieu de la
+# montrer. Mieux vaut n'afficher rien.
+# ⚠️ Chercher un FETCH, pas la chaîne « status.json » n'importe où : le
+# commentaire qui documente ce correctif la contient forcément, et le test
+# échouait sur sa propre explication. Un garde-fou qui crie au loup sur sa
+# propre documentation fait douter de toute la suite.
+if grep -qE "fetch\(\s*['\"][^'\"]*status\.json" "$ROOT/web/lecteur/index.html" 2>/dev/null; then
+    fail "l'écran enfant lit encore status.json (fichier mort depuis la session 11) — TICKET-136"
+else
+    pass "écran enfant : plus de repli vers le fichier d'état mort"
+fi
+if grep -q 'read_json(STATUS_JSON)' "$ROOT/web/index.php" 2>/dev/null; then
+    fail "l'admin lit encore STATUS_JSON (fichier mort) au lieu de battery_stats.json — TICKET-136"
+else
+    pass "admin : bandeau batterie alimenté par battery_stats.json"
+fi
+
+# La fraîcheur doit être exposée : c'est ce qui rend une donnée figée visible.
+if grep -q "'stale'" "$ROOT/web/index.php" 2>/dev/null; then
+    pass "admin : fraîcheur de la mesure batterie exposée (garde anti-donnée figée)"
+else
+    warn "admin : la fraîcheur n'est plus exposée — une donnée figée redeviendrait invisible (TICKET-136)"
+fi
+
 # ── TICKET-127 — le code servi est-il bien celui du disque ? ───────────────
 # Bug surveillé : le 2026-08-17, une modification d'index.html a été déployée,
 # vérifiée sur le disque et validée par un smoke test vert… sans jamais
@@ -418,8 +448,8 @@ fi
 LS="$ROOT/data/last_session.json"
 if [ -f "$LS" ] && grep -q '"shutdown_reason": *"battery_critical"' "$LS" 2>/dev/null; then
     quand=$(sed -n 's/.*"shutdown_at": *"\([^"]*\)".*/\1/p' "$LS")
-    warn "last_session.json annonce une coupure batterie ($quand) — si c'est un reste de test, la reprise admin est fausse"
-    echo "     → effacer : rm data/last_session.json"
+    warn "dernière coupure sur batterie critique : $quand — l'admin proposera une reprise"
+    echo "     → normal après une vraie décharge complète ; effacer une fois vu : rm data/last_session.json"
 fi
 
 # ── TICKET-133 — détection charge/décharge et clôture de cycle ─────────────

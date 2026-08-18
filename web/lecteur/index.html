@@ -1290,22 +1290,27 @@ function renderBattery(pct, charging, minutes) {
       `;
 }
 
-// Batterie : essaie navigator.getBattery(), sinon lit status.json (INA219)
+// Batterie : source unique = /index.php?action=battery_data, qui sert
+// data/battery_stats.json (INA219, réécrit toutes les 60 s).
 function updateBatteryDisplay(pct, charging, minutes) {
   const el = document.getElementById('bat-display');
   if (!el) return;
   el.innerHTML = renderBattery(Math.round(pct), charging, minutes);
 }
 
-function fetchBatteryFromStatus() {
-  fetch('../status.json', { cache: 'no-store' })
-    .then(r => r.json())
-    .then(d => {
-      const pct = d.battery_percent ?? d.percent ?? d.soc ?? null;
-      const charging = d.charging ?? (d.state ? d.state.toLowerCase().includes('charge') && !d.state.toLowerCase().includes('sur batterie') : false);
-      if (pct !== null) updateBatteryDisplay(pct, charging, null);
-    })
-    .catch(() => {});
+// ⚠️ TICKET-136 (2026-08-18) — CE REPLI LISAIT UN FICHIER MORT.
+// `../status.json` était écrit par `scripts/get_status.py`, supprimé en
+// session 11. Son dernier horodatage datait du 2026-06-28 : dès que l'appel
+// principal échouait, l'écran affichait à l'enfant **91 % figés depuis
+// cinquante jours**, en toute confiance.
+//
+// Un repli vers des données périmées est pire que pas de repli : il masque la
+// panne au lieu de la montrer, et personne ne peut soupçonner un chiffre
+// plausible. On n'affiche donc plus rien quand la mesure est indisponible —
+// l'absence d'indicateur est un signal honnête.
+function marquerBatterieIndisponible() {
+  const el = document.getElementById('bat-display');
+  if (el) el.innerHTML = '';
 }
 
 let batterySnapshot = null;
@@ -1381,10 +1386,10 @@ function fetchBatteryStats() {
       if (stats && typeof stats === 'object' && Object.keys(stats).length) {
         applyBatteryStats(stats);
       } else {
-        fetchBatteryFromStatus();
+        marquerBatterieIndisponible();
       }
     })
-    .catch(() => fetchBatteryFromStatus());
+    .catch(() => marquerBatterieIndisponible());
 }
 
 fetchBatteryStats();

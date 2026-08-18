@@ -342,16 +342,50 @@ if (isset($_GET['action'])) {
 
     // ── Statut système
     if ($a === 'status') {
-        $b     = read_json(STATUS_JSON);
+        // ⚠️ TICKET-136 (2026-08-18) — CE BLOC LISAIT `web/status.json`, UN
+        // FICHIER MORT. Il était écrit par `scripts/get_status.py`, supprimé en
+        // session 11 (cf. docs/05-POWER_MANAGEMENT.md). Son dernier horodatage
+        // datait du 2026-06-28 : le bandeau batterie de la page d'accueil a donc
+        // affiché **cinquante jours** de données figées — 91 %, 4,092 V, 49 mA —
+        // pendant que la vraie batterie faisait ses cycles.
+        // Personne ne l'a vu parce que les valeurs étaient plausibles. C'est
+        // exactement pour ça qu'on expose désormais la FRAÎCHEUR : une donnée
+        // périmée affichée comme vivante est pire que pas de donnée du tout.
+        // La source de vérité est `data/battery_stats.json`, réécrit toutes les
+        // 60 s par `battery_tracker`.
+        $b     = read_json(BATTERY_STATS_JSON);
         $mpd   = mpd_status();
         $free  = @disk_free_space(PROJECT_ROOT) ?: 0;
         $total = @disk_total_space(PROJECT_ROOT) ?: 0;
+
+        // ⚠️ `last_updated` est écrit par Python en heure LOCALE naïve, alors
+        // que PHP tourne en UTC (TICKET-129). Sans fuseau explicite, l'âge
+        // calculé serait faux de deux heures et la donnée paraîtrait périmée
+        // en permanence.
+        $age = null;
+        if (!empty($b['last_updated'])) {
+            try {
+                $t = new DateTime($b['last_updated'], new DateTimeZone('Europe/Paris'));
+                $age = max(0, (new DateTime('now'))->getTimestamp() - $t->getTimestamp());
+            } catch (Exception $e) { $age = null; }
+        }
+
+        $charge = !empty($b['charging']);
         echo json_encode([
             'battery' => [
-                'percent'    => isset($b['percent'])    ? (float)$b['percent']    : null,
+                'percent'    => isset($b['current_level']) ? (float)$b['current_level'] : null,
                 'voltage_v'  => isset($b['voltage_v'])  ? (float)$b['voltage_v']  : null,
                 'current_ma' => isset($b['current_ma']) ? (float)$b['current_ma'] : null,
-                'state'      => $b['state'] ?? '—',
+                'state'      => isset($b['charging']) ? ($charge ? 'En charge ⚡' : 'Sur batterie 🔋') : '—',
+                'charging'   => isset($b['charging']) ? $charge : null,
+                // Autonomie : l'estimation « live » (courant réel) est plus
+                // fiable que la moyenne des cycles quand elle est disponible.
+                'autonomy_min' => $b['estimated_autonomy_minutes_live']
+                                  ?? $b['estimated_autonomy_minutes'] ?? null,
+                'age_seconds'  => $age,
+                // Au-delà de 3 minutes, le tracker (60 s d'intervalle) a manqué
+                // trois tours : la donnée n'est plus vivante.
+                'stale'        => $age === null || $age > 180,
             ],
             'mpd'  => ['state' => $mpd['state'] ?? 'unknown', 'volume' => $mpd['volume'] ?? '?'],
             'disk' => [
@@ -1043,9 +1077,11 @@ input:checked + .slider:before { transform:translateX(20px); }
       <div class="card-title">Batterie</div>
       <div class="stat"><span class="stat-l">Niveau</span><span class="stat-v" id="bat-pct">…</span></div>
       <div class="stat"><span class="stat-l">État</span><span class="stat-v" id="bat-state">…</span></div>
+      <div class="stat"><span class="stat-l">Autonomie</span><span class="stat-v" id="bat-auto">…</span></div>
       <div class="stat"><span class="stat-l">Tension</span><span class="stat-v" id="bat-volt">…</span></div>
       <div class="stat"><span class="stat-l">Courant</span><span class="stat-v" id="bat-amp">…</span></div>
       <div class="bar-wrap"><div class="bar-fill" id="bat-bar" style="width:0%"></div></div>
+      <div class="stat-note" id="bat-stale" style="display:none;margin-top:8px;color:#e2a03f;font-size:13px;"></div>
     </div>
     <div class="card">
       <div class="card-title">Système</div>
@@ -1404,11 +1440,47 @@ async function loadStatus() {
   const b = s.battery, pct = b.percent ?? 0;
   document.getElementById('bat-pct').textContent   = b.percent  !== null ? b.percent  + ' %'  : '—';
   document.getElementById('bat-state').textContent = b.state    ?? '—';
-  document.getElementById('bat-volt').textContent  = b.voltage_v  !== null ? b.voltage_v  + ' V'  : '—';
-  document.getElementById('bat-amp').textContent   = b.current_ma !== null ? b.current_ma + ' mA' : '—';
+  document.getElementById('bat-volt').textContent  = b.voltage_v  !== null ? b.voltage_v.toFixed(3)  + ' V'  : '—';
+  // TICKET-136 : le SIGNE du courant était perdu à l'affichage. « 49 mA » et
+  // « −49 mA » sont deux états opposés — charge ou décharge — et c'est le signe
+  // qui décide de la classification depuis TICKET-133. On le force.
+  document.getElementById('bat-amp').textContent   = b.current_ma !== null
+    ? (b.current_ma > 0 ? '+' : '') + Math.round(b.current_ma) + ' mA'
+    : '—';
+  // Autonomie restante, en heures/minutes plutôt qu'en minutes brutes.
+  // ⚠️ En charge, l'autonomie de décharge n'a aucun sens : `battery_tracker`
+  // conserve la dernière moyenne de cycles et la renvoie telle quelle. Elle
+  // s'affichait donc comme « 39 min » pendant une recharge — un chiffre juste
+  // dans le mauvais contexte, ce qui est pire qu'une absence de chiffre.
+  const au = document.getElementById('bat-auto');
+  if (b.charging) {
+    au.textContent = 'en charge';
+  } else if (b.autonomy_min != null && b.autonomy_min > 0) {
+    const h = Math.floor(b.autonomy_min / 60), m = b.autonomy_min % 60;
+    au.textContent = h > 0 ? `${h} h ${String(m).padStart(2, '0')}` : `${m} min`;
+  } else {
+    au.textContent = '—';
+  }
   const bb = document.getElementById('bat-bar');
   bb.style.width = pct + '%';
   bb.style.background = pct > 50 ? 'var(--green)' : pct > 20 ? 'var(--accent)' : 'var(--red)';
+
+  // ⚠️ TICKET-136 — la fraîcheur, affichée explicitement.
+  // Ce bandeau a montré cinquante jours de données figées sans que personne
+  // s'en aperçoive, parce que les valeurs restaient plausibles. Une mesure
+  // périmée doit se voir : on grise le panneau et on dit depuis quand.
+  const st = document.getElementById('bat-stale');
+  if (b.stale) {
+    const min = b.age_seconds != null ? Math.round(b.age_seconds / 60) : null;
+    st.textContent = min != null
+      ? `⚠ Données figées depuis ${min > 120 ? Math.round(min / 60) + ' h' : min + ' min'} — battery_tracker tourne-t-il ?`
+      : '⚠ Horodatage illisible — donnée non vérifiable';
+    st.style.display = '';
+    document.querySelector('#bat-pct').style.opacity = '0.45';
+  } else {
+    st.style.display = 'none';
+    document.querySelector('#bat-pct').style.opacity = '';
+  }
 
   const ms = document.getElementById('mpd-state');
   ms.textContent = s.mpd.state;

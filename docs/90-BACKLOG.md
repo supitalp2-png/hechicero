@@ -10,7 +10,8 @@
 
 | Ticket | Sujet | Où ça en est |
 |---|---|---|
-| **134** | Test de décharge profonde (seuil abaissé à 5 %) | 🔬 **prêt**, à lancer un soir — `scripts/test_decharge_profonde.sh armer` |
+| **137** | Recalibrer la table tension→pourcentage sur les cellules réelles | 🔬 script d'analyse prêt ; **attendre 3-4 cycles** avant de remplacer la table |
+| **134** | Test de décharge profonde | ✅ **fait le 2026-08-18** : 97 % → 5 % en 4 h 49, coupure propre à 4 %, **3,328 V sous −2,2 A**. Seuils abaissés à 5 % / 10 % sur cette preuve |
 | **133** | Détection charge/décharge + cycles faussés par l'arrêt | ✅ corrigé et testé ; reste à accumuler des cycles pour le modèle |
 | **132** | `buttons_daemon` avertit à chaque play/pause (bruit de journal) | à faire, sans gravité |
 | **130** | 9 podcasts disparus de la config | ✅ restaurés, verrou + sauvegardes livrés ; `parental.json` et `config.json` courent le même risque |
@@ -25,6 +26,19 @@
 | **058** | Série podcast « Décisions Prises » + easter egg | 2 épisodes écrits |
 
 **Clos le 2026-08-17** : 112 · 116 · 123 · 124 · 125 · 131 · 079 · 079bis · 017 (supprimé)
+**Clos le 2026-08-18** : 134 (décharge profonde mesurée) · 136 (bandeau batterie figé depuis 50 jours)
+
+- [ ] TICKET-137 — batterie/précision — Recalibrer la conversion tension→pourcentage sur les cellules réelles (2026-08-18)
+      - **`battery_common._LIPO_TABLE` est une courbe générique d'accumulateur à poche**, héritée du montage d'origine. Les cellules sont des EVE INR21700/58E (Li-ion NMC). La table n'a jamais été recalée — et **tout le pourcentage affiché du projet en dépend** : écran enfant, tableau de bord, page d'accueil, seuils d'alerte et d'arrêt.
+      - 🔬 **Mesures du cycle du 2026-08-18** (`scripts/recalibrer_table_batterie.py`, 484 points) :
+        - **Résistance interne : 53 mΩ** — crédible pour deux 21700 en parallèle. À −2,2 A, l'affaissement vaut **117 mV**, soit ≈ 10 points de pourcentage. **Le niveau affiché plonge donc dès que l'enfant lance un podcast, alors que rien n'a été consommé.** C'est le défaut le plus visible au quotidien.
+        - **Énergie délivrée : 8892 mAh** entre 97 % et 4 %, soit ≈ 9560 mAh utiles contre 11 200 nominaux (85 % — normal pour une coupure à 3,33 V sous charge). ➡️ Pour le calcul d'autonomie temps réel, **9560 serait plus juste que 11 200**.
+        - **La table actuelle sur-évalue le niveau de 8 à 10 points** dans toute la plage médiane (à 3,798 V elle annonce ~48 % là où la mesure donne 40 %).
+      - ⛔ **NE PAS remplacer la table telle quelle** — trois raisons :
+        1. La table proposée donne des tensions **à vide** (corrigées de l'affaissement), alors que `percent_from_voltage()` reçoit la tension **brute**. L'échanger sans ajouter la compensation `V_oc = V + |I| × R` rendrait le calcul **plus faux qu'avant**.
+        2. Son point à 0 % tombe à 3,44 V — c'est le **seuil d'arrêt**, pas la cellule vide. On afficherait 0 % avec de l'énergie restante, et on perdrait l'autonomie qu'on vient de gagner.
+        3. Le plateau haut est mal résolu : 15 points de pourcentage pour 10 mV entre 4,09 et 4,06 V. Un seul cycle ne suffit pas à le décrire.
+      - ⏳ **Décision de Thomas (2026-08-18)** : attendre **3 ou 4 cycles**, relancer le script, vérifier que les courbes convergent. Puis livrer **ensemble** la compensation d'affaissement et la nouvelle table, avec les tests unitaires.
 
 ⚠️ **Collision de numéro résolue le 2026-08-17** : `TICKET-123` désignait **deux**
 tickets différents — le bug d'écran (corrigé ce jour) et le registre de
@@ -45,6 +59,21 @@ collision TICKET-090 → TICKET-117 du 2026-08-04.
 ---
 
 # 🔥 Priorité haute
+
+- [x] TICKET-136 — bug/affichage — Le bandeau batterie affichait 50 jours de données figées (2026-08-18) — ✅ **CORRIGÉ**
+      - **Signalé par Thomas** sur capture de la page d'accueil admin : 91 %, 4,092 V, 49 mA. Ces valeurs venaient de `web/status.json`, dont l'horodatage était **`ts: 1782657996` — le 2026-06-28**.
+      - 🔍 **Cause** : `web/status.json` était écrit par `scripts/get_status.py`, **supprimé en session 11** (`05-POWER_MANAGEMENT.md` le note noir sur blanc : « ne plus utiliser »). Le fichier est resté, plus personne ne l'écrivait, et deux consommateurs continuaient de le lire.
+      - ⚠️ **Cinquante jours sans que personne le voie, et c'est ça le vrai enseignement** : les valeurs restaient **plausibles**. Un pourcentage de 91 %, une tension de 4,09 V, un courant de 49 mA — rien qui saute aux yeux. Une donnée absurde se repère ; une donnée périmée mais crédible, non.
+      - 🔴 **L'écran de l'enfant était touché aussi.** `fetchBatteryStats()` retombait sur `fetchBatteryFromStatus()` (lignes 1384 et 1387) dès que l'appel principal échouait : l'enfant voyait alors les 91 % de juin. **Un repli vers des données périmées masque la panne au lieu de la montrer.** Supprimé — l'indicateur disparaît quand la mesure est indisponible, et l'absence est un signal honnête.
+      - 🛠️ **Corrections livrées** :
+        - `web/index.php` action `status` lit désormais `data/battery_stats.json` (réécrit toutes les 60 s), plus le fichier mort.
+        - **Fraîcheur exposée** (`age_seconds`, `stale`) : au-delà de 3 min sans mise à jour, le panneau se grise et annonce depuis quand. C'est ce qui rend une donnée figée visible.
+        - **Signe du courant restauré** : le bandeau affichait « 49 mA » sans dire s'il entrait ou sortait, alors que depuis TICKET-133 c'est le signe qui décide de l'état.
+        - **Autonomie estimée ajoutée**, en heures/minutes — et **masquée pendant la charge** : le tracker conserve la dernière moyenne de cycles et la renvoyait telle quelle, ce qui affichait « 39 min » en pleine recharge. Un chiffre juste dans le mauvais contexte trompe plus qu'une absence.
+        - ⏰ Le calcul d'âge force le fuseau `Europe/Paris` : `last_updated` est écrit par Python en heure locale, PHP tourne en UTC. Sans ça, tout aurait paru périmé de deux heures en permanence. **TICKET-129 mord une troisième fois.**
+      - 📌 **Défaut trouvé dans mon propre test de garde** : il cherchait la chaîne `status.json` n'importe où dans le fichier, donc **y compris dans le commentaire qui documente le correctif**. Il échouait sur sa propre explication. Corrigé pour ne matcher qu'un `fetch(...)` — la vraie signature du défaut. Un garde-fou qui crie au loup sur sa documentation fait douter de toute la suite.
+      - ✅ **Tests de garde** (smoke test §3) : plus de `fetch` vers le fichier mort côté enfant, bandeau admin alimenté par `battery_stats.json`, et fraîcheur exposée. **61 contrôles, 0 échec.**
+      - 🗑️ `web/status.json` supprimé.
 
 - [ ] TICKET-134 — mesure/batterie — Test de décharge profonde : jusqu'où descendre avant que le Pi décroche (2026-08-17)
       - **Demande de Thomas** : un cycle unique, seuils au plus bas, quitte à subir une coupure non maîtrisée du Pi — risque carte SD accepté et couvert par une sauvegarde complète. **Contrainte de temps** : charge + décharge ≈ 12 h, donc un seul essai, lancé le soir.

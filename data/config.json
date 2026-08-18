@@ -1,9 +1,8 @@
 {
-  "battery_check_interval_seconds": 15,
+  "battery_check_interval_seconds": 60,
   "charge_deadband_ma": 200,
-  "warn_threshold_percent": 20,
+  "warn_threshold_percent": 10,
   "shutdown_threshold_percent": 5,
   "grace_seconds_before_shutdown": 60,
-  "battery_capacity_mah": 11200,
-  "battery_watchdog_poll_seconds": 10
+  "battery_capacity_mah": 11200
 }
