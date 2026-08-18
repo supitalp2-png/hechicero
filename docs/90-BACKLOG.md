@@ -1,15 +1,63 @@
 # Backlog Hechicero
 
-> Convention : `TICKET-### — [type] — Titre — (prio) — owner`
-> Dernière mise à jour : 2026-08-17 (session complète) — **5 causes racines corrigées, pas des symptômes.** **TICKET-121** : `battery_watchdog` appelait `sudo shutdown`, bloqué par `NoNewPrivileges`, **en silence** — la protection contre la décharge profonde n'avait jamais fonctionné depuis juillet, et le chemin de test qui l'aurait révélée était cassé aussi. **TICKET-123 clos** : les boutons GPIO signalent enfin l'activité au compositeur (`wtype`), swayidle réarme. **TICKET-131** : ordre des épisodes corrigé + **premiers tests unitaires du projet**. **TICKET-130** : neuf podcasts restaurés, verrou de fichier et sauvegardes horodatées dans l'admin. **Zone Z12 découverte** : le code déployé n'atteignait pas l'écran (cache Chromium). Smoke test passé de 35 à **56 contrôles**.
-> **TICKET-127 : écran noir figé** — cause établie, ce n'est pas la dalle mais la page qui cesse d'exécuter du JavaScript ; battement de cœur + guetteur d'instantané livrés, en attente du prochain épisode. **TICKET-126 : remise à zéro des mesures batterie** après remplacement matériel des cellules (capacité inchangée, 6600 mAh). Le cycle enregistré pendant l'échange est conservé ci-dessous comme pièce à conviction : il documente la mort des anciennes cellules.
-> Mise à jour 2026-08-05 — **TICKET-123 : registre de non-régression** (`docs/75-NON_REGRESSION.md`, 11 zones à risque cartographiées + gardien qui alerte avant toute modif sensible) ; **TICKET-122 : chien de garde MPD** implémenté, reste à installer et valider en réel.
-> Mise à jour 2026-08-04 — **TICKET-120 : boutons physiques réparés** (lgpio ne pouvait plus créer son tube depuis le durcissement TICKET-011, panne latente depuis le 2026-07-19) ; ouverture de **TICKET-121** (auditer les 7 autres services durcis, même piège possible) et de **TICKET-119** (écran technique caché par combinaison de boutons — cadré, non implémenté) ; **TICKET-114 (rafraîchissement auto du catalogue) et TICKET-115 (réveil fiable de l'écran) livrés et clos** ; TICKET-116 (gain casque) appliqué, pas encore testé en voiture. Passe de remise au propre du dépôt le même jour (TICKET-118) : fuite de prénom neutralisée, fichiers morts supprimés, `.gitignore` durci, `80-ALIMENTATION.md` fusionné dans `05-POWER_MANAGEMENT.md`, collision TICKET-090 résolue (l'ancien « nettoyage fichiers morts » devient TICKET-117).
-> Mise à jour 2026-07-24 — TICKET-113 (bureau d'icônes admin + page domotique + harmonisation nav) livré ET validé/clos ; TICKET-112 domotique validé en prod (lampe+volet chambre) ; **raffinement gestion lumière (ampoule grise éteinte / jaune+halo allumée, curseur = intensité qui allume, tap ampoule = on/off) appliqué des DEUX côtés (web/admin/domotique.php ET web/lecteur/index.html), pas encore testé en réel**. Souci connu : retour de position du BSO (§8 doc).
+> **Convention** : `TICKET-### — [type] — Titre (date)`
+> **États** : `[ ]` à faire · `[~]` en cours · `[x]` terminé ou annulé (→ section « Terminé »)
+> **Dernière mise à jour : 2026-08-17**
+
+## 📌 État des lieux — ce qui est ouvert
+
+*Mis à jour le 2026-08-17. Cette table est le sommaire : le détail de chaque ticket est plus bas.*
+
+| Ticket | Sujet | Où ça en est |
+|---|---|---|
+| **134** | Test de décharge profonde (seuil abaissé à 5 %) | 🔬 **prêt**, à lancer un soir — `scripts/test_decharge_profonde.sh armer` |
+| **133** | Détection charge/décharge + cycles faussés par l'arrêt | ✅ corrigé et testé ; reste à accumuler des cycles pour le modèle |
+| **132** | `buttons_daemon` avertit à chaque play/pause (bruit de journal) | à faire, sans gravité |
+| **130** | 9 podcasts disparus de la config | ✅ restaurés, verrou + sauvegardes livrés ; `parental.json` et `config.json` courent le même risque |
+| **129** | PHP en UTC, le reste en heure locale | à faire — 2 h d'écart entre journaux croisés pendant une panne |
+| **128** | Coupure matérielle du HAT à l'arrêt critique | armée ; **le caractère différé n'est pas prouvé** |
+| **127** | Écran noir figé (la page cesse d'exécuter du JS) | instrumentation posée, **en attente du prochain épisode** |
+| **126** | Remise à zéro des mesures batterie | ✅ faite ; surveiller le modèle sur les prochains cycles |
+| **122** | MPD se fige si le réseau disparaît en webradio | chien de garde installé, **jamais éprouvé en réel** |
+| **121** | Audit des services durcis | ✅ 4 défauts corrigés ; **reste le test réel d'arrêt sous seuil** |
+| **119** | Écran technique caché (combinaison de boutons) | cadré, **à ne pas implémenter pour l'instant** |
+| **111** | Ventilateur GPIO/PWM | à décider |
+| **058** | Série podcast « Décisions Prises » + easter egg | 2 épisodes écrits |
+
+**Clos le 2026-08-17** : 112 · 116 · 123 · 124 · 125 · 131 · 079 · 079bis · 017 (supprimé)
+
+⚠️ **Collision de numéro résolue le 2026-08-17** : `TICKET-123` désignait **deux**
+tickets différents — le bug d'écran (corrigé ce jour) et le registre de
+non-régression (clos le 2026-08-05). Le bug d'écran **garde le 123**, parce qu'il
+est référencé dans du code vivant (`buttons_daemon.py`, `smoke_test.sh`,
+`75-NON_REGRESSION.md`). Le registre devient **TICKET-135**. Même remède que la
+collision TICKET-090 → TICKET-117 du 2026-08-04.
+
+<details>
+<summary>Historique des mises à jour antérieures</summary>
+
+> **2026-08-05** — TICKET-135 (ex-123) : registre de non-régression, 11 zones à risque + gardien. TICKET-122 : chien de garde MPD implémenté.
+> **2026-08-04** — TICKET-120 : boutons physiques réparés (lgpio ne pouvait plus créer son tube depuis le durcissement TICKET-011, panne latente depuis le 2026-07-19). Ouverture de TICKET-121 et TICKET-119. TICKET-114 et TICKET-115 livrés et clos. Remise au propre du dépôt (TICKET-118) : fuite de prénom neutralisée, fichiers morts supprimés, `.gitignore` durci, collision TICKET-090 → TICKET-117.
+> **2026-07-24** — TICKET-113 (bureau d'icônes admin) livré et clos ; TICKET-112 domotique validé en production.
+
+</details>
 
 ---
 
 # 🔥 Priorité haute
+
+- [ ] TICKET-134 — mesure/batterie — Test de décharge profonde : jusqu'où descendre avant que le Pi décroche (2026-08-17)
+      - **Demande de Thomas** : un cycle unique, seuils au plus bas, quitte à subir une coupure non maîtrisée du Pi — risque carte SD accepté et couvert par une sauvegarde complète. **Contrainte de temps** : charge + décharge ≈ 12 h, donc un seul essai, lancé le soir.
+      - ⛔ **Non négociable** : ne pas dégrader les cellules. Elles ont un jour.
+      - **Pourquoi 5 % et pas plus bas** — table LiPo du projet, tensions mesurées **sous charge** : 15 % = 3,49 V · 10 % = 3,44 V · **5 % = 3,35 V** · 0 % = 3,00 V. Le constructeur du HAT coupe à **3,15 V**. En dessous de 5 %, l'interpolation devient hasardeuse (3 % ≈ 3,21 V) et on approche vraiment le seuil constructeur.
+      - ⚠️ **Nuance apportée par les caractéristiques réelles des cellules** (2 × EVE INR21700/58E) : à 3 A de consommation totale on tire 1,5 A par cellule, soit ≈ **0,27 C** — un régime très doux. L'affaissement sous charge sera donc **bien plus faible** qu'avec les anciennes 18650. Conséquence : le pourcentage affiché sera **plus proche de l'état de charge réel**, donc **moins de marge cachée** qu'avec l'ancien pack. La marge reste réelle (3,35 V contre un plancher pratique de 3,0 V), mais plus mince que ce qu'un raisonnement sur les anciennes cellules laissait croire.
+      - 🛠️ **Outillage livré** :
+        - `scripts/test_decharge_profonde.sh armer|restaurer|etat` — abaisse le seuil à 5 %, resserre le relevé à 15 s et le watchdog à 10 s, sauvegarde `config.json` avant, refuse de s'armer deux fois. **`restaurer` est impératif après le test.**
+        - `battery_tracker` enregistre désormais **tous** les échantillons sous 20 % (`VERBOSE_BELOW_LEVEL`) : on ignore la forme du coude de fin de décharge sur ces cellules, et cette courbe ne se rejoue pas sans refaire 12 h.
+      - ⚠️ **Ce qu'on ne touche PAS** : la protection matérielle du HAT (registre `0x2d` et circuit de protection du pack). Non désactivable depuis le Pi, et c'est tant mieux — c'est le vrai filet de sécurité des cellules.
+      - **Les deux issues sont informatives** : si le watchdog coupe à 5 %, on lit la tension exacte et la marge restante ; si le Pi décroche avant, le dernier point donne la tension de décrochage réelle du HAT — la valeur cherchée.
+      - 📌 **Ce que ce test ne dira PAS** : la limite chimique des cellules. Il mesure la limite de l'**électronique du HAT**. La limite des cellules se connaît par la fiche technique (2,5 V coupure, 3,0 V plancher pratique), pas par l'expérience.
+      - ⏳ **À relever au réveil** : `journalctl -u battery_watchdog`, les 25 derniers points de `battery_history.json` (avec `voltage_v`), puis **`restaurer`**.
 
 - [~] TICKET-133 — bug/batterie — Détection charge/décharge par le signe du courant, et cycles faussés par l'arrêt d'urgence (2026-08-17)
       - ✅ **D'ABORD, LA BONNE NOUVELLE : l'arrêt d'urgence FONCTIONNE.** La décharge complète du 2026-08-17 est descendue à **15 %** et le Pi s'est éteint. C'est la preuve en conditions réelles du correctif de TICKET-121 — le `shutdown` sans `sudo`, bloqué en silence par `NoNewPrivileges` depuis juillet. Ce chemin n'avait jamais été exercé.
@@ -57,6 +105,15 @@
       - ✅ **PREMIERS TESTS UNITAIRES DU PROJET** — `scripts/rss_ingest/test_tri_episodes.py`, **13 assertions**, sans fichier ni réseau. Ils prouvent dans le même mouvement que le cas cassé est réparé **et** que les cas qui marchaient n'ont pas bougé : Olma (numérotation qui redémarre) et Tina (saisons) sont des cas de non-régression **réels, pas inventés**. Intégrés au smoke test §9.
       - 📌 **Leçon** : un correctif qui touche l'ordre d'affichage de **tous** les podcasts ne se valide pas à l'œil sur celui qui était cassé. La condition d'unicité n'est venue qu'en allant relire les titres d'un autre podcast.
       - ✅ **Clos le 2026-08-17 par Thomas.**
+
+- [ ] TICKET-129 — infra — PHP tourne en UTC alors que le reste du projet écrit en heure locale (2026-08-17)
+      - **Constaté** deux fois, à un mois d'intervalle, sans que la cause soit traitée : le 2026-07-18 sur `hechicero_battery_stats_age_seconds` à −7185 (TICKET-017), et le 2026-08-17 en lisant `data/sleep_debug.log` pour TICKET-127 — son « 07:52:48 » correspondait en réalité à **09:52:48** sur l'horloge de la maison.
+      - **Le piège** : `date()` en PHP renvoie de l'UTC (aucun `date.timezone` configuré), tandis que le shell (`data/screen_dpms.log`) et Python (`data/kiosk_freeze.log`, `datetime.now()`) écrivent en heure locale. **Deux heures d'écart entre trois journaux qu'on croise justement pendant une panne.** Chaque fois, on perd du temps ou on tire une conclusion décalée.
+      - **Pourquoi ça n'a jamais été réglé** : les deux fois, le contournement était local (`date_default_timezone_set()` dans un seul fichier). Celui de `metrics.php` vient d'ailleurs de disparaître avec le fichier.
+      - ✅ **Vérifié : le contrôle parental n'est PAS concerné.** `radio.php?action=parental_status` ne sert que le planning brut ; les horaires sont évalués **côté navigateur**, donc à l'heure locale de l'écran. Le risque de régression sur cette partie est nul.
+      - **Piste** : `date.timezone = Europe/Paris` dans le `php.ini` d'Apache, ou un `date_default_timezone_set()` dans un fichier commun inclus par toutes les pages. La première est plus propre mais vit hors du dépôt — donc à versionner et documenter comme la conf Apache et `asound.conf` (zone Z12).
+      - **À vérifier avant de livrer** : les horodatages écrits par PHP dans `data/favoris.json` (`added_at`) et `data/sleep_debug.log` deviendraient locaux. Aucun consommateur ne fait de calcul dessus, mais les valeurs déjà en base resteraient en UTC — mélange assumé, à noter dans le fichier.
+      - **En attendant** : `data/kiosk_heartbeat.json` expose `ts` (epoch, sans ambiguïté), `iso` (UTC) **et** `local`. C'est le contournement propre, pas la correction.
 
 - [ ] TICKET-132 — hygiène — `buttons_daemon` journalise un avertissement à chaque appui play/pause (2026-08-17)
       - **Constaté** en validant TICKET-123 : chaque appui sur GPIO12 produit `WARNING Appel radio.php échoué (action=pause) : Expecting value: line 1 column 1`.
@@ -246,7 +303,7 @@
       - ⏳ **Reste** : le test réel, une seule fois, en étant présent. `--simulate-critical` s'arrête volontairement avant l'écriture — il ne prouvera jamais ce point.
       - ✅ Vérifié le 2026-08-17 : `--check-hat` → `HAT 0x2d détecté : True`.
 
-- [ ] TICKET-125 — audio/infra — Le périphérique ALSA par défaut est référencé par numéro de carte (2026-08-05)
+- [x] TICKET-125 — audio/infra — Le périphérique ALSA par défaut est référencé par numéro de carte (2026-08-05) — ✅ **CLOS le 2026-08-17**
       - **Trouvé** par la nouvelle garde Z6 du smoke test, alors qu'on cherchait autre chose.
       - `/etc/asound.conf` contient `pcm.!default { slave.pcm "hw:2,0" }` et `ctl.!default { card 2 }`. **Les numéros de carte ALSA dérivent d'un boot à l'autre** — vécu le 2026-07-03, cartes 2 et 3 inversées.
       - **MPD n'est pas concerné** : ses deux sorties pointent vers les plugins `eqhp`/`eqcasque`, qui nomment correctement les cartes (`plughw:CARD=sndrpihifiberry`, `plughw:CARD=Audio`). C'est d'ailleurs pour ça que le piège est passé inaperçu.
@@ -269,7 +326,7 @@
       - 🛠️ **Correctif** : remplacer `hw:2,0` par `hw:CARD=sndrpihifiberry,DEV=0` et `card 2` par `card sndrpihifiberry`. Deux lignes — mais dans `asound.conf`, donc zone Z6 : une erreur de syntaxe coupe **tout** le son. À faire avec MPD arrêté et une vérification `aplay -D default` derrière.
       - ⚠️ `/etc/asound.conf` est hors du dépôt : à capturer dans la sauvegarde ghost (TICKET-085) et à documenter dans `docs/20-SETUP_SYSTEME.md` §6.4.
 
-- [~] TICKET-124 — audio/UX — Gain général du casque, séparé de la courbe d'égalisation (2026-08-05)
+- [x] TICKET-124 — audio/UX — Gain général du casque, séparé de la courbe d'égalisation (2026-08-05) — ✅ **CLOS le 2026-08-17** (écoute réelle validée à 4 dB, puis 10 h de voiture)
       - **Demande de Thomas**, après avoir trouvé l'astuce lui-même : il avait monté les dix bandes de +5 dB à la main. Il veut **un seul curseur de 0 à 6 dB** qui décale toutes les fréquences du casque, et pouvoir ensuite charger un profil de forme par-dessus.
       - **Le problème que ça règle** : `bands_db` mélangeait la **forme** et le **niveau**. Charger « Voix claire » écrasait le gain réglé pour la voiture, et il fallait tout remonter à la main.
       - 💡 **Pourquoi ce gain marche là où monter le volume ne suffisait plus** : le boost alsaequal intervient **après** l'étage de volume de MPD (déjà à 100) et après le mixer du DAC (déjà à 0 dB). C'est la dernière marge de la chaîne — cf. TICKET-116, où le DAC KT USB Audio a été identifié comme facteur limitant.
@@ -285,7 +342,7 @@
       - ✅ **Écoute réelle validée le 2026-08-17** — Thomas : « le casque est parfait, ça marche parfaitement bien ». Le mécanisme gain / forme séparés fait donc ce qu'on lui demandait, au gain de 4 dB. **La partie que le smoke test ne saura jamais juger est faite.**
       - ⏳ **Reste** : le test en voiture (TICKET-116), seul contexte encore non couvert.
 
-- [~] TICKET-116 — audio — Gain casque trop faible en écoute nomade (voiture) (2026-08-03)
+- [x] TICKET-116 — audio — Gain casque trop faible en écoute nomade (voiture) (2026-08-03) — ✅ **CLOS le 2026-08-17** : « la radio a survécu à 10 h de voiture »
       - Demande de Thomas : niveau au casque insuffisant en voiture.
       - 🔍 Chaîne vérifiée de bout en bout, **aucune atténuation cachée** : mixer `Headphone` du DAC KT USB Audio à 100 % / 0.00 dB, EQ plat à 50, mapping IHM correct (`headphones_max = 100`), `mpc volume` atteint bien 100.
       - **Conclusion : le DAC KT USB Audio est le facteur limitant**, pas un bridage logiciel.
@@ -323,7 +380,7 @@
       - **Sécurité / usage** : c'est un écran **parent**. Il ne doit pas exposer de secret (aucun jeton, aucun identifiant de la passerelle domotique) ni offrir de contournement du contrôle parental. La combinaison à deux boutons maintenus est déjà, en soi, une protection raisonnable contre un déclenchement accidentel par l'enfant.
       - ❓ **À confirmer avec Thomas** : l'écran doit-il rester accessible en dehors des horaires autorisés d'écoute (comme l'écran Chambre) ? A priori oui, c'est un outil de dépannage.
 
-- [~] TICKET-112 — feature/sécurité — Écran « Chambre » : contrôle domotique (Legrand/Netatmo via passerelle VM) depuis l'IHM enfant (2026-07-19, MAJ 2026-07-24)
+- [x] TICKET-112 — feature/sécurité — Écran « Chambre » : contrôle domotique (Legrand/Netatmo via passerelle VM) depuis l'IHM enfant (2026-07-19) — ✅ **CLOS le 2026-08-17** : Thomas confirme que le retour de position du volet fonctionne parfaitement, c'était le dernier point ouvert
       - ✅ **2026-07-24 — Phases 1 et 2 TERMINÉES et validées en réel (sur les équipements du bureau, avant bascule chambre).** Architecture Home Assistant ABANDONNÉE au profit d'une **VM passerelle FastAPI + API Netatmo Connect directe** (VM Debian déjà en place, 192.168.1.3).
           - Spike OAuth : app Netatmo déclarée, token + refresh OK, modules identifiés, lampe (on/off + `brightness` 0-100) et volet (`target_position` 0-100) pilotés en réel.
           - Découverte clé : l'orientation des lames du BSO n'est PAS pilotable via `setstate` (couplée mécaniquement à la position) → l'IHM n'a qu'un seul axe de position 0-100 (0 = occultation totale = nuit).
@@ -375,7 +432,8 @@
 
 # ✔️ Terminé
 
-- [x] TICKET-123 — process/qualité — Registre de non-régression + gardien automatique (2026-08-05)
+- [x] TICKET-135 — process/qualité — Registre de non-régression + gardien automatique (2026-08-05)
+      - ⚠️ **Renuméroté le 2026-08-17** : portait le numéro 123, déjà pris par le bug « l'écran ne s'éteint plus après un réveil non tactile ». Le bug d'écran garde le 123 car il est cité dans du code vivant (`buttons_daemon.py`, `smoke_test.sh`, `docs/75-NON_REGRESSION.md`) ; ce ticket-ci, clos et sans référence en code, prend le 135. Même remède que la collision TICKET-090 → TICKET-117.
       - **Déclencheur** : `scripts/smoke_test.sh` grossit ticket par ticket, mais rien ne dit *quand* le lancer, *quelles zones* il ne couvre pas, ni *quel bug* chaque test surveille. La leçon de TICKET-120 (panne latente invisible 2 semaines) ne survit aujourd'hui que dans la mémoire du fil de conversation.
       - 🛠️ **Livré** : `docs/75-NON_REGRESSION.md` — carte des **11 zones à risque** (Z1 MPD · Z2 services durcis · Z3 boutons GPIO · Z4 écran/veille · Z5 `data.json` · Z6 chaîne audio · Z7 Wi-Fi · Z8 batterie · Z9 ingestion RSS · Z10 dépôt public · Z11 domotique), chacune avec son piège, son historique, et le test de garde qui la couvre. Plus : les 6 fonctions vitales (§2), la lecture du verdict du smoke test (§4), la **dette de test** (§5, 8 zones sans garde automatique), et la procédure d'ajout d'un test (§6).
       - 🛠️ **Livré** : gardien automatique côté Cowork — évalue le risque **avant** toute modif touchant une zone connue et demande validation explicite, fournit le bloc de vérification **après**, et transforme chaque bug compris en nouveau test de garde (registre + `smoke_test.sh` dans le même commit).
@@ -546,14 +604,7 @@
         - ➡️ **Ouvre TICKET-129** : régler le fuseau de PHP à la source plutôt que fichier par fichier.
       - ➡️ **Si l'envie de courbes revient un jour** (usure des cellules sur six mois, temps d'écoute par langue), tout est reconstructible : les données sont déjà produites par `battery_tracker.py` et `play_tracker.py`, et le détail des métriques est conservé ci-dessus. Le ticket ne perd rien, il se met en veille.
 
-- [ ] TICKET-129 — infra — PHP tourne en UTC alors que le reste du projet écrit en heure locale (2026-08-17)
-      - **Constaté** deux fois, à un mois d'intervalle, sans que la cause soit traitée : le 2026-07-18 sur `hechicero_battery_stats_age_seconds` à −7185 (TICKET-017), et le 2026-08-17 en lisant `data/sleep_debug.log` pour TICKET-127 — son « 07:52:48 » correspondait en réalité à **09:52:48** sur l'horloge de la maison.
-      - **Le piège** : `date()` en PHP renvoie de l'UTC (aucun `date.timezone` configuré), tandis que le shell (`data/screen_dpms.log`) et Python (`data/kiosk_freeze.log`, `datetime.now()`) écrivent en heure locale. **Deux heures d'écart entre trois journaux qu'on croise justement pendant une panne.** Chaque fois, on perd du temps ou on tire une conclusion décalée.
-      - **Pourquoi ça n'a jamais été réglé** : les deux fois, le contournement était local (`date_default_timezone_set()` dans un seul fichier). Celui de `metrics.php` vient d'ailleurs de disparaître avec le fichier.
-      - ✅ **Vérifié : le contrôle parental n'est PAS concerné.** `radio.php?action=parental_status` ne sert que le planning brut ; les horaires sont évalués **côté navigateur**, donc à l'heure locale de l'écran. Le risque de régression sur cette partie est nul.
-      - **Piste** : `date.timezone = Europe/Paris` dans le `php.ini` d'Apache, ou un `date_default_timezone_set()` dans un fichier commun inclus par toutes les pages. La première est plus propre mais vit hors du dépôt — donc à versionner et documenter comme la conf Apache et `asound.conf` (zone Z12).
-      - **À vérifier avant de livrer** : les horodatages écrits par PHP dans `data/favoris.json` (`added_at`) et `data/sleep_debug.log` deviendraient locaux. Aucun consommateur ne fait de calcul dessus, mais les valeurs déjà en base resteraient en UTC — mélange assumé, à noter dans le fichier.
-      - **En attendant** : `data/kiosk_heartbeat.json` expose `ts` (epoch, sans ambiguïté), `iso` (UTC) **et** `local`. C'est le contournement propre, pas la correction.
+      - ➡️ **TICKET-129** (fuseau UTC de PHP) a été **déplacé en priorité haute** le 2026-08-17 : il était rangé ici, dans la section « Terminé », alors qu'il est ouvert.
 
 - [x] TICKET-030 — feature — Égaliseur audio paramétrable (2026-07-18)
       - Décisions prises avec Thomas avant codage (cf. [[project_hechicero_ticket030_eq]] en mémoire) : scope complet (page admin dédiée + 2 profils indépendants HP/casque), moteur **alsaequal** (plugin ALSA/LADSPA, `libasound2-plugin-equal` — solution native recommandée par HiFiBerry elle-même pour ce matériel, cf. guide officiel https://www.hifiberry.com/docs/software/guide-adding-equalization-using-alsaeq/), granularité **10 bandes natives** (31Hz→16kHz, pas de regroupement en 3 curseurs)
