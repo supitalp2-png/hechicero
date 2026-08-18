@@ -17,7 +17,13 @@ DEFAULT_CONFIG = {
     # de la charge ou de la décharge ; cette bande n'absorbe que le bruit de
     # l'INA219 autour de zéro. Remplace `charge_threshold_ma`, un seuil unique
     # qui classait « décharge » des courants positifs jusqu'à +300 mA.
-    "charge_deadband_ma": 10,
+    # 200 mA, valeur retenue le 2026-08-18 sur mesures : en maintien de charge
+    # le courant oscille entre ~+1000 mA et **−122 mA**, donc il traverse zéro.
+    # Une bande de 10 mA laissait chaque creux basculer en « décharge » et
+    # fabriquait des micro-cycles. 200 mA les absorbe tout en restant 3 à 15 fois
+    # sous une décharge réelle (600-800 mA au repos, 1600-3400 mA en lecture) :
+    # le watchdog continue de voir toute vraie décharge.
+    "charge_deadband_ma": 200,
     # ⚠️ Conservé pour ne pas casser un config.json existant qui le contient,
     # mais PLUS UTILISÉ depuis le 2026-08-17. Ne pas s'en servir.
     "charge_threshold_ma": 50,

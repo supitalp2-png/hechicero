@@ -65,6 +65,25 @@ verifie("+10 mA pile = dans la bande", detecter_charge(10.0, BANDE, False), Fals
 verifie("+10,1 mA = charge", detecter_charge(10.1, BANDE, False), True)
 
 
+# ── 5bis. La bande réellement configurée : 200 mA (TICKET-133, 2026-08-18) ─
+# Mesures du tableau de bord : en maintien de charge le courant oscille entre
+# environ +1000 mA et **−122 mA** — il TRAVERSE zéro. Avec une bande de 10 mA,
+# chaque creux basculait en « décharge » et fabriquait un micro-cycle.
+# La bande à 200 mA les absorbe.
+#
+# ⚠️ Et elle reste très en dessous de toute décharge réelle : le Pi seul
+# consomme de l'ordre de 600 à 800 mA, et en lecture on mesure 1600 à 3400 mA.
+# La marge est d'un facteur 3 au minimum — le watchdog voit donc toujours une
+# vraie décharge.
+BANDE_REELLE = 200.0
+verifie("creux de maintien −122 mA -> reste charge", detecter_charge(-121.92, BANDE_REELLE, True), True)
+verifie("pointe de maintien +1000 mA -> charge", detecter_charge(1000.0, BANDE_REELLE, True), True)
+verifie("décharge en lecture −1622 mA -> décharge", detecter_charge(-1622.45, BANDE_REELLE, True), False)
+verifie("décharge en veille −800 mA -> décharge", detecter_charge(-800.0, BANDE_REELLE, True), False)
+verifie("−200 mA pile = dans la bande", detecter_charge(-200.0, BANDE_REELLE, True), True)
+verifie("−200,1 mA = décharge", detecter_charge(-200.1, BANDE_REELLE, True), False)
+
+
 # ── 6. Clôture de cycle interrompue par l'arrêt d'urgence ─────────────────
 # Le cas réel du 2026-08-17 : décharge 85 % -> 15 %, arrêt du Pi à 20:07, puis
 # rebranchement à 20:12 où la tension remonte à 28 %. L'ancienne version
