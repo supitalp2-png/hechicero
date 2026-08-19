@@ -418,14 +418,44 @@ vérifier qu'un podcast local joue toujours. Manuel pour l'instant.
 vrais cycles profonds**. Un bug de mesure, donc silencieux : rien ne casse, les chiffres
 sont juste faux.
 
+**Second piège, celui de l'observabilité (2026-08-19, TICKET-141)** :
+`should_record_point()` n'enregistrait un point que sur **changement** — bascule
+charge/décharge, changement de mode MPD, variation de niveau ≥ 2 points, statut. Donc
+**rien pendant un plateau**. Formulé autrement, et c'est la leçon à retenir :
+
+> **Un échantillonnage déclenché par le changement ne peut pas documenter une
+> absence de changement.**
+
+L'enregistreur devenait muet exactement pendant le phénomène qu'on cherchait à étudier.
+Pire, le **courant n'était pas un critère du tout** : la nuit du 2026-08-18, il s'est
+effondré de +1111 à −60 mA pendant 6 h 53 et cela n'a été capté que par accident, parce
+que le niveau bougeait au même moment — **3 points en 6 h 53**. Mesure de l'aveuglement :
+sur un plateau de 30 minutes, l'ancien code retenait **0 point**.
+
+**Troisième piège, la contrepartie (TICKET-141)** : `collect_once()` réécrivait
+l'historique **entier** toutes les 60 s, qu'un point ait été retenu ou non — 196 ko ×
+1440 = **283 Mo d'écriture par jour** sur la carte SD. Il n'existait **aucune purge** :
+le fichier grossissait indéfiniment. Ajouter une cadence d'enregistrement sans borner la
+rétention transforme une amélioration de diagnostic en **usure de carte SD** — panne
+latente typique, invisible six mois durant.
+
+⚠️ **Le piège dans le correctif lui-même** : `should_record_point()` renvoie un tuple dont
+le **second élément** pilote `close_discharge()` / `close_charge()` / `new_cycle()`.
+Ajouter la cadence plancher ou le courant à ce second élément fabriquerait **un faux cycle
+toutes les 5 minutes**. Il doit rester strictement `transition or state_changed`.
+
 **Fichiers** : `scripts/battery_tracker.py`, `scripts/battery_watchdog.py`,
 `scripts/battery_common.py`, `data/tracking.db`
 
 **Historique** : bug cycles batterie (réparé 2026-07-06) · TICKET-011 (`battery_watchdog`
 est le seul des 8 services durcis dont le comportement d'arrêt n'a **jamais été prouvé**)
+· TICKET-141 (enregistreur aveugle aux plateaux, 2026-08-19)
 
-**Test de garde** : partiel — smoke test §5 (services vivants). La cohérence des cycles
-n'est pas vérifiée.
+**Test de garde** : `scripts/test_batterie.py` — 44 assertions, dont 14 pour TICKET-141
+(plateau, effondrement de courant, franchissement de la bande morte, **non-déclenchement
+de transition**, purge et son idempotence). Les 4 assertions clés ont été **vérifiées en
+échec sur le code d'avant le correctif**. Smoke test §5 : présence des trois constantes,
+appel de `purge_history()`, écriture conditionnelle de l'historique.
 
 ---
 
@@ -576,6 +606,8 @@ Par ordre d'urgence. C'est la liste de travail de ce document.
 | ~~Z8 batterie — cycles~~ | ✅ **couvert** depuis le 2026-08-17 : `scripts/test_batterie.py`, 24 assertions sur les mesures réelles (détection charge/décharge par le signe + bande morte, clôture de cycle interrompue par l'arrêt). Smoke test §5. | TICKET-133 |
 | Z8 batterie — modèle d'autonomie | Les estimations reposent sur un seul cycle, lui-même faussé avant le correctif de TICKET-133. À réévaluer après plusieurs cycles complets — c'est aussi à ce moment-là que le seuil de coupure de 15 % pourra être réinterrogé. | TICKET-133 |
 | Z8 batterie — coupure HAT | Le registre `0x2d` est détecté et armé avant l'arrêt, mais **rien ne prouve que la coupure soit différée** et non immédiate. `--simulate-critical` s'arrête volontairement avant l'écriture I2C. | TICKET-128 |
+| ~~Z8 batterie — observabilité~~ | ✅ **couvert** depuis le 2026-08-19 : cadence plancher de 5 min, courant devenu critère d'enregistrement, purge à 30 j. `test_batterie.py` passe à 44 assertions ; les 4 clés **vérifiées en échec sur le code d'avant** (l'ancien retenait **0 point** sur un plateau de 30 min). | TICKET-141 |
+| Z8 batterie — arrêt de charge nocturne | Le chargeur s'est arrêté de 00:16 à 07:09 le 2026-08-19 **alimentation présente**, à 61 %. Piste du temporisateur 6 h **démentie** (charge poursuivie jusqu'à 97 % le lendemain). Cause inconnue — **était indiagnosticable avant TICKET-141**, à reprendre sur les données du prochain épisode. | TICKET-140 |
 
 ---
 

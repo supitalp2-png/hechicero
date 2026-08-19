@@ -482,6 +482,43 @@ else
     pass "détection de charge par le signe du courant + bande morte (TICKET-133)"
 fi
 
+# ── TICKET-141 — l'enregistreur doit rester capable de voir un plateau ──────
+# Bug surveillé : `should_record_point()` n'écrivait que sur CHANGEMENT, donc
+# rien pendant un plateau. Mesuré le 2026-08-19 : des trous de 38, 147 et 49 min
+# dans la courbe de charge, et 3 points seulement pendant les 6 h 53 d'arrêt de
+# charge nocturne. Le courant n'était même pas un critère d'enregistrement.
+# Les tests unitaires (§ ci-dessus) couvrent le comportement ; ici on garde les
+# trois constantes, parce que les remettre à zéro rendrait l'enregistreur
+# aveugle sans faire échouer un seul test de logique.
+manques=""
+for const in RECORD_FLOOR_SECONDS CURRENT_DELTA_MA RETENTION_FULL_DAYS; do
+    grep -qE "^${const} *= *[1-9]" "$ROOT/scripts/battery_tracker.py" 2>/dev/null || manques="$manques $const"
+done
+if [ -n "$manques" ]; then
+    fail "battery_tracker : constante(s) d'enregistrement manquante(s) ou nulle(s) :$manques — retour à l'enregistreur aveugle (TICKET-141)"
+else
+    pass "enregistreur batterie : cadence plancher, critère de courant et rétention en place (TICKET-141)"
+fi
+
+# La purge doit rester appelée par le tracker lui-même. Confiée à un cron, elle
+# finirait par ne plus tourner sans que personne ne s'en aperçoive — et on ne le
+# découvrirait qu'une fois la carte SD usée par la réécriture d'un fichier obèse.
+if grep -q "purge_history(history)" "$ROOT/scripts/battery_tracker.py" 2>/dev/null; then
+    pass "purge d'historique automatique, dans le tracker (TICKET-141)"
+else
+    fail "battery_tracker : purge_history() n'est plus appelée — l'historique grossira sans fin (TICKET-141)"
+fi
+
+# L'historique ne doit PAS être réécrit à chaque tour de boucle : 196 ko × 1440
+# réécritures = 283 Mo/jour d'écriture SD pour un fichier le plus souvent
+# inchangé. `battery_stats.json`, lui, doit continuer d'être écrit à chaque tour
+# (son last_updated est le seul témoin d'un arrêt du tracker).
+if grep -q "write_history=bool(recorded or purges)" "$ROOT/scripts/battery_tracker.py" 2>/dev/null; then
+    pass "historique batterie écrit seulement s'il a changé (TICKET-141)"
+else
+    warn "battery_tracker : l'historique semble réécrit inconditionnellement — usure inutile de la carte SD (TICKET-141)"
+fi
+
 # Coupure matérielle du HAT (TICKET-128). --check-hat ne fait qu'une DÉTECTION,
 # aucune écriture i2cset : lançable pendant que l'enfant écoute.
 if hat=$(timeout 10 python3 "$ROOT/scripts/battery_watchdog.py" --check-hat 2>&1 | head -1); then

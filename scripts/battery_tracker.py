@@ -5,7 +5,7 @@ import argparse
 import logging
 import time
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -51,6 +51,38 @@ GAP_MINUTES_THRESHOLD = 3
 # pas — mieux vaut quelques centaines de points de plus qu'une courbe tronquée
 # là où elle est la plus instructive.
 VERBOSE_BELOW_LEVEL = 20
+# ── TICKET-141 — l'enregistreur ne doit pas devenir aveugle pendant un plateau ──
+#
+# Jusqu'ici `should_record_point()` n'écrivait que sur CHANGEMENT : bascule
+# charge/décharge, changement de mode MPD, variation de niveau >= 2 points, ou
+# changement de statut. Conséquence : quand le système tenait un plateau, aucun
+# critère ne se déclenchait et RIEN n'était enregistré. Trous mesurés le
+# 2026-08-19 : 38 min, 147 min, 49 min.
+#
+# ⚠️ Le piège, à ne jamais réintroduire : **un échantillonnage déclenché par le
+# changement ne peut pas documenter une ABSENCE de changement.** L'enregistreur
+# devenait muet exactement pendant le phénomène qu'on cherchait à étudier.
+#
+# Pire : le COURANT n'était pas un critère du tout, ni sa valeur ni sa variation.
+# Dans la nuit du 18 au 19, il s'est effondré de +1111 à -60 mA — l'événement
+# entier du TICKET-140 — et cela n'a été capté que par accident, parce que le
+# niveau bougeait au même moment. Bilan : 3 points en 6 h 53.
+RECORD_FLOOR_SECONDS = 300      # un point au moins toutes les 5 min, quoi qu'il arrive
+CURRENT_DELTA_MA = 300          # variation de courant qui mérite un point
+CURRENT_ZERO_BAND_MA = 50       # au-delà : "le courant coule" ; en deçà : "il ne coule plus"
+
+# ── TICKET-141 — rétention ──
+# Sans purge, l'historique grossit indéfiniment. Avec la cadence plancher
+# ci-dessus il gagnerait ~60 ko/jour, et `collect_once()` réécrit le fichier
+# ENTIER à chaque enregistrement : un fichier de 22 Mo au bout d'un an serait
+# réécrit des centaines de fois par jour. Sur une carte SD, c'est une panne
+# programmée — le genre de dette qui ne se voit pas avant six mois.
+#
+# Choix de Thomas (2026-08-19) : 30 jours en pleine résolution, puis un point
+# par heure. Les courbes anciennes restent lisibles, on ne perd que le détail
+# minute — dont on n'a besoin que pour un diagnostic récent.
+RETENTION_FULL_DAYS = 30
+RETENTION_DECIMATE_SECONDS = 3600
 
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -268,7 +300,61 @@ def should_record_point(stats: dict[str, Any], sample: dict[str, Any], last_poin
     mpd_changed = last_point.get("mpd_mode") != sample["mpd_mode"]
     delta_reached = abs(int(last_point.get("level", sample["level"])) - sample["level"]) >= LEVEL_DELTA_THRESHOLD
     state_changed = stats.get("status") != sample["status"]
-    return transition or mpd_changed or delta_reached or state_changed, transition or state_changed
+
+    # ── TICKET-141 — deux déclencheurs qui ne dépendent pas du niveau ────────
+    # 1. Cadence plancher : un point au moins toutes les RECORD_FLOOR_SECONDS,
+    #    même si rien n'a bougé. C'est ce qui rend un plateau OBSERVABLE.
+    # 2. Le courant : sa variation, et surtout son franchissement de la bande
+    #    morte autour de zéro. « Le courant a cessé de couler » est un
+    #    événement majeur (TICKET-140) qui peut survenir sans que le niveau
+    #    bouge d'un seul point.
+    floor_reached = _seconds_between_points(last_point, sample) >= RECORD_FLOOR_SECONDS
+    current_moved = _current_event(last_point, sample)
+
+    record = (transition or mpd_changed or delta_reached or state_changed
+              or floor_reached or current_moved)
+
+    # ⚠️ ZONE Z8 — NE JAMAIS ajouter floor_reached ni current_moved au SECOND
+    # élément. Celui-ci pilote close_discharge() / close_charge() / new_cycle()
+    # dans update_history_and_stats(). Un plateau qui déclencherait une
+    # transition fabriquerait un faux cycle toutes les 5 minutes, et le compteur
+    # de cycles — déjà pollué par 4 cycles `invalid: true` de durée nulle —
+    # deviendrait inexploitable. Le second élément reste STRICTEMENT le
+    # changement d'état réel.
+    return record, transition or state_changed
+
+
+def _seconds_between_points(last_point: dict[str, Any], sample: dict[str, Any]) -> float:
+    """Écart en secondes entre le dernier point retenu et l'échantillon courant.
+
+    Renvoie +inf si l'un des horodatages est illisible : en cas de doute on
+    enregistre. Rater un point coûte quelques octets ; rater un événement coûte
+    une journée d'enquête (TICKET-140).
+    """
+    debut = parse_iso(last_point.get("t"))
+    fin = parse_iso(sample.get("timestamp"))
+    if debut is None or fin is None:
+        return float("inf")
+    return (fin - debut).total_seconds()
+
+
+def _current_event(last_point: dict[str, Any], sample: dict[str, Any]) -> bool:
+    """Le courant a-t-il fait quelque chose qui mérite un point ?
+
+    Deux cas : une variation franche (CURRENT_DELTA_MA), ou le passage de
+    « ça coule » à « ça ne coule plus » et inversement. Le second cas est celui
+    qui manquait : dans la nuit du 2026-08-18, le courant est tombé de +1111 à
+    -60 mA sans que le niveau bouge assez pour déclencher un enregistrement.
+    """
+    avant = last_point.get("current_ma")
+    apres = sample.get("current_ma")
+    if avant is None or apres is None:
+        return False
+    if abs(apres - avant) >= CURRENT_DELTA_MA:
+        return True
+    coulait = abs(avant) > CURRENT_ZERO_BAND_MA
+    coule = abs(apres) > CURRENT_ZERO_BAND_MA
+    return coulait != coule
 
 
 def compute_consumption_by_mode(history: dict[str, Any]) -> dict[str, float | None]:
@@ -491,8 +577,71 @@ def update_history_and_stats(sample: dict[str, Any], *, compute_only: bool = Fal
     return history, stats, record_point
 
 
-def write_outputs(history: dict[str, Any], stats: dict[str, Any]) -> None:
-    atomic_write_json(HISTORY_PATH, history)
+def purge_history(history: dict[str, Any], maintenant: datetime | None = None) -> int:
+    """Décime les points de plus de RETENTION_FULL_DAYS à un par heure.
+
+    TICKET-141. Sans purge, l'historique grossit indéfiniment — et comme le
+    fichier ENTIER est réécrit à chaque enregistrement, sa taille se paie en
+    écritures sur la carte SD, pas seulement en octets stockés.
+
+    Choix : on garde les 30 derniers jours intacts (c'est la fenêtre où l'on
+    diagnostique), et au-delà un point par heure (c'est la fenêtre où l'on
+    observe une tendance de vieillissement). On ne SUPPRIME jamais un cycle
+    entier : ses métadonnées (level_start, duration_minutes…) pèsent peu et
+    portent le modèle d'autonomie.
+
+    ⚠️ Les points de transition sont PRÉSERVÉS quel que soit leur âge : ce sont
+    eux qui datent les événements. Décimer aveuglément effacerait justement les
+    bascules charge/décharge qu'on cherche à retrouver après coup.
+
+    Renvoie le nombre de points supprimés (0 = historique inchangé, donc rien à
+    réécrire).
+    """
+    maintenant = maintenant or datetime.now()
+    limite = maintenant - timedelta(days=RETENTION_FULL_DAYS)
+    supprimes = 0
+
+    for cycle in history.get("cycles", []):
+        points = cycle.get("datapoints")
+        if not points:
+            continue
+        gardes: list[dict[str, Any]] = []
+        dernier_ancien: datetime | None = None
+        precedent_charging: bool | None = None
+        for point in points:
+            horodatage = parse_iso(point.get("t"))
+            charging = point.get("charging")
+            transition = precedent_charging is not None and charging != precedent_charging
+            precedent_charging = charging
+
+            if horodatage is None or horodatage >= limite or transition:
+                gardes.append(point)
+                if horodatage is not None and horodatage < limite:
+                    dernier_ancien = horodatage
+                continue
+
+            if dernier_ancien is None or (horodatage - dernier_ancien).total_seconds() >= RETENTION_DECIMATE_SECONDS:
+                gardes.append(point)
+                dernier_ancien = horodatage
+            else:
+                supprimes += 1
+
+        if supprimes:
+            cycle["datapoints"] = gardes
+
+    return supprimes
+
+
+def write_outputs(history: dict[str, Any], stats: dict[str, Any], write_history: bool = True) -> None:
+    # TICKET-141 : `write_history=False` quand aucun point n'a été retenu et
+    # qu'aucune purge n'a eu lieu. Avant ce garde-fou, l'historique ENTIER était
+    # réécrit toutes les 60 s quoi qu'il arrive — 283 Mo d'écriture par jour sur
+    # la carte SD pour un fichier qui, la plupart du temps, n'avait pas changé.
+    # `battery_stats.json` reste écrit à chaque tour : il est petit, et son
+    # `last_updated` est le seul témoin fiable d'un arrêt du tracker
+    # (voir GAP_MINUTES_THRESHOLD).
+    if write_history:
+        atomic_write_json(HISTORY_PATH, history)
     atomic_write_json(STATS_PATH, stats)
 
 
@@ -511,7 +660,15 @@ def collect_once(sensor: Any, config: dict[str, Any], simulate: bool = False, co
         shutdown_pct=_shutdown_pct_from_config(config),
         capacity_mah=int(config.get("battery_capacity_mah", 0)),
     )
-    write_outputs(history, stats)
+    # TICKET-141 : purge automatique, ici et pas dans un cron séparé. Une purge
+    # confiée à un service tiers finit toujours par ne plus tourner sans que
+    # personne ne s'en aperçoive — et on ne le découvre qu'une fois la carte SD
+    # usée. Tant que le tracker tourne, la rétention est appliquée.
+    purges = 0 if compute_only else purge_history(history)
+    write_outputs(history, stats, write_history=bool(recorded or purges))
+    if purges:
+        LOGGER.info("Purge historique : %d points de plus de %d jours décimés à 1/h",
+                    purges, RETENTION_FULL_DAYS)
     return sample, stats, recorded
 
 

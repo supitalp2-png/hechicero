@@ -14,12 +14,17 @@ Sans effet de bord : aucune lecture de fichier, aucun capteur, aucun réseau.
 from __future__ import annotations
 
 import sys
+from datetime import datetime, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from battery_common import detecter_charge          # noqa: E402
-from battery_tracker import close_discharge         # noqa: E402
+from battery_tracker import (                       # noqa: E402
+    close_discharge,
+    purge_history,
+    should_record_point,
+)
 
 echecs: list[str] = []
 
@@ -153,6 +158,134 @@ micro = {
 }
 close_discharge(micro, {"timestamp": "2026-08-17T15:47:03", "level": 86}, gap_minutes=1)
 verifie("micro-cycle CV toujours invalidé", micro.get("invalid"), True)
+
+
+# ── 9. TICKET-141 — l'enregistreur ne doit plus être aveugle aux plateaux ──
+# Ces cas sont tirés de la panne réelle : dans la nuit du 2026-08-18, le courant
+# s'est effondré de +1111 à -60 mA pendant 6 h 53 et l'enregistreur n'a produit
+# que 3 points. Chacun des tests ci-dessous ÉCHOUE sur le code d'avant le
+# correctif — c'est ce qui en fait des tests de garde et pas de la décoration.
+
+def point(t, level, charging, current_ma, mpd_mode="idle"):
+    return {"t": t, "level": level, "charging": charging,
+            "current_ma": current_ma, "mpd_mode": mpd_mode}
+
+
+def echantillon(t, level, charging, current_ma, mpd_mode="idle", status=None):
+    return {"timestamp": t, "level": level, "charging": charging,
+            "current_ma": current_ma, "mpd_mode": mpd_mode,
+            "status": status or ("charging" if charging else "discharging")}
+
+
+STATS_CHARGE = {"status": "charging"}
+
+# 9a. Plateau : rien ne bouge, mais 5 minutes ont passé -> on enregistre.
+#     Avant le correctif : aucun critère déclenché, donc AUCUN point.
+plateau_avant = point("2026-08-19T12:00:00", 92, True, 800.0)
+verifie(
+    "plateau de 5 min sans changement -> point enregistré",
+    should_record_point(STATS_CHARGE, echantillon("2026-08-19T12:05:00", 92, True, 800.0), plateau_avant)[0],
+    True,
+)
+verifie(
+    "plateau de 4 min -> pas encore de point",
+    should_record_point(STATS_CHARGE, echantillon("2026-08-19T12:04:00", 92, True, 800.0), plateau_avant)[0],
+    False,
+)
+
+# 9b. LE CAS DE LA NUIT DU 18 : le courant s'effondre, le niveau ne bouge pas.
+#     Avant le correctif, le courant n'était pas un critère du tout.
+verifie(
+    "effondrement du courant à niveau constant -> point enregistré",
+    should_record_point(STATS_CHARGE, echantillon("2026-08-19T12:01:00", 92, True, -60.0), plateau_avant)[0],
+    True,
+)
+
+# 9c. Le courant cesse de couler sans variation de 300 mA : bande morte franchie.
+faible = point("2026-08-19T12:00:00", 92, True, 120.0)
+verifie(
+    "le courant cesse de couler (120 -> 10 mA) -> point enregistré",
+    should_record_point(STATS_CHARGE, echantillon("2026-08-19T12:01:00", 92, True, 10.0), faible)[0],
+    True,
+)
+
+# 9d. ⚠️ ZONE Z8 — LE TEST QUI PROTÈGE LES CYCLES.
+#     La cadence plancher et le courant ne doivent JAMAIS marquer une
+#     transition : sinon close_discharge()/new_cycle() fabriquent un faux cycle
+#     à chaque plateau, et le compteur de cycles devient inexploitable.
+verifie(
+    "cadence plancher ne déclenche PAS de transition de cycle",
+    should_record_point(STATS_CHARGE, echantillon("2026-08-19T12:05:00", 92, True, 800.0), plateau_avant)[1],
+    False,
+)
+verifie(
+    "effondrement du courant ne déclenche PAS de transition de cycle",
+    should_record_point(STATS_CHARGE, echantillon("2026-08-19T12:01:00", 92, True, -60.0), plateau_avant)[1],
+    False,
+)
+verifie(
+    "une vraie bascule charge->décharge déclenche bien la transition",
+    should_record_point(STATS_CHARGE, echantillon("2026-08-19T12:01:00", 92, False, -400.0), plateau_avant)[1],
+    True,
+)
+
+# 9e. Un plateau de 30 min doit produire au moins 6 points (1 toutes les 5 min).
+#     C'est la formulation directe du défaut signalé par Thomas : « on voit
+#     encore une sorte de trou dans la charge ».
+retenus = 0
+dernier = point("2026-08-19T12:00:00", 92, True, 800.0)
+for minute in range(1, 31):
+    ech = echantillon(f"2026-08-19T12:{minute:02d}:00", 92, True, 800.0)
+    garde, _ = should_record_point(STATS_CHARGE, ech, dernier)
+    if garde:
+        retenus += 1
+        dernier = point(ech["timestamp"], 92, True, 800.0)
+verifie("plateau de 30 min -> au moins 6 points", retenus >= 6, True)
+
+# ── 10. TICKET-141 — purge : décimer le vieux, préserver le récent ─────────
+maintenant = datetime(2026, 8, 19, 12, 0, 0)
+
+
+def serie(depart: datetime, nombre: int, pas_minutes: int, charging=True):
+    return [
+        {"t": (depart + timedelta(minutes=i * pas_minutes)).isoformat(),
+         "level": 90, "charging": charging, "current_ma": 800.0, "mpd_mode": "idle"}
+        for i in range(nombre)
+    ]
+
+
+# 60 jours : 24 points espacés de 5 min -> doivent être décimés à ~1/h.
+vieux = {"datapoints": serie(maintenant - timedelta(days=60), 24, 5)}
+hist_vieux = {"cycles": [vieux]}
+supprimes = purge_history(hist_vieux, maintenant=maintenant)
+verifie("purge : points de plus de 30 j décimés", supprimes > 0, True)
+verifie("purge : au moins un point ancien conservé", len(vieux["datapoints"]) >= 1, True)
+
+# 10 jours : ne doit RIEN perdre. La fenêtre de diagnostic est intouchable.
+recent = {"datapoints": serie(maintenant - timedelta(days=10), 24, 5)}
+hist_recent = {"cycles": [recent]}
+avant_purge = len(recent["datapoints"])
+verifie("purge : rien touché dans les 30 derniers jours",
+        purge_history(hist_recent, maintenant=maintenant), 0)
+verifie("purge : tous les points récents conservés", len(recent["datapoints"]), avant_purge)
+
+# Une transition ancienne doit SURVIVRE à la décimation : c'est elle qui date
+# l'événement. Décimer aveuglément effacerait ce qu'on cherche à retrouver.
+avec_bascule = {"datapoints": serie(maintenant - timedelta(days=60), 6, 5)
+                + [{"t": (maintenant - timedelta(days=60) + timedelta(minutes=30)).isoformat(),
+                    "level": 90, "charging": False, "current_ma": -400.0, "mpd_mode": "idle"}]
+                + serie(maintenant - timedelta(days=60) + timedelta(minutes=35), 6, 5, charging=False)}
+hist_bascule = {"cycles": [avec_bascule]}
+purge_history(hist_bascule, maintenant=maintenant)
+verifie("purge : la transition ancienne est préservée",
+        any(p["charging"] is False and p["current_ma"] == -400.0 for p in avec_bascule["datapoints"]),
+        True)
+
+# Idempotence : repurger un historique déjà purgé ne doit plus rien supprimer,
+# sinon le fichier serait réécrit à chaque tour de boucle — exactement l'usure
+# de carte SD qu'on cherche à éviter.
+verifie("purge idempotente : deuxième passage sans effet",
+        purge_history(hist_vieux, maintenant=maintenant), 0)
 
 
 print()

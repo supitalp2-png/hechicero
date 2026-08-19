@@ -297,6 +297,15 @@
             "language": "es",
             "image": "images/cometacolin.jpg",
             "max_episodes": 999
+        },
+        {
+            "id": "unehistoireetoli",
+            "label": "Une histoire et... Oli",
+            "rss": "https://radiofrance-podcast.net/podcast09/podcast_d555ed4e-dbe5-4908-912e-b3169f9ceede.xml",
+            "enabled": true,
+            "language": "fr",
+            "image": "images/unehistoireetoli.jpg",
+            "max_episodes": 999
         }
     ],
     "radios": [

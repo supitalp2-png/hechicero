@@ -10,6 +10,10 @@
 
 | Ticket | Sujet | Où ça en est |
 |---|---|---|
+| **141** | L'enregistreur est aveugle pendant les plateaux et ignore le courant | ✅ **corrigé le 2026-08-19** : cadence plancher 5 min, courant comme critère, purge 30 j, 44 assertions. **Non testé en réel** |
+| **140** | Arrêt de charge nocturne à 61 % (00:16 → 07:09), alimentation présente | 🔬 établi ; ❌ piste du temporisateur 6 h **démentie** (charge jusqu'à 97 %) — **cause inconnue**, bloqué par le 141 |
+| **139** | « Charge arrêtée à 60 % » = signal non lissé, pas un plateau | 🔍 **cause trouvée le 2026-08-19** : état et niveau calculés sur un échantillon isolé d'un signal à ±1400 mA. Lissage à écrire |
+| **138** | Deux minuteries de veille désaccordées (dalle allumée, page noire 9 min) | 🔍 **cause racine prouvée le 2026-08-19** ; correctif décidé, **pas encore écrit** |
 | **137** | Recalibrer la table tension→pourcentage sur les cellules réelles | 🔬 script d'analyse prêt ; **attendre 3-4 cycles** avant de remplacer la table |
 | **134** | Test de décharge profonde | ✅ **fait le 2026-08-18** : 97 % → 5 % en 4 h 49, coupure propre à 4 %, **3,328 V sous −2,2 A**. Seuils abaissés à 5 % / 10 % sur cette preuve |
 | **133** | Détection charge/décharge + cycles faussés par l'arrêt | ✅ corrigé et testé ; reste à accumuler des cycles pour le modèle |
@@ -17,7 +21,7 @@
 | **130** | 9 podcasts disparus de la config | ✅ restaurés, verrou + sauvegardes livrés ; `parental.json` et `config.json` courent le même risque |
 | **129** | PHP en UTC, le reste en heure locale | à faire — 2 h d'écart entre journaux croisés pendant une panne |
 | **128** | Coupure matérielle du HAT à l'arrêt critique | armée ; **le caractère différé n'est pas prouvé** |
-| **127** | Écran noir figé (la page cesse d'exécuter du JS) | instrumentation posée, **en attente du prochain épisode** |
+| **127** | Écran noir figé (la page cesse d'exécuter du JS) | ⚠️ **l'épisode du 2026-08-19 n'était PAS un gel** — voir TICKET-138. Le vrai gel du 2026-08-17 reste non réexpliqué |
 | **126** | Remise à zéro des mesures batterie | ✅ faite ; surveiller le modèle sur les prochains cycles |
 | **122** | MPD se fige si le réseau disparaît en webradio | chien de garde installé, **jamais éprouvé en réel** |
 | **121** | Audit des services durcis | ✅ 4 défauts corrigés ; **reste le test réel d'arrêt sous seuil** |
@@ -59,6 +63,103 @@ collision TICKET-090 → TICKET-117 du 2026-08-04.
 ---
 
 # 🔥 Priorité haute
+
+- [ ] TICKET-139 — mesure/batterie — La charge plafonne vers 60 % : vraie asymptote ou charge annulée par la consommation ? (2026-08-19)
+      - **Signalé par Thomas**, après la refonte du suivi (TICKET-133) : « le dashboard indique que la charge se stoppe mais que la batterie est à 60 % ».
+      - 📸 **Instantané pris le 2026-08-19 à 08:26** (`data/battery_stats.json`) :
+        ```
+        niveau 63 %  ·  3,896 V  ·  +318,82 mA  ·  0,43 W
+        charging: true, en charge depuis 07:14:39 (72 min)
+        MPD : webradio EN LECTURE (France Inter)  ·  écran allumé
+        estimated_charge_time_minutes_live : 1092  ← 18 heures
+        cycles_recorded: 2, model_confidence: "low"
+        ```
+      - ❌ **Ma première analyse était fausse, et Thomas a eu raison d'en douter.** J'avais conclu d'un instantané unique que la consommation de la webradio annulait la charge. **Un seul point, pris au creux d'un signal qui oscille de −210 à +1459 mA.** L'historique complet dément :
+        ```
+        points en charge, tous cycles :
+        webradio   n=136   médiane  +886 mA   (min −173, max +1459)
+        idle       n=116   médiane +1059 mA   (min  −60, max +1518)
+        ```
+        La webradio ne coûte que **173 mA de médiane** — très loin des ~800 mA qu'exigerait mon explication. ⚠️ **Construire une histoire cohérente à partir d'un échantillon d'un signal bruité produit une certitude, pas une connaissance.**
+      - 🔍 **Cause racine réelle : aucun lissage, nulle part.** L'état charge/décharge **et** le niveau sont calculés chacun sur un **échantillon instantané**. Séquence mesurée le 2026-08-19 :
+        ```
+        08:29:41   61 %   3,880 V   −210 mA   charging: FALSE   webradio
+        08:30:41   65 %   3,912 V   +224 mA   charging: true    webradio
+        08:31:41   69 %   3,940 V   +992 mA   charging: true    webradio  ← radio toujours allumée
+        08:33:41   70 %   3,952 V  +1111 mA   charging: true    idle
+        ```
+        1. **L'état bascule sur un seul échantillon.** À 08:29 un creux passager à −210 mA franchit la bande morte de 200 mA (TICKET-133) → le tableau de bord annonce « charge arrêtée ». **C'est exactement ce que Thomas a signalé.** Ni plateau, ni arrêt : un artefact d'un point.
+        2. **Le niveau saute de 61 à 70 % en quatre minutes**, parce que 72 mV valent 9 points dans cette zone de la table. **Il n'y a donc aucune asymptote à 60 %** — le palier n'existe pas.
+      - 🛠️ **À faire — lisser avant de décider** (rien n'est écrit) :
+        - Médiane glissante sur N échantillons pour le **courant** avant de trancher charge/décharge. La bande morte seule ne protège pas d'un signal dont l'écart-type dépasse la bande.
+        - Même traitement pour la **tension** avant conversion en pourcentage — sinon le niveau affiché restera nerveux même avec une table recalée.
+        - Test de garde : injecter une série bruitée avec un creux isolé et vérifier que l'état **ne bascule pas**.
+      - ⏳ **Décision de Thomas (2026-08-19)** : reparamétrer proprement la gestion de l'énergie le soir. ✅ **Le test « charge sans radio » est inutile** — l'écart entre modes (173 mA) est noyé dans un bruit de ±1400 mA et demanderait des heures pour être extrait.
+
+- [x] TICKET-141 — mesure/batterie — L'enregistreur devient aveugle pendant les plateaux, et ignore le courant (2026-08-19) — ✅ **CORRIGÉ**
+      - 🛠️ **Livré** : cadence plancher `RECORD_FLOOR_SECONDS = 300` (un point au moins toutes les 5 min) · le courant devient critère (`CURRENT_DELTA_MA = 300`, plus le franchissement de la bande morte `CURRENT_ZERO_BAND_MA = 50` — « le courant a cessé de couler » est un événement même à niveau constant) · purge `RETENTION_FULL_DAYS = 30` puis 1 point/h · historique écrit **seulement s'il a changé**.
+      - 🔒 **Piège évité, zone Z8** : le second élément du tuple pilote `close_discharge()` / `new_cycle()`. Y ajouter la cadence plancher aurait fabriqué **un faux cycle toutes les 5 minutes**. Il reste strictement `transition or state_changed`, et **trois assertions le vérifient**.
+      - 💾 **Contrepartie traitée** : `collect_once()` réécrivait l'historique entier toutes les 60 s — **283 Mo/jour** sur la carte SD pour un fichier le plus souvent inchangé, et **aucune purge n'existait**. Livrer la cadence seule aurait transformé un gain de diagnostic en usure de carte SD (fichier de 22 Mo au bout d'un an, réécrit en continu).
+      - ⏱️ **Purge dans le tracker, pas dans un cron** : une purge confiée à un service tiers finit par ne plus tourner sans que personne ne le remarque, et on ne le découvre qu'une fois la carte usée.
+      - ✅ **Tests** : `test_batterie.py` passe de 24 à **44 assertions**. Les 4 clés ont été **rejouées contre l'ancienne implémentation et échouent bien** — mesure de l'aveuglement : sur un plateau de 30 min, l'ancien code retenait **0 point**. Smoke test §5 : présence des trois constantes, appel de `purge_history()`, écriture conditionnelle.
+      - 📌 **Débloque TICKET-140** : l'arrêt de charge nocturne redevient observable au prochain épisode.
+      - **Signalé par Thomas** : « je trouve que le relevé de points de charge est trompeur, on voit encore une sorte de trou dans la charge ». Ce n'est pas un défaut de rendu : **il n'y a réellement aucun point à enregistrer**.
+      - 🔍 **Cause** — `should_record_point()` n'écrit un point que sur : bascule `charging`, changement de `mpd_mode`, variation de niveau **≥ 2 points**, ou changement de `status`. Le tracker échantillonne pourtant **toutes les 60 s** (`battery_check_interval_seconds`) et **jette tout le reste**. Pendant un plateau, aucun critère ne se déclenche → trou.
+      - 📊 **Trous du 2026-08-19** : `14:39 → 15:17` (38 min) · `15:17 → 17:44` (**147 min**, la terminaison de charge s'y produit sans un seul point) · `17:59 → 18:48` (49 min).
+      - 🔴 **Défaut central : le courant n'est pas un critère d'enregistrement.** Ni sa valeur, ni sa variation. La nuit du 18 au 19, il s'est effondré de **+1111 à −60 mA** — le phénomène entier du TICKET-140 — et cela n'a été capté que **par accident**, parce que le niveau avait bougé de 61 à 54 au même moment. D'où **3 points en 6 h 53**.
+      - ⚠️ **L'ironie à retenir** : l'enregistreur cesse d'écrire exactement quand le système fait la chose qu'on cherche à étudier (tenir un plateau). On a ensuite passé une journée à s'étonner que les plateaux soient indiagnosticables. **Un échantillonnage déclenché par le changement ne peut pas documenter une absence de changement.**
+      - 🛠️ **Ce qui était à faire, et qui est fait** :
+        1. **Cadence plancher garantie** : un point au moins toutes les 5 min quoi qu'il arrive, en plus des déclencheurs événementiels. Coût : 288 points/jour, négligeable.
+        2. **Ajouter le courant aux critères** : variation ≥ ~300 mA, et franchissement de zéro.
+        3. Test de garde : simuler un plateau de 30 min à niveau constant et vérifier qu'il produit ≥ 6 points.
+      - 🔗 Distinct du TICKET-139 (lissage des valeurs **affichées**) : ici c'est la **politique d'enregistrement** qui perd l'information avant tout affichage.
+
+- [ ] TICKET-140 — matériel/batterie — Le chargeur du HAT termine la charge à ~61 % et ne reprend qu'à la sollicitation (2026-08-19)
+      - **Signalé par Thomas** : « je ne comprends pas l'arrêt de recharge entre minuit en gros et 7h30 ». Ses heures, lues sur le tableau de bord, sont exactes : **00:16 → 07:09**.
+      - 📊 **Établi par les données** — charge franche de 18:14:48 à 00:12 (2 % → 61 %, 1100-1300 mA), puis :
+        ```
+        00:12:30   61 %   3,880 V  +1111 mA   charge normale
+        00:16:30   54 %   3,820 V     −60 mA   ← effondrement
+        02:37:33   52 %   3,808 V      +1 mA
+        07:09:39   51 %   3,800 V    −173 mA   webradio démarre
+        07:10:39   51 %   3,796 V    −340 mA   la batterie fournit le surplus, la tension plonge
+        07:14:39   54 %   3,820 V    +491 mA   ← le chargeur se réveille
+        ```
+      - ✅ **Ce n'est pas une coupure secteur.** Pendant les 6 h 53, le courant vaut −60 / +1 / −173 mA. Si l'alimentation externe avait disparu, le Pi — allumé, écran actif — aurait tiré **−400 à −900 mA** sur les cellules. Il ne l'a pas fait. L'alimentation était présente et alimentait la charge de travail : **c'est le chargeur qui a cessé de pousser du courant dans les cellules**, à 3,88 V, très loin des 4,2 V d'une cellule pleine.
+      - ✅ **La reprise est déclenchée par la sollicitation, pas par l'heure.** Le démarrage de la webradio fait plonger la tension à 3,796 V, et le chargeur repart 5 min après. Comportement classique d'un chargeur **terminé** qui attend un **seuil de reprise**. Sans la radio du matin, il serait probablement resté muet.
+      - ❌ **Écarté : notre propre code.** `arm_hat_power_cutoff()` (TICKET-128) n'est appelé que dans le chemin d'arrêt critique, qui n'a pas tourné cette nuit. Le `i2cset 0x2d 0x01 0x55` de `INA219.py` est du code de démonstration Waveshare sous `__main__`, atteignable seulement sous 3,15 V.
+      - ❓ **Non établi : pourquoi il termine à 61 %.** `charge_start 18:14:48` → effondrement `00:16:30` = **6 h 02**, ce qui évoque un temporisateur de sécurité. ⚠️ **Une seule occurrence** — l'historique complet ne contient que deux effondrements soutenus : celui-ci et un à ~98 % le 08-18 (terminaison normale, batterie pleine). **Piste, pas conclusion** : c'est exactement le raisonnement à un seul point qui a produit l'erreur du TICKET-139 le matin même.
+      - 🔬 **Prédiction falsifiable** : la charge ayant repris à **07:14:39**, un temporisateur de ~6 h l'aurait arrêtée vers **13:14**.
+      - ❌ **PRÉDICTION DÉMENTIE (2026-08-19)** : la charge a traversé 13:14 sans broncher et s'est poursuivie jusqu'à **15:17, à 97 % / 4,168 V**. **Il n'y a pas de temporisateur de 6 h**, et **la batterie atteint bien le plein** — contrairement à ce que je supposais le matin. La cause de l'arrêt nocturne à 61 % **redevient entièrement inconnue**.
+      - 🔭 **Mais on sait désormais pourquoi on ne peut pas l'observer** : voir TICKET-141. Le courant n'étant pas un critère d'enregistrement, l'effondrement de +1111 à −60 mA n'a laissé que 3 points en 6 h 53. **Corriger l'enregistreur est un préalable** à tout diagnostic de ce ticket.
+      - 🔁 **Observé en fin de journée — le HAT cycle en haut de charge** : `17:44 −411 mA` · `17:54 +156` · `17:59 +330` · `18:48 −395`. Une fois plein, le chargeur coupe et laisse le Pi puiser dans les cellules jusqu'au seuil de reprise, puis recharge. Sans danger, mais **consomme des cycles pour rien** et fausse le comptage.
+      - 🛠️ **À instrumenter ce soir** : journaliser la **température** (Pi et HAT si exposée) à chaque relevé. La plupart des chargeurs Li-ion inhibent la charge hors d'une fenêtre thermique, et le Pi 5 tourne à 67-68 °C sous le HAT. C'est le second candidat sérieux après le temporisateur.
+      - 🔗 **À croiser avec TICKET-137** : `cycles_recorded: 2` et `model_confidence: "low"`. Cette journée de charge fournit un cycle de plus vers les 3-4 nécessaires à la recalibration de la table. Si le plateau est réel, il change aussi la capacité utile retenue pour le calcul d'autonomie (9 560 mAh envisagés).
+
+- [ ] TICKET-138 — bug/veille — Deux minuteries de veille désaccordées : dalle allumée, page noire pendant 9 minutes (2026-08-19)
+      - **Signalé par Thomas** : « j'ai appuyé sur le bouton physique play et la dalle s'est allumée mais l'écran est noir ». Symptôme rapporté plusieurs fois depuis des semaines, jusqu'ici attribué à un gel du kiosque (TICKET-127).
+      - ❌ **Ce n'était pas un gel.** Le battement de cœur posé au TICKET-127 a tranché en trente secondes : 2 886 battements ininterrompus, dernier battement à 5 s, `kiosk_freeze.log` muet depuis le 2026-08-17. **La page exécutait du JavaScript pendant tout l'épisode.** L'instrumentation a servi à innocenter une piste, ce qui est exactement son rôle.
+      - 🔍 **Cause racine** — `web/lecteur/config.json` porte **deux délais de veille indépendants, sans aucun lien entre eux** :
+        - `"sleep_delay": 60` → l'overlay `#sleep-overlay` du navigateur (écran `retro_clock` : fond `#070503`, horloge en `rgba(210,140,12,.35)`)
+        - `"screen_off_delay": 600` → l'extinction de la dalle par `swayidle` via `screen_dpms.sh`
+      - ➡️ Entre les deux il existe une fenêtre de **540 secondes** où la dalle est allumée et la page affiche un écran quasi noir. **En plein jour l'horloge rétro est illisible** : l'appareil paraît en panne alors que tout fonctionne. C'est le symptôme, entier.
+      - 📊 **Chronologie du 2026-08-19** (heure locale ; `sleep_debug.log` est en UTC — TICKET-129 mord une **quatrième** fois) :
+        ```
+        07:19:21  swayidle éteint la dalle
+        08:00:38  appui play → dalle rallumée (rebond de mode) + wake_up keydown was_active=true
+                  ↑ la chaîne GPIO → wtype → navigateur fonctionne parfaitement
+        08:00:56  click, click, keydown — Thomas manipule l'écran
+        08:01:57  activate_sleep — l'overlay revient, 60 s après la dernière interaction
+        08:10:57  swayidle éteint la dalle — soit 540 s d'écran noir sur dalle allumée
+        08:20:47  appui play → wake_up keydown was_active=true, overlay levé, mpd=play
+        ```
+      - ⚠️ **Pourquoi ça a résisté si longtemps** : rien n'était cassé. Chaque moitié faisait exactement son travail. Cherchée comme une panne, la cause était introuvable — parce que c'est un **désaccord de configuration**, pas un défaut de code. Le réflexe « quel composant a échoué ? » est aveugle à ce genre de bug.
+      - ⏳ **Décision de Thomas (2026-08-19)** : **une seule veille à 600 s** — overlay et dalle s'éteignent au même instant. Plus jamais de dalle allumée sur page noire, et la radio reste lisible 10 minutes après le dernier appui (utile quand l'enfant écoute sans toucher l'écran).
+      - 🛠️ **À faire** (rien n'est encore écrit) :
+        1. Faire dériver les deux délais d'une **source unique**. Ne pas se contenter d'aligner les deux nombres dans le fichier : deux réglages libres se désaccorderont à nouveau au premier passage dans l'admin. Soit `sleep_delay` disparaît au profit de `screen_off_delay`, soit l'admin les lie explicitement.
+        2. **Interdire par construction** `sleep_delay < screen_off_delay` (la combinaison qui produit le bug), avec un test de garde au smoke test.
+        3. Vérifier le comportement de l'overlay **pendant la lecture** : aujourd'hui il s'active même si MPD joue. À confirmer avec Thomas — c'est peut-être souhaitable le soir.
+      - 🧹 **Second défaut, trouvé en chemin** : `data/sleep_debug.log` pèse **8,2 Mo / 87 698 lignes** et contient **92 601 octets nuls** — écritures concurrentes depuis PHP sans verrou (`grep` le rejette comme binaire). C'était un traceur temporaire du TICKET-102, jamais retiré ni borné. **Décision de Thomas : le garder** — il vient de résoudre ce bug — mais **sous `flock` et avec rotation à 2 Mo**.
 
 - [x] TICKET-136 — bug/affichage — Le bandeau batterie affichait 50 jours de données figées (2026-08-18) — ✅ **CORRIGÉ**
       - **Signalé par Thomas** sur capture de la page d'accueil admin : 91 %, 4,092 V, 49 mA. Ces valeurs venaient de `web/status.json`, dont l'horodatage était **`ts: 1782657996` — le 2026-06-28**.
