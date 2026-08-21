@@ -418,6 +418,86 @@ HOLD_THRESHOLD_S = 0.4   # durée d'appui à partir de laquelle on bascule tap -
 SEEK_STEP_S = 5          # secondes avancées/reculées à chaque à-coup pendant le maintien
 
 
+# ── TICKET-119 — combinaison casque + antenne : écran technique caché ──────
+#
+# Un appui SIMULTANÉ de 3 s sur le bouton casque (GPIO25) et le bouton antenne
+# (GPIO23) ouvre l'écran technique. Il sert à retrouver l'IP en mobilité et à
+# sortir du kiosque pour configurer un Wi-Fi à la dalle tactile — donc
+# précisément quand aucun autre accès n'est disponible.
+#
+# ⚠️ LE PIÈGE, ET IL EST STRUCTUREL (zone Z3) : ces deux boutons déclenchent
+# leur action **à l'appui**, pas au relâchement. Sans précaution, ouvrir l'écran
+# caché basculerait au passage la sortie audio (GPIO25) et ouvrirait l'écran
+# Chambre (GPIO23). L'utilisateur récupérerait son écran technique par-dessus
+# deux effets de bord qu'il n'a pas demandés.
+#
+# Remède : pour CES DEUX BROCHES SEULEMENT, l'action individuelle est différée
+# de COMBO_GRACE_S. Passé ce délai, si l'autre bouton n'est pas également
+# enfoncé, on joue l'action normale ; sinon on l'abandonne au profit de la
+# combinaison. 300 ms sur une bascule est imperceptible — c'est le prix à payer
+# pour que la combinaison n'ait aucun effet de bord.
+#
+# ⚠️ Les sept autres boutons ne sont PAS touchés : ils gardent leur réactivité
+# immédiate. Un différé global aurait rendu la radio molle pour un enfant.
+COMBO_PINS = (23, 25)
+COMBO_HOLD_S = 3.0        # durée d'appui simultané avant déclenchement
+COMBO_GRACE_S = 0.3       # fenêtre pour reconnaître un appui « simultané »
+
+
+class EtatCombinaison:
+    """Décision de la combinaison, isolée du GPIO pour être testable.
+
+    Séparée volontairement de la boucle de polling : la logique se vérifie
+    alors sans matériel, avec du temps simulé (voir `test_boutons.py`). Un test
+    qui exigerait deux vraies broches n'aurait jamais été écrit.
+    """
+
+    def __init__(self) -> None:
+        self.depuis: float | None = None      # début de l'appui simultané
+        self.declenchee = False               # déjà tirée pour cet appui
+
+    def evaluer(self, a_bas: bool, b_bas: bool, maintenant: float) -> str:
+        """Renvoie 'declencher', 'en_cours', 'attente' ou 'relachee'.
+
+        - 'attente'     : pas de combinaison en cours, dispatch normal
+        - 'en_cours'    : les deux boutons sont enfoncés, on retient leur action
+        - 'declencher'  : les 3 s sont atteintes — une seule fois par appui
+        - 'relachee'    : combinaison terminée, on réarme
+        """
+        if a_bas and b_bas:
+            if self.depuis is None:
+                self.depuis = maintenant
+                return "en_cours"
+            if not self.declenchee and maintenant - self.depuis >= COMBO_HOLD_S:
+                self.declenchee = True
+                return "declencher"
+            return "en_cours"
+        # Au moins un bouton relâché : la combinaison est finie.
+        etait_active = self.depuis is not None
+        self.depuis = None
+        self.declenchee = False
+        return "relachee" if etait_active else "attente"
+
+    def retient(self, maintenant: float) -> bool:
+        """Faut-il retenir l'action individuelle d'un bouton de la combinaison ?
+
+        Vrai dès que les deux boutons sont enfoncés depuis moins que la grâce —
+        on ne sait pas encore si c'est une combinaison ou deux appuis distincts.
+        """
+        return self.depuis is not None and maintenant - self.depuis >= 0
+
+
+def handle_ecran_technique() -> None:
+    """Ouvre l'écran technique caché (TICKET-119).
+
+    Passe par le canal `request_screen` déjà générique, comme l'écran Chambre :
+    le daemon écrit la demande, le kiosque la relève. Aucun nouveau mécanisme.
+    """
+    LOGGER.info("Combinaison casque+antenne maintenue %.0f s — écran technique", COMBO_HOLD_S)
+    rep = http_get("action=request_screen&screen=technique")
+    LOGGER.info("Écran technique — réponse radio.php : %s", rep)
+
+
 class ButtonState:
     """Anti-rebond indépendant par broche (état HIGH/LOW + horodatage du
     dernier appui accepté et de la dernière répétition en cas de maintien).
@@ -463,8 +543,32 @@ def main() -> int:
         len(PINS), ", ".join(str(p) for p in PINS), args.poll_ms,
     )
 
+    combo = EtatCombinaison()
+    # Actions différées des deux boutons de la combinaison : {broche: instant}
+    differes: dict[int, float] = {}
+
     try:
         while True:
+            # ── TICKET-119 : la combinaison s'évalue AVANT le dispatch ────────
+            # Une fois par tour, pas une fois par broche : les deux boutons
+            # doivent être lus au même instant, sinon on compare des états
+            # décalés de quelques millisecondes.
+            maintenant = time.monotonic()
+            a_bas = GPIO.input(COMBO_PINS[0]) == GPIO.LOW
+            b_bas = GPIO.input(COMBO_PINS[1]) == GPIO.LOW
+            verdict = combo.evaluer(a_bas, b_bas, maintenant)
+            if verdict == "declencher":
+                differes.clear()          # la combinaison l'emporte sur les actions retenues
+                threading.Thread(target=handle_ecran_technique, daemon=True).start()
+            elif verdict in ("relachee", "attente"):
+                # Aucune combinaison : jouer les actions retenues dont la grâce
+                # est écoulée. C'est ici que le bouton casque bascule vraiment
+                # la sortie audio, 300 ms après l'appui.
+                for broche in [p for p, t in differes.items() if maintenant - t >= COMBO_GRACE_S]:
+                    del differes[broche]
+                    LOGGER.info("Appui confirmé sur GPIO%s (différé %.0f ms)", broche, COMBO_GRACE_S * 1000)
+                    HANDLERS.get(broche, handle_unassigned)(broche)
+
             for pin in PINS:
                 st = states[pin]
                 state = GPIO.input(pin)
@@ -571,8 +675,18 @@ def main() -> int:
                         now = time.monotonic()
                         if now - st.last_press >= MIN_TOGGLE_INTERVAL_S:
                             st.last_press = now
-                            LOGGER.info("Appui confirmé sur GPIO%s", pin)
-                            HANDLERS.get(pin, handle_unassigned)(pin)
+                            if pin in COMBO_PINS:
+                                # TICKET-119 : on ne sait pas encore si c'est un
+                                # appui isolé ou le début d'une combinaison. On
+                                # retient l'action COMBO_GRACE_S ; elle sera
+                                # jouée en tête de boucle si l'autre bouton ne
+                                # suit pas, ou abandonnée si la combinaison part.
+                                differes[pin] = now
+                                LOGGER.debug("GPIO%s : action retenue %.0f ms (combinaison possible)",
+                                             pin, COMBO_GRACE_S * 1000)
+                            else:
+                                LOGGER.info("Appui confirmé sur GPIO%s", pin)
+                                HANDLERS.get(pin, handle_unassigned)(pin)
                         else:
                             LOGGER.debug("GPIO%s : front ignoré (trop proche du précédent, garde-fou)", pin)
                     else:

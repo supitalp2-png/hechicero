@@ -13,12 +13,10 @@ plus bas.*
 | Ticket | Sujet | Où ça en est |
 |---|---|---|
 | **145** | Activer/désactiver les webradios depuis l'admin | ✅ **livré le 2026-08-21** — bascule comme les podcasts, effet immédiat sur l'écran enfant. **À essayer en réel** |
-| **144** | Décharge profonde après l'arrêt de l'OS : rien ne protège les cellules | 🔴 mis au jour par TICKET-128 — on se croyait protégé par une fonction qui ne coupait rien. Seule barrière : la protection intégrée des cellules |
 | **140** | Arrêt de charge nocturne, alimentation présente | 🔬 reproduit **3 fois** (54 %, 70 %, 96 %) ; temporisateur 6 h démenti — **cause inconnue**, désormais observable grâce au 141 |
 | **127** | Vrai gel du kiosque du 2026-08-17 | l'épisode du 19/08 n'en était **pas** un (c'était le 138). Le gel du 17/08 reste **non expliqué** ; battement de cœur en place pour le prochain |
 | **122** | MPD se fige si le réseau disparaît en webradio | logique de décision **couverte** (9 tests, 2026-08-21) ; la **récupération** — SIGKILL + redémarrage — reste non éprouvée |
 | **119** | Écran technique caché (combinaison de boutons) | cadré, **à ne pas implémenter pour l'instant** |
-| **111** | Ventilateur GPIO/PWM | à décider |
 | **058** | Série podcast « Décisions Prises » + easter egg | 2 épisodes écrits |
 
 ### ⏳ Livré mais pas encore éprouvé en conditions réelles
@@ -35,7 +33,7 @@ dans les jours qui viennent :
 **Clos le 2026-08-17** : 112 · 116 · 123 · 124 · 125 · 131 · 079 · 079bis · 017 (supprimé)
 **Clos le 2026-08-18** : 134 (décharge profonde mesurée) · 136 (bandeau batterie figé 50 j)
 **Clos le 2026-08-19** : 141 (enregistreur aveugle aux plateaux)
-**Clos le 2026-08-21** : 132 (bruit de journal) · 137 · 139 · 142 (chaîne de mesure batterie) · 143 (outil de recalibration) · 128 (registre HAT : démarrage, pas coupure) · 138 (veille unique) · 129 (PHP en UTC, après 4 morsures) · 121 (arrêt critique prouvé 2× en réel) · 126 · 130 · 133
+**Clos le 2026-08-21** : 111 (ventilateur, annulé) · 132 (bruit de journal) · 144 (risque assumé) · 145 (webradios activables) · 137 · 139 · 142 (chaîne de mesure batterie) · 143 (outil de recalibration) · 128 (registre HAT : démarrage, pas coupure) · 138 (veille unique) · 129 (PHP en UTC, après 4 morsures) · 121 (arrêt critique prouvé 2× en réel) · 126 · 130 · 133
 
 ⚠️ **Collision de numéro résolue le 2026-08-17** : `TICKET-123` désignait **deux**
 tickets différents — le bug d'écran (corrigé ce jour) et le registre de
@@ -56,20 +54,6 @@ collision TICKET-090 → TICKET-117 du 2026-08-04.
 ---
 
 # 🔥 Priorité haute
-
-- [x] TICKET-145 — feature/admin — Activer ou désactiver une webradio, comme un podcast (2026-08-21) — ✅ **LIVRÉ**
-      - **Demande de Thomas** : « j'ai ajouté France Inter parce que je bricole seul à la maison ; quand je vais rendre la radio à mon fils je vais désactiver la possibilité qu'il la lise ». Besoin réel : couper une radio **juste avant** de rendre l'appareil.
-      - 🔍 **Le point qui décide de tout** : les podcasts sont filtrés par `enabled` **à l'ingestion**, mais les radios étaient **recopiées telles quelles** vers `data.json`. Un simple drapeau en base n'aurait donc rien caché avant l'ingestion nocturne — c'est-à-dire trop tard pour l'usage visé.
-      - 🛠️ **Livré** : action `toggle_radio` ; bascule dans les cartes radio de l'admin ; `add_radio` crée la radio activée ; **filtre dans `sync_radios_to_data_json()`** (effet immédiat, le kiosque suit en moins de 10 s via `data_version`) **et dans `writer.py`** — sans ce second filtre, l'ingestion nocturne annulerait le choix du parent quelques heures plus tard, panne différée donc d'autant plus déroutante.
-      - ⚠️ **`enabled` absent vaut ACTIVÉE** : les cinq radios existantes n'ont pas le champ. Les faire disparaître silencieusement aurait été pire que le manque.
-      - ✅ **Test de garde** : les deux filtres, plus une **vérification de cohérence sur les données réelles** — l'ensemble des radios servies dans `data.json` doit être inclus dans celui des radios activées. C'est ce contrôle-là qui attraperait une régression, les deux autres ne regardant que le code.
-
-- [ ] TICKET-144 — batterie/matériel — Après l'arrêt de l'OS, rien ne protège les cellules (2026-08-21)
-      - **Mis au jour par TICKET-128** : on se croyait protégé depuis le 2026-08-17 par une « coupure matérielle du HAT » qui, en réalité, arme un **démarrage** au rebranchement. Elle n'a jamais rien coupé.
-      - 🔴 **Le problème réel, entier** : `shutdown -h now` arrête le système, mais le HAT continue de fournir du 5 V à un Pi « halted ». Les cellules se vident donc **après** l'arrêt d'urgence, sans surveillance et sans limite de temps — c'est exactement le scénario que l'arrêt à 5 % était censé éviter.
-      - ⚠️ **Ce qui rend ce ticket vicieux** : il ne se manifeste que si l'appareil reste éteint et débranché longtemps. Rien ne le signalera, et la dégradation des cellules est irréversible.
-      - **Seule barrière actuelle** : la protection intégrée des cellules (coupure basse tension du HAT à ~3,15 V). Décision de Thomas du 2026-08-18 : on s'en remet à elle, l'interrupteur physique du HAT n'étant pas accessible dans le boîtier.
-      - **Pistes** : sortir l'interrupteur `OFF/ON` du HAT en façade du Grundig ; ou un relais piloté par GPIO qui coupe la sortie du HAT — mais il faut qu'il tienne sans alimentation, donc bistable.
 
 - [ ] TICKET-140 — matériel/batterie — Le chargeur du HAT termine la charge à ~61 % et ne reprend qu'à la sollicitation (2026-08-19)
       - **Signalé par Thomas** : « je ne comprends pas l'arrêt de recharge entre minuit en gros et 7h30 ». Ses heures, lues sur le tableau de bord, sont exactes : **00:16 → 07:09**.
@@ -270,16 +254,36 @@ collision TICKET-090 → TICKET-117 du 2026-08-04.
       - **Sécurité / usage** : c'est un écran **parent**. Il ne doit pas exposer de secret (aucun jeton, aucun identifiant de la passerelle domotique) ni offrir de contournement du contrôle parental. La combinaison à deux boutons maintenus est déjà, en soi, une protection raisonnable contre un déclenchement accidentel par l'enfant.
       - ❓ **À confirmer avec Thomas** : l'écran doit-il rester accessible en dehors des horaires autorisés d'écoute (comme l'écran Chambre) ? A priori oui, c'est un outil de dépannage.
 
-- [ ] TICKET-111 — hardware — Ventilateur GPIO/PWM pour dissipation thermique (2026-07-18) (renuméroté depuis TICKET-110, en collision avec le ticket roaming — 2026-07-18)
+# ✔️ Terminé
+
+- [x] TICKET-111 — hardware — Ventilateur GPIO/PWM pour dissipation thermique (2026-07-18) — ❌ **ANNULÉ le 2026-08-21** (renuméroté depuis TICKET-110, en collision avec le ticket roaming — 2026-07-18)
       - Demande de Thomas : boîtier chaud, ventilateur silencieux souhaité. Corroboré par TICKET-109 (`vcgencmd get_throttled = 0xe0000` le 2026-07-18 : capping fréquence + throttling + limite thermique constatés depuis le dernier boot)
       - Ventilateur déjà acheté par Thomas — **en attente qu'il soit mis en place physiquement** avant de configurer/tester quoi que ce soit côté logiciel
       - Plan retenu : essayer d'abord le connecteur PWM dédié du Pi 5 (séparé du header 40 broches GPIO, ne consomme donc aucun des GPIO déjà utilisés — boutons, I2C batterie, I2S audio). Si inaccessible une fois les HAT (ampli + batterie) empilés → repli sur un montage GPIO libre avec un transistor/MOSFET (un GPIO seul ne peut pas alimenter un moteur directement) — ⚠️ GPIO16 n'est plus disponible depuis TICKET-046 (favori), seul GPIO6 reste vraiment libre
       - Activation prévue : `dtoverlay=pwm-fan` dans `/boot/firmware/config.txt` (section `[all]`) — pas encore ajouté, contrôle automatique de la vitesse selon la température, seuils ajustables ensuite (`fan_temp0`, `fan_temp0_hyst`, etc.) si besoin de le rendre plus/moins agressif
-      - ⏳ Reste à faire : Thomas monte le ventilateur dans le boîtier, puis on active l'overlay et on vérifie (`vcgencmd measure_temp`, `cat /sys/class/thermal/cooling_device*/type`)
+      - ❌ **Décision de Thomas (2026-08-21) : « je ne ferai rien ».** Le ventilateur reste non monté, l'overlay ne sera pas activé. ⚠️ **Le throttling reste donc possible** : `vcgencmd get_throttled = 0xe0000` avait été relevé (TICKET-109). Sans traitement, cela reste un ralentissement thermique en usage prolongé — sans conséquence sur la lecture audio, qui ne sollicite pas le processeur. Ticket clos, pas résolu.
+      - ~~Reste à faire~~ : Thomas monte le ventilateur dans le boîtier, puis on active l'overlay et on vérifie (`vcgencmd measure_temp`, `cat /sys/class/thermal/cooling_device*/type`)
 
 ---
 
-# ✔️ Terminé
+
+- [x] TICKET-145 — feature/admin — Activer ou désactiver une webradio, comme un podcast (2026-08-21) — ✅ **LIVRÉ**
+      - **Demande de Thomas** : « j'ai ajouté France Inter parce que je bricole seul à la maison ; quand je vais rendre la radio à mon fils je vais désactiver la possibilité qu'il la lise ». Besoin réel : couper une radio **juste avant** de rendre l'appareil.
+      - 🔍 **Le point qui décide de tout** : les podcasts sont filtrés par `enabled` **à l'ingestion**, mais les radios étaient **recopiées telles quelles** vers `data.json`. Un simple drapeau en base n'aurait donc rien caché avant l'ingestion nocturne — c'est-à-dire trop tard pour l'usage visé.
+      - 🛠️ **Livré** : action `toggle_radio` ; bascule dans les cartes radio de l'admin ; `add_radio` crée la radio activée ; **filtre dans `sync_radios_to_data_json()`** (effet immédiat, le kiosque suit en moins de 10 s via `data_version`) **et dans `writer.py`** — sans ce second filtre, l'ingestion nocturne annulerait le choix du parent quelques heures plus tard, panne différée donc d'autant plus déroutante.
+      - ⚠️ **`enabled` absent vaut ACTIVÉE** : les cinq radios existantes n'ont pas le champ. Les faire disparaître silencieusement aurait été pire que le manque.
+      - ✅ **Test de garde** : les deux filtres, plus une **vérification de cohérence sur les données réelles** — l'ensemble des radios servies dans `data.json` doit être inclus dans celui des radios activées. C'est ce contrôle-là qui attraperait une régression, les deux autres ne regardant que le code.
+
+- [x] TICKET-144 — batterie/matériel — Après l'arrêt de l'OS, rien ne protège les cellules (2026-08-21) — ❌ **RISQUE ASSUMÉ, ticket clos le 2026-08-21**
+      - **Mis au jour par TICKET-128** : on se croyait protégé depuis le 2026-08-17 par une « coupure matérielle du HAT » qui, en réalité, arme un **démarrage** au rebranchement. Elle n'a jamais rien coupé.
+      - 🔴 **Le problème réel, entier** : `shutdown -h now` arrête le système, mais le HAT continue de fournir du 5 V à un Pi « halted ». Les cellules se vident donc **après** l'arrêt d'urgence, sans surveillance et sans limite de temps — c'est exactement le scénario que l'arrêt à 5 % était censé éviter.
+      - ⚠️ **Ce qui rend ce ticket vicieux** : il ne se manifeste que si l'appareil reste éteint et débranché longtemps. Rien ne le signalera, et la dégradation des cellules est irréversible.
+      - **Seule barrière actuelle** : la protection intégrée des cellules (coupure basse tension du HAT à ~3,15 V). Décision de Thomas du 2026-08-18 : on s'en remet à elle, l'interrupteur physique du HAT n'étant pas accessible dans le boîtier.
+      - **Pistes écartées** : sortir l'interrupteur `OFF/ON` du HAT en façade du Grundig (percer la carcasse) ; relais bistable piloté par GPIO (le Pi coupe sa propre alimentation avant de s'éteindre).
+      - ⏳ **Décision de Thomas (2026-08-21) : on assume.** Cohérent avec sa position du 2026-08-18 — « tant que le Pi est éteint je m'en fous du niveau dans les batteries ». La protection basse tension intégrée des cellules reste le filet, et l'appareil n'est jamais rangé longtemps.
+      - 📌 **Risque résiduel, écrit noir sur blanc pour qu'il ne se redécouvre pas par surprise** : un appareil laissé éteint et débranché plusieurs semaines après un arrêt d'urgence descendra jusqu'à la coupure constructeur (~3,15 V). Rien ne le signalera. Si les cellules vieillissent anormalement vite, c'est la première piste à rouvrir.
+      - 💡 **Ce que ce ticket aura servi** : révéler qu'on se croyait protégé depuis le 2026-08-17 par `arm_hat_power_cutoff()` — une fonction qui n'a jamais rien coupé (TICKET-128). Assumer un risque connu n'est pas la même chose que l'ignorer sans le savoir.
+
 
 - [x] TICKET-132 — hygiène — `buttons_daemon` journalise un avertissement à chaque appui play/pause (2026-08-17) — ✅ **CORRIGÉ le 2026-08-21**
       - 🛠️ `http_get()` distingue enfin **échec de transport** (réseau, HTTP, délai → `warning` conservé) et **réponse non-JSON** (→ `debug`). La lecture du corps et son décodage sont désormais deux `try` séparés ; avant, une page HTML parfaitement valide était journalisée comme une panne.

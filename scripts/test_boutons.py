@@ -90,6 +90,45 @@ verifie("panne réseau : rien n'est renvoyé", bd.http_get("action=x"), None)
 verifie("panne réseau : avertissement CONSERVÉ",
         any(n == "WARNING" for n, _ in journal), True)
 
+
+
+# ── TICKET-119 — combinaison casque (GPIO25) + antenne (GPIO23) ────────────
+# Temps SIMULÉ : la logique est isolée du GPIO dans EtatCombinaison, donc elle
+# se vérifie sans matériel et sans attendre 3 secondes réelles. Une logique
+# restée dans la boucle de polling n'aurait jamais été testée.
+print()
+c = bd.EtatCombinaison()
+
+# Un seul bouton, même longtemps : rien ne se déclenche.
+verifie("casque seul à t=0", c.evaluer(True, False, 0.0), "attente")
+verifie("casque seul à t=10 s", c.evaluer(True, False, 10.0), "attente")
+
+# Les deux boutons, mais relâchés avant 3 s : rien.
+c = bd.EtatCombinaison()
+verifie("les deux, début", c.evaluer(True, True, 100.0), "en_cours")
+verifie("les deux, à 2,9 s : pas encore", c.evaluer(True, True, 102.9), "en_cours")
+verifie("relâché avant 3 s : abandonné", c.evaluer(False, True, 102.95), "relachee")
+
+# Les deux boutons tenus 3 s : déclenchement, UNE SEULE FOIS.
+c = bd.EtatCombinaison()
+c.evaluer(True, True, 200.0)
+verifie("à 2,99 s : toujours rien", c.evaluer(True, True, 202.99), "en_cours")
+verifie("à 3,00 s : déclenche", c.evaluer(True, True, 203.0), "declencher")
+verifie("maintenu au-delà : ne se répète PAS", c.evaluer(True, True, 205.0), "en_cours")
+verifie("maintenu 10 s : toujours pas de répétition", c.evaluer(True, True, 210.0), "en_cours")
+
+# ⚠️ Après relâchement, la combinaison doit se réarmer — sinon elle ne
+# fonctionnerait qu'une fois par démarrage du service.
+verifie("relâchement", c.evaluer(False, False, 211.0), "relachee")
+c.evaluer(True, True, 300.0)
+verifie("deuxième usage : déclenche à nouveau", c.evaluer(True, True, 303.0), "declencher")
+
+# Le seuil est bien 3 s, pas une valeur approchante.
+verifie("seuil de maintien à 3 s", bd.COMBO_HOLD_S, 3.0)
+verifie("les deux broches visées sont l'antenne et le casque",
+        sorted(bd.COMBO_PINS), [23, 25])
+
+
 print()
 if echecs:
     print(f"⛔ {len(echecs)} test(s) en échec : {', '.join(echecs)}")
