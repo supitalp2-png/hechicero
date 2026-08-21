@@ -694,6 +694,36 @@ Par ordre d'urgence. C'est la liste de travail de ce document.
 
 ---
 
+### ⚠️ Le piège des tests de garde eux-mêmes — trois fois dans la même journée
+
+Le 2026-08-21, **trois** gardes du smoke test ont crié au loup sans qu'aucun code soit
+cassé. Toujours le même mécanisme :
+
+| Garde | Ce qu'il cherchait | Ce qu'il a trouvé |
+|---|---|---|
+| TICKET-136 | la chaîne `status.json` | le commentaire qui documentait le correctif |
+| TICKET-137 | `percent_from_voltage(tension_a_vide(` | rien — le refactor du 142 avait scindé l'expression en deux lignes |
+| TICKET-128 | la chaîne `arm_hat_power_cutoff` | la docstring qui expliquait le renommage |
+
+> **Un `grep` qui cherche un nom trouve aussi les textes qui parlent de ce nom.**
+> Et un garde qui vérifie une *forme de code* casse au premier remaniement légitime.
+
+**Trois règles, dans cet ordre de préférence :**
+
+1. **Vérifier un comportement, pas un texte.** Le meilleur garde exécute la fonction et
+   regarde ce qu'elle répond (`test_batterie.py` §16 : capteur fictif). C'est la seule
+   forme qui survit à un refactor.
+2. Si un `grep` est inévitable, **l'ancrer sur du code** — une définition ou un appel en
+   début de ligne (`^[[:space:]]*(def )?nom\(`), jamais l'apparition d'une chaîne.
+3. **Restreindre la portée** au corps de la fonction concernée (`sed -n '/^def x/,/^def /p'`)
+   plutôt qu'au fichier entier.
+
+Le coût de l'erreur n'est pas l'échec lui-même : c'est qu'**un test qui crie au loup sur sa
+propre documentation fait douter de tous les autres**. On finit par lire les rouges en
+diagonale — et le jour où l'un d'eux est vrai, on le rate.
+
+---
+
 ## 6. Ajouter un test de garde
 
 1. **Écrire le test avant le correctif** et vérifier qu'il **échoue** sur le code fautif.

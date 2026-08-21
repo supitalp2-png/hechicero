@@ -79,35 +79,54 @@ def capture_last_session(battery_level: int | None, simulate: bool = False) -> d
     return payload
 
 
-# ── Coupure matérielle du HAT (TICKET-128, 2026-08-17) ────────────────────
-# Découvert dans la démo du fabricant restée au bas de `scripts/INA219.py`
-# (sous `if __name__=='__main__':`, donc jamais exécutée — mais instructive) :
-# le HAT UPS expose un registre d'extinction. Écrire 0x55 dans le registre
-# 0x01 du périphérique I2C 0x2d lui demande de couper la sortie.
+# ── Redémarrage automatique à la remise sous tension (TICKET-128) ─────────
 #
-# POURQUOI ÇA COMPTE : `shutdown -h now` arrête le système d'exploitation,
-# mais le HAT continue de tirer sur les cellules — ventilateur, LED, et le
-# Pi lui-même en état « halted » consomment encore. Sur une décharge profonde,
-# arrêter l'OS n'empêche donc pas d'abîmer les cellules ; ça ralentit
-# seulement. C'est une demi-protection.
+# ⚠️ CE BLOC A AFFIRMÉ LE CONTRAIRE DE LA VÉRITÉ PENDANT QUATRE JOURS.
+# Il décrivait l'écriture ci-dessous comme une « coupure matérielle » qui
+# aurait demandé au HAT d'éteindre sa sortie. La documentation du fabricant
+# est pourtant explicite, et le titre de sa section suffit : **« Boot When
+# Power Applied »**.
 #
-# ⚠️ ORDRE IMPÉRATIF, et c'est tout le sujet : `sync` d'abord, armement
-# ensuite, `shutdown` en dernier. Si le HAT coupait instantanément au lieu
-# d'attendre l'arrêt, on aurait une coupure brutale en pleine écriture — ce
-# projet en a déjà les cicatrices (octets NUL dans data/sleep_debug.log,
-# fichier .tmp orphelin de battery_history.json après le changement de
-# cellules). La démo du fabricant écrit le registre PUIS appelle poweroff,
-# ce qui laisse penser que la coupure est différée, mais ce n'est pas prouvé.
-# D'où le `sync` préalable : même en cas de coupure immédiate, les données
-# sont déjà sur la carte.
+#   « After changing the value of the 0x01 register to 0x55, the MCU will
+#     start detecting the charging port after 30 seconds, and if power is
+#     available then pull the GPIO3 pin low to BOOT the Raspberry Pi. »
+#
+# Écrire 0x55 dans 0x2d/0x01 arme donc le **démarrage automatique quand
+# l'alimentation revient**. C'est l'inverse d'une coupure. La fonction, son
+# nom, son message de journal et le ticket disaient tous faux — et le journal
+# le répétait à chaque arrêt d'urgence.
+#
+# 💡 D'où venait l'erreur : le code a été déduit de la démo du fabricant en bas
+# de `scripts/INA219.py`, qui écrit ce registre juste avant `poweroff`. La
+# séquence *ressemble* à un armement de coupure. **Lire un comportement dans
+# l'ordre des appels au lieu de la documentation produit une explication
+# cohérente et fausse** — et rien ne vient jamais la contredire, puisque le
+# code « marche ».
+#
+# ── CE QUE ÇA APPORTE RÉELLEMENT, ET QUI EST UTILE ────────────────────────
+# Après un arrêt sur batterie critique, la radio **redémarre seule** dès que
+# papa rebranche le chargeur. Sans ce registre, elle resterait éteinte jusqu'à
+# une intervention. Pour un appareil que l'enfant utilise seul, c'est précieux.
+# On garde donc l'écriture — on corrige seulement ce qu'on en dit.
+#
+# ⚠️ Note du fabricant : « The Raspberry Pi needs to be turned off immediately
+# after setting 0x01 to 0x55, otherwise the start when power applied function
+# cannot be enabled. » L'ordre écriture → `shutdown` est donc bien impératif,
+# mais pour cette raison-là, pas pour éviter une coupure en pleine écriture.
+#
+# 🔴 CE QUI RESTE NON RÉSOLU : rien ici ne protège les cellules d'une décharge
+# profonde après l'arrêt de l'OS. Le HAT continue de fournir du 5 V à un Pi
+# « halted ». La seule vraie barrière est la protection intégrée des cellules.
+# Décision de Thomas (2026-08-18) : on s'en remet à elle, l'interrupteur
+# physique n'étant pas accessible.
 HAT_I2C_BUS = 1
 HAT_I2C_ADDR = "0x2d"
-HAT_CUTOFF_REG = "0x01"
-HAT_CUTOFF_VALUE = "0x55"
+HAT_BOOT_REG = "0x01"
+HAT_BOOT_VALUE = "0x55"
 
 
 def hat_present() -> bool:
-    """Le périphérique de coupure 0x2d répond-il sur le bus I2C ?
+    """Le MCU du HAT (0x2d) répond-il sur le bus I2C ?
 
     On ne tente JAMAIS l'écriture sans cette vérification : écrire à
     l'aveugle sur une adresse I2C qui n'est pas celle qu'on croit peut
@@ -122,23 +141,26 @@ def hat_present() -> bool:
     return "2d" in out.split()
 
 
-def arm_hat_power_cutoff() -> bool:
-    """Demande au HAT de couper sa sortie. Retourne True si l'ordre est parti.
+def armer_demarrage_a_la_remise_sous_tension() -> bool:
+    """Arme le redémarrage automatique du Pi quand l'alimentation revient.
 
-    N'est jamais fatal : si le HAT est absent ou l'écriture échoue, on
-    journalise et on laisse `shutdown` faire ce qu'il peut. Une protection
-    partielle vaut mieux qu'un plantage du chien de garde.
+    ⚠️ Cette fonction s'appelait `arm_hat_power_cutoff()` et prétendait couper
+    la sortie du HAT. Elle n'a jamais rien coupé : voir le bloc ci-dessus.
+
+    N'est jamais fatale : si le HAT est absent ou l'écriture échoue, on
+    journalise et `shutdown` fait son travail. Seul le redémarrage automatique
+    est perdu.
     """
     if not hat_present():
-        LOGGER.error(
-            "HAT introuvable à l'adresse %s — coupure matérielle IMPOSSIBLE, "
-            "on se contente d'arrêter le système (les cellules continueront "
-            "de se vider)", HAT_I2C_ADDR,
+        LOGGER.warning(
+            "HAT introuvable à l'adresse %s — redémarrage automatique au "
+            "rebranchement NON armé ; l'arrêt se fera normalement, mais il "
+            "faudra rallumer la radio à la main", HAT_I2C_ADDR,
         )
         return False
     try:
         completed = subprocess.run(
-            ["i2cset", "-y", str(HAT_I2C_BUS), HAT_I2C_ADDR, HAT_CUTOFF_REG, HAT_CUTOFF_VALUE],
+            ["i2cset", "-y", str(HAT_I2C_BUS), HAT_I2C_ADDR, HAT_BOOT_REG, HAT_BOOT_VALUE],
             capture_output=True, text=True, timeout=5, check=False,
         )
         if completed.returncode != 0:
@@ -147,10 +169,10 @@ def arm_hat_power_cutoff() -> bool:
                 completed.returncode, (completed.stderr or "").strip(),
             )
             return False
-        LOGGER.warning(
-            "coupure matérielle du HAT armée (%s reg %s <- %s) — "
-            "rallumage possible une fois en charge",
-            HAT_I2C_ADDR, HAT_CUTOFF_REG, HAT_CUTOFF_VALUE,
+        LOGGER.info(
+            "redémarrage au rebranchement armé (%s reg %s <- %s) — la radio "
+            "repartira seule dès que le chargeur sera rebranché",
+            HAT_I2C_ADDR, HAT_BOOT_REG, HAT_BOOT_VALUE,
         )
         return True
     except Exception:
@@ -172,9 +194,10 @@ def perform_shutdown_sequence(battery_level: int | None, simulate: bool = False)
         print("   (aucune écriture i2cset, aucun arrêt : mode simulation)")
         return payload
     if os.name != "nt":
-        # `sync` a déjà eu lieu juste au-dessus. On arme la coupure matérielle
-        # AVANT de demander l'arrêt, comme la démo du fabricant.
-        arm_hat_power_cutoff()
+        # `sync` a déjà eu lieu juste au-dessus. L'écriture doit précéder
+        # immédiatement l'arrêt : le fabricant précise que sans cela, le
+        # redémarrage au rebranchement ne s'arme pas.
+        armer_demarrage_a_la_remise_sous_tension()
         # ⚠️ TICKET-121 (2026-08-17) — PAS de `sudo` ici.
         # Ce service tourne déjà en `User=root`, donc `sudo` n'apporte rien —
         # et surtout son unité porte `NoNewPrivileges=true`, qui **casse
@@ -246,16 +269,17 @@ def read_level(sensor: Any, config: dict[str, Any], previous_charging: bool | No
 def main() -> int:
     parser = argparse.ArgumentParser(description="Hechicero battery watchdog")
     parser.add_argument("--simulate-critical", action="store_true", help="Simule un arrêt critique sans exécuter le shutdown")
-    # TICKET-128 : vérifier la présence du HAT sans RIEN écrire. À lancer avant
-    # de faire confiance à la coupure matérielle — c'est un contrôle à risque nul.
-    parser.add_argument("--check-hat", action="store_true", help="Vérifie que le périphérique de coupure 0x2d répond (aucune écriture)")
+    # TICKET-128 : vérifier la présence du MCU sans RIEN écrire. Contrôle à
+    # risque nul, lançable pendant que l'enfant écoute.
+    parser.add_argument("--check-hat", action="store_true", help="Vérifie que le MCU du HAT (0x2d) répond (aucune écriture)")
     args = parser.parse_args()
 
     if args.check_hat:
         present = hat_present()
-        print(f"HAT 0x2d détecté : {present}")
+        print(f"MCU du HAT 0x2d détecté : {present}")
         if not present:
-            print("  → coupure matérielle indisponible ; l'arrêt d'urgence se limitera à shutdown -h now")
+            print("  → redémarrage automatique au rebranchement indisponible ;")
+            print("     l'arrêt d'urgence fonctionnera, mais il faudra rallumer à la main")
             print("  → i2c-tools installé ? bus 1 actif ? (i2cdetect -y 1)")
         return 0 if present else 1
 

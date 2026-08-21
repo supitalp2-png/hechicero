@@ -708,12 +708,34 @@ else
     fi
 fi
 
-# Coupure matérielle du HAT (TICKET-128). --check-hat ne fait qu'une DÉTECTION,
-# aucune écriture i2cset : lançable pendant que l'enfant écoute.
+# ── TICKET-128 — ce registre arme un DÉMARRAGE, pas une coupure ────────────
+# Ce test annonçait « coupure matérielle du HAT disponible ». C'était faux :
+# écrire 0x55 dans 0x2d/0x01 arme le **redémarrage automatique à la remise sous
+# tension** (doc Waveshare, section « Boot When Power Applied »). L'erreur venait
+# d'une lecture de la démo constructeur, qui écrit ce registre juste avant
+# `poweroff` — la séquence ressemblait à un armement de coupure.
+# --check-hat ne fait qu'une DÉTECTION, aucune écriture : lançable en écoute.
 if hat=$(timeout 10 python3 "$ROOT/scripts/battery_watchdog.py" --check-hat 2>&1 | head -1); then
-    pass "coupure matérielle du HAT disponible — $hat"
+    pass "redémarrage auto au rebranchement disponible — $hat"
 else
-    warn "HAT 0x2d non détecté — l'arrêt d'urgence n'arrêtera que l'OS, les cellules continueront de se vider ($hat)"
+    warn "MCU du HAT 0x2d non détecté — l'arrêt d'urgence fonctionnera, mais la radio ne repartira pas seule au rebranchement ($hat)"
+fi
+
+# Le nom de la fonction ne doit plus jamais affirmer une coupure : c'est ce
+# mensonge, répété dans le journal à chaque arrêt d'urgence, qui a fait croire
+# pendant quatre jours que les cellules étaient protégées après l'arrêt de l'OS.
+# ⚠️ ANCRÉ SUR DU CODE, PAS SUR UNE MENTION. Un `grep` nu sur le nom trouve
+# aussi la docstring qui explique le renommage — ce garde a échoué exactement
+# comme ça à sa première exécution, et c'était la TROISIÈME fois dans la même
+# journée (voir aussi `status.json` et la compensation d'affaissement).
+# Règle : un garde-fou se prononce sur une DÉFINITION ou un APPEL, jamais sur
+# l'apparition d'une chaîne. Sinon il finit par échouer sur sa propre
+# explication, et un test qui crie au loup sur sa documentation fait douter de
+# toute la suite.
+if grep -qE "^[[:space:]]*(def )?arm_hat_power_cutoff\(" "$ROOT/scripts/battery_watchdog.py" 2>/dev/null; then
+    fail "battery_watchdog : arm_hat_power_cutoff() de retour — ce registre arme un DÉMARRAGE, pas une coupure (TICKET-128)"
+else
+    pass "registre 0x2d nommé pour ce qu'il fait : armer le démarrage (TICKET-128)"
 fi
 
 titre "6. Unités systemd — pièges de la zone Z2"

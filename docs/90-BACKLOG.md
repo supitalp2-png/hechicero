@@ -12,9 +12,9 @@ plus bas.*
 
 | Ticket | Sujet | Où ça en est |
 |---|---|---|
+| **144** | Décharge profonde après l'arrêt de l'OS : rien ne protège les cellules | 🔴 mis au jour par TICKET-128 — on se croyait protégé par une fonction qui ne coupait rien. Seule barrière : la protection intégrée des cellules |
 | **140** | Arrêt de charge nocturne, alimentation présente | 🔬 reproduit **3 fois** (54 %, 70 %, 96 %) ; temporisateur 6 h démenti — **cause inconnue**, désormais observable grâce au 141 |
 | **132** | `buttons_daemon` avertit à chaque play/pause (bruit de journal) | à faire, sans gravité |
-| **128** | Coupure matérielle du HAT à l'arrêt critique | ⚠️ **la fonction et sa doc sont fausses** : `0x55` = démarrage à la mise sous tension, pas une coupure. À réécrire |
 | **127** | Vrai gel du kiosque du 2026-08-17 | l'épisode du 19/08 n'en était **pas** un (c'était le 138). Le gel du 17/08 reste **non expliqué** ; battement de cœur en place pour le prochain |
 | **122** | MPD se fige si le réseau disparaît en webradio | chien de garde installé, **jamais éprouvé en réel** |
 | **119** | Écran technique caché (combinaison de boutons) | cadré, **à ne pas implémenter pour l'instant** |
@@ -35,7 +35,7 @@ dans les jours qui viennent :
 **Clos le 2026-08-17** : 112 · 116 · 123 · 124 · 125 · 131 · 079 · 079bis · 017 (supprimé)
 **Clos le 2026-08-18** : 134 (décharge profonde mesurée) · 136 (bandeau batterie figé 50 j)
 **Clos le 2026-08-19** : 141 (enregistreur aveugle aux plateaux)
-**Clos le 2026-08-21** : 137 · 139 · 142 (chaîne de mesure batterie) · 143 (outil de recalibration) · 138 (veille unique) · 129 (PHP en UTC, après 4 morsures) · 121 (arrêt critique prouvé 2× en réel) · 126 · 130 · 133
+**Clos le 2026-08-21** : 137 · 139 · 142 (chaîne de mesure batterie) · 143 (outil de recalibration) · 128 (registre HAT : démarrage, pas coupure) · 138 (veille unique) · 129 (PHP en UTC, après 4 morsures) · 121 (arrêt critique prouvé 2× en réel) · 126 · 130 · 133
 
 ⚠️ **Collision de numéro résolue le 2026-08-17** : `TICKET-123` désignait **deux**
 tickets différents — le bug d'écran (corrigé ce jour) et le registre de
@@ -56,6 +56,13 @@ collision TICKET-090 → TICKET-117 du 2026-08-04.
 ---
 
 # 🔥 Priorité haute
+
+- [ ] TICKET-144 — batterie/matériel — Après l'arrêt de l'OS, rien ne protège les cellules (2026-08-21)
+      - **Mis au jour par TICKET-128** : on se croyait protégé depuis le 2026-08-17 par une « coupure matérielle du HAT » qui, en réalité, arme un **démarrage** au rebranchement. Elle n'a jamais rien coupé.
+      - 🔴 **Le problème réel, entier** : `shutdown -h now` arrête le système, mais le HAT continue de fournir du 5 V à un Pi « halted ». Les cellules se vident donc **après** l'arrêt d'urgence, sans surveillance et sans limite de temps — c'est exactement le scénario que l'arrêt à 5 % était censé éviter.
+      - ⚠️ **Ce qui rend ce ticket vicieux** : il ne se manifeste que si l'appareil reste éteint et débranché longtemps. Rien ne le signalera, et la dégradation des cellules est irréversible.
+      - **Seule barrière actuelle** : la protection intégrée des cellules (coupure basse tension du HAT à ~3,15 V). Décision de Thomas du 2026-08-18 : on s'en remet à elle, l'interrupteur physique du HAT n'étant pas accessible dans le boîtier.
+      - **Pistes** : sortir l'interrupteur `OFF/ON` du HAT en façade du Grundig ; ou un relais piloté par GPIO qui coupe la sortie du HAT — mais il faut qu'il tienne sans alimentation, donc bistable.
 
 - [ ] TICKET-140 — matériel/batterie — Le chargeur du HAT termine la charge à ~61 % et ne reprend qu'à la sollicitation (2026-08-19)
       - **Signalé par Thomas** : « je ne comprends pas l'arrêt de recharge entre minuit en gros et 7h30 ». Ses heures, lues sur le tableau de bord, sont exactes : **00:16 → 07:09**.
@@ -233,18 +240,6 @@ collision TICKET-090 → TICKET-117 du 2026-08-04.
       - ⏳ **Reste** : installer le service, puis valider en conditions réelles — couper le partage de connexion pendant une webradio et vérifier dans `data/mpd_watchdog.log` que l'arrêt préventif se déclenche avant tout blocage.
       - 🧹 Détail sans rapport relevé dans `dmesg` : `/etc/systemd/system/audio_eq_apply.service is marked executable` → `sudo chmod 644`.
 
-- [ ] TICKET-128 — batterie/matériel — Coupure matérielle du HAT à l'arrêt critique (2026-08-17)
-      - **Découvert** dans la démo du fabricant restée au bas de `scripts/INA219.py` (sous `if __name__=='__main__':`, donc du code mort — mais instructif) : le HAT UPS expose un **registre d'extinction**. Écrire `0x55` dans le registre `0x01` du périphérique I2C `0x2d` lui demande de couper sa sortie.
-      - **Pourquoi ça compte** : `shutdown -h now` arrête le système d'exploitation, mais **le HAT continue de tirer sur les cellules** — le Pi en état « halted », les LED, tout ce qui reste alimenté. Sur une décharge profonde, arrêter l'OS ne protège donc pas les cellules, ça ralentit seulement leur vidage. C'était une demi-protection, et on ne s'en était jamais aperçu parce que l'arrêt lui-même ne fonctionnait pas (défaut 1 de TICKET-121).
-      - 🛠️ **Implémenté le 2026-08-17** dans `battery_watchdog.py` : `hat_present()` puis `arm_hat_power_cutoff()`, armés **après** le `sync` et **avant** le `shutdown`, dans l'ordre de la démo du fabricant.
-      - **Trois garde-fous, parce que ce code coupe le courant** :
-        1. **Détection obligatoire de `0x2d` avant toute écriture.** Écrire à l'aveugle sur une adresse I2C qui n'est pas celle qu'on croit peut reconfigurer un tout autre composant. Reprend la vérification `i2cdetect` du fabricant.
-        2. **Échec non fatal.** HAT absent ou `i2cset` en erreur → journalisé en `ERROR`, et on laisse `shutdown` faire ce qu'il peut. Une protection partielle vaut mieux qu'un chien de garde qui plante.
-        3. **`--check-hat`** : vérifie la présence du périphérique **sans rien écrire**. C'est le contrôle à risque nul, intégré au smoke test.
-      - ⚠️ **Ce qui n'est PAS prouvé, et c'est le point important** : que la coupure soit **différée**. Si le HAT coupait instantanément au lieu d'attendre l'arrêt du système, on aurait une coupure brutale en pleine écriture — ce projet en porte déjà les cicatrices (octets NUL dans `data/sleep_debug.log`, `.tmp` orphelin de `battery_history.json` après le changement de cellules). La démo du fabricant écrit le registre **puis** appelle `poweroff`, ce qui laisse fortement penser que la coupure est différée, mais ce n'est qu'une déduction. Mitigation en place : le `sync` a lieu **avant** l'armement, donc même une coupure immédiate trouverait les données déjà sur la carte.
-      - ⏳ **Reste** : le test réel, une seule fois, en étant présent. `--simulate-critical` s'arrête volontairement avant l'écriture — il ne prouvera jamais ce point.
-      - ✅ Vérifié le 2026-08-17 : `--check-hat` → `HAT 0x2d détecté : True`.
-
 - [ ] TICKET-058 — feature/UX — Série podcast "Décisions Prises" + easter egg
       - Première découverte : 3 taps sur "Hechicero" à l'écran d'accueil → déverrouille + lance l'épisode 0 automatiquement
       - Accès ensuite : menu secret séparé (PAS fusionné au catalogue normal) — geste d'accès plus simple qu'au premier déverrouillage (proposition à valider : simple clic sur "Hechicero")
@@ -286,6 +281,25 @@ collision TICKET-090 → TICKET-117 du 2026-08-04.
 ---
 
 # ✔️ Terminé
+
+- [x] TICKET-128 — batterie/matériel — « Coupure matérielle » du HAT : la fonction faisait l'INVERSE de ce qu'elle annonçait (2026-08-17) — ✅ **CORRIGÉ le 2026-08-21**
+      - **Découvert** dans la démo du fabricant restée au bas de `scripts/INA219.py` (sous `if __name__=='__main__':`, donc du code mort — mais instructif) : le HAT UPS expose un **registre d'extinction**. Écrire `0x55` dans le registre `0x01` du périphérique I2C `0x2d` lui demande de couper sa sortie.
+      - **Pourquoi ça compte** : `shutdown -h now` arrête le système d'exploitation, mais **le HAT continue de tirer sur les cellules** — le Pi en état « halted », les LED, tout ce qui reste alimenté. Sur une décharge profonde, arrêter l'OS ne protège donc pas les cellules, ça ralentit seulement leur vidage. C'était une demi-protection, et on ne s'en était jamais aperçu parce que l'arrêt lui-même ne fonctionnait pas (défaut 1 de TICKET-121).
+      - 🛠️ **Implémenté le 2026-08-17** dans `battery_watchdog.py` : `hat_present()` puis `arm_hat_power_cutoff()`, armés **après** le `sync` et **avant** le `shutdown`, dans l'ordre de la démo du fabricant.
+      - **Trois garde-fous, parce que ce code coupe le courant** :
+        1. **Détection obligatoire de `0x2d` avant toute écriture.** Écrire à l'aveugle sur une adresse I2C qui n'est pas celle qu'on croit peut reconfigurer un tout autre composant. Reprend la vérification `i2cdetect` du fabricant.
+        2. **Échec non fatal.** HAT absent ou `i2cset` en erreur → journalisé en `ERROR`, et on laisse `shutdown` faire ce qu'il peut. Une protection partielle vaut mieux qu'un chien de garde qui plante.
+        3. **`--check-hat`** : vérifie la présence du périphérique **sans rien écrire**. C'est le contrôle à risque nul, intégré au smoke test.
+      - 🔴 **TOUT CE QUI PRÉCÈDE EST FAUX — corrigé le 2026-08-21.** La documentation Waveshare est explicite, et le titre de sa section suffit : **« Boot When Power Applied »**.
+        > *After changing the value of the 0x01 register to 0x55, the MCU will start detecting the charging port after 30 seconds, and if power is available then pull the GPIO3 pin low to **boot** the Raspberry Pi.*
+
+        Écrire `0x55` dans `0x2d/0x01` arme le **démarrage automatique à la remise sous tension**. C'est l'inverse d'une coupure. **Rien n'a jamais été coupé**, et le journal affirmait le contraire à chaque arrêt d'urgence.
+      - 💡 **D'où venait l'erreur, et c'est ce qu'il faut retenir** : le comportement a été déduit de la **séquence d'appels** de la démo constructeur, qui écrit ce registre juste avant `poweroff`. Ça *ressemble* à un armement de coupure. **Lire un comportement dans l'ordre des appels plutôt que dans la documentation produit une explication cohérente et fausse** — et rien ne vient jamais la contredire, puisque le code « marche ».
+      - 🛠️ **Corrigé** : `arm_hat_power_cutoff()` → `armer_demarrage_a_la_remise_sous_tension()`, constantes, docstrings, messages de journal et test du smoke test réécrits. **L'écriture est conservée** : elle rend la radio capable de repartir seule dès que le chargeur est rebranché, ce qui est précieux pour un appareil que l'enfant utilise seul.
+      - ⚠️ L'ordre écriture → `shutdown` reste impératif, mais pour une autre raison que celle qu'on croyait : *« The Raspberry Pi needs to be turned off immediately after setting 0x01 to 0x55, otherwise the start when power applied function cannot be enabled. »*
+      - 🔴 **Conséquence à ne pas manquer** : la décharge profonde après l'arrêt de l'OS **n'est toujours pas traitée**. Le HAT continue de fournir du 5 V à un Pi « halted ». La seule barrière réelle est la protection intégrée des cellules — décision de Thomas du 2026-08-18, l'interrupteur physique n'étant pas accessible. On s'est cru protégé pendant quatre jours par une fonction qui ne faisait pas ce qu'elle disait.
+      - ✅ **Test de garde** : le smoke test échoue si `arm_hat_power_cutoff` réapparaît.
+
 
 - [x] TICKET-143 — outillage — `recalibrer_table_batterie.py` produit une table absurde (2026-08-21) — ✅ **CORRIGÉ le 2026-08-21**
       - 🛠️ **Réécrit.** Quatre défauts corrigés, et deux autres trouvés **en le réparant** :
