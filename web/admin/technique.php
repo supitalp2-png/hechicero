@@ -78,6 +78,31 @@ function adresses_ip(): array
     return $out;
 }
 
+/**
+ * SSID du réseau Wi-Fi associé, et sa force de signal.
+ *
+ * Demandé par Thomas le 2026-08-21 : en mobilité, savoir SUR QUEL réseau on est
+ * compte autant que l'adresse. Entre le Wi-Fi de la maison, le répéteur et le
+ * partage de connexion du téléphone, une IP seule ne dit pas laquelle des trois
+ * a été retenue — et c'est justement la question qu'on se pose.
+ *
+ * ⚠️ `iw` plutôt que `nmcli` : instantané, aucun accès au démon, et surtout
+ * **aucun risque d'exposer un mot de passe** — `nmcli` sait les afficher.
+ * Cet écran ne doit montrer que des informations sans conséquence
+ * (cf. l'avertissement en tête de fichier).
+ */
+function reseau_wifi(): array
+{
+    $out = [];
+    exec('iw dev wlan0 link 2>/dev/null', $lignes);
+    foreach ($lignes as $l) {
+        if (preg_match('/^\s*SSID:\s*(.+)$/', $l, $m))   $out['ssid'] = trim($m[1]);
+        if (preg_match('/signal:\s*(-?\d+)/', $l, $m))    $out['signal'] = (int)$m[1];
+        if (preg_match('/freq:\s*(\d+)/', $l, $m))        $out['freq'] = (int)$m[1];
+    }
+    return $out;
+}
+
 function etat_batterie(): array
 {
     $p = dirname(__DIR__, 2) . '/data/battery_stats.json';
@@ -86,7 +111,8 @@ function etat_batterie(): array
     return is_array($d) ? $d : [];
 }
 
-$ips = adresses_ip();
+$ips  = adresses_ip();
+$wifi = reseau_wifi();
 $bat = etat_batterie();
 $age = null;
 if (!empty($bat['last_updated'])) {
@@ -144,6 +170,22 @@ if (!empty($bat['last_updated'])) {
 
 <div class="carte">
   <h2>Adresses réseau</h2>
+  <?php if (!empty($wifi['ssid'])): ?>
+    <div class="ligne"><span class="k">Wi-Fi</span>
+      <span class="v"><?php echo htmlspecialchars($wifi['ssid']); ?></span></div>
+    <?php if (isset($wifi['signal'])): ?>
+    <div class="ligne"><span class="k">Signal</span>
+      <span class="v"><?php echo (int)$wifi['signal']; ?> dBm<?php
+        // Repère de lecture : au-delà de −70 dBm le débit s'effondre, et c'est
+        // la zone où les coupures de TICKET-109/110 se produisaient.
+        echo $wifi['signal'] < -70 ? ' ⚠️' : '';
+        echo isset($wifi['freq']) ? ' · ' . round($wifi['freq'] / 1000, 1) . ' GHz' : '';
+      ?></span></div>
+    <?php endif; ?>
+  <?php else: ?>
+    <div class="ligne"><span class="k">Wi-Fi</span>
+      <span class="v vide">non associé</span></div>
+  <?php endif; ?>
   <?php if (!$ips): ?>
     <div class="vide">Aucune interface active — l'appareil est hors réseau.</div>
   <?php else: foreach ($ips as $iface => $ip): ?>

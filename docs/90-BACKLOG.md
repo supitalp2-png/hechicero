@@ -16,7 +16,6 @@ plus bas.*
 | **140** | Arrêt de charge nocturne, alimentation présente | 🔬 reproduit **3 fois** (54 %, 70 %, 96 %) ; temporisateur 6 h démenti — **cause inconnue**, désormais observable grâce au 141 |
 | **127** | Vrai gel du kiosque du 2026-08-17 | l'épisode du 19/08 n'en était **pas** un (c'était le 138). Le gel du 17/08 reste **non expliqué** ; battement de cœur en place pour le prochain |
 | **122** | MPD se fige si le réseau disparaît en webradio | logique de décision **couverte** (9 tests, 2026-08-21) ; la **récupération** — SIGKILL + redémarrage — reste non éprouvée |
-| **119** | Écran technique caché (combinaison de boutons) | cadré, **à ne pas implémenter pour l'instant** |
 | **058** | Série podcast « Décisions Prises » + easter egg | 2 épisodes écrits |
 
 ### ⏳ Livré mais pas encore éprouvé en conditions réelles
@@ -26,6 +25,7 @@ dans les jours qui viennent :
 
 | Ticket | Ce qui reste à observer |
 |---|---|
+| **119** | Le retour automatique à la radio après 10 min sans toucher l'écran technique |
 | **138** | Qu'une veille survienne bien au bout de **600 s**, et que dalle et overlay s'éteignent ensemble. Si l'écran ne s'endort plus du tout, c'est TICKET-102 qui revient |
 | **137 · 139 · 142** | Que le niveau affiché reste cohérent sur un cycle complet. `level_table` est publié à côté de `level` : leur écart mesure la dérive du comptage |
 | **141** | Que la cadence plancher tienne, et que la purge s'exerce quand l'historique dépassera 30 jours |
@@ -33,7 +33,7 @@ dans les jours qui viennent :
 **Clos le 2026-08-17** : 112 · 116 · 123 · 124 · 125 · 131 · 079 · 079bis · 017 (supprimé)
 **Clos le 2026-08-18** : 134 (décharge profonde mesurée) · 136 (bandeau batterie figé 50 j)
 **Clos le 2026-08-19** : 141 (enregistreur aveugle aux plateaux)
-**Clos le 2026-08-21** : 111 (ventilateur, annulé) · 132 (bruit de journal) · 144 (risque assumé) · 145 (webradios activables) · 137 · 139 · 142 (chaîne de mesure batterie) · 143 (outil de recalibration) · 128 (registre HAT : démarrage, pas coupure) · 138 (veille unique) · 129 (PHP en UTC, après 4 morsures) · 121 (arrêt critique prouvé 2× en réel) · 126 · 130 · 133
+**Clos le 2026-08-21** : 119 (écran technique caché) · 111 (ventilateur, annulé) · 132 (bruit de journal) · 144 (risque assumé) · 145 (webradios activables) · 137 · 139 · 142 (chaîne de mesure batterie) · 143 (outil de recalibration) · 128 (registre HAT : démarrage, pas coupure) · 138 (veille unique) · 129 (PHP en UTC, après 4 morsures) · 121 (arrêt critique prouvé 2× en réel) · 126 · 130 · 133
 
 ⚠️ **Collision de numéro résolue le 2026-08-17** : `TICKET-123` désignait **deux**
 tickets différents — le bug d'écran (corrigé ce jour) et le registre de
@@ -237,7 +237,17 @@ collision TICKET-090 → TICKET-117 du 2026-08-04.
 
 # 🟢 Priorité basse / À décider
 
-- [ ] TICKET-119 — feature/admin — Écran technique caché, ouvert par combinaison de boutons physiques (2026-08-04)
+# ✔️ Terminé
+
+- [x] TICKET-119 — feature/admin — Écran technique caché, ouvert par combinaison de boutons physiques (2026-08-04) — ✅ **LIVRÉ le 2026-08-21**
+      - 🛠️ **Combinaison** : appui simultané de 3 s sur casque (GPIO25) + antenne (GPIO23). ⚠️ **Piège de la zone Z3** : ces deux boutons agissent **à l'appui**, pas au relâchement — sans précaution la combinaison basculait la sortie audio et ouvrait l'écran Chambre au passage. Leur action individuelle est donc différée de 300 ms, **elles seules** ; les sept autres boutons gardent leur réactivité immédiate.
+      - 🛠️ **L'écran est une PAGE** (`web/admin/technique.php`) vers laquelle le kiosque navigue, pas un écran de plus dans `index.html`. La lecture continue, MPD étant côté serveur. Contenu : IP de **chaque** interface active, batterie avec `level_table` à côté du niveau, curseur de gain casque, sortie du kiosque.
+      - 🔗 **Gain casque dans `web/admin/eq_gain.php`, partagé** avec `audio_eq.php` : deux IHM sur un même réglage divergent (zone Z11). Le plafond de 6 dB y vit aussi — **pas dans les pages**, un futur appelant l'oublierait, et c'est un garde-fou auditif. N'écrase que `gain_db`, jamais les dix bandes (leçon de TICKET-124).
+      - 🛠️ **Retour automatique** calé sur `screen_off_delay` : on a quitté le lecteur, son minuteur ne tourne plus. Sans ça, l'enfant retrouverait un écran de réglages au lieu de ses podcasts.
+      - 🔓 **Sortie du kiosque** via une règle sudoers étroite (`pkill -u thomas -x chromium`). **Décision de Thomas : pas de relance automatique**, le redémarrage est la porte de sortie assumée. Ce qui se passe ensuite sur le bureau ne relève pas de ce projet.
+      - ⚠️ **Le premier essai a échoué, et c'était la zone Z12** : le daemon écrivait bien `{"screen":"technique"}`, le disque savait le traiter, mais **le kiosque tournait encore sur l'ancien `index.html` chargé en mémoire**. Un `wtype -k F5` a suffi. **Le smoke test ne peut pas voir ça** — il compare la réponse d'Apache au disque, pas ce que Chromium exécute. Toute modification de `index.html` exige ce rechargement, sous peine de tester l'ancienne version en croyant tester la nouvelle.
+      - ✅ **Éprouvé en réel le 2026-08-21** : combinaison, écran, curseur de gain et **sortie du kiosque**. ⏳ Reste le retour automatique après 10 min — le seul point qui demande d'attendre.
+      - 📌 **Écarté volontairement** : les 10 bandes d'égaliseur. Se règlent mal au doigt sur 7 pouces, et `audio_eq.php` le fait déjà très bien depuis un téléphone — or l'intérêt de cet écran est justement d'exister **quand l'admin n'est pas joignable**.
       - **Demande de Thomas** : un **appui long simultané sur le bouton casque (GPIO25, « source ») et le bouton antenne (GPIO23)** ouvre une page d'administration technique affichant l'**adresse IP** d'Hechicero, des **informations batterie**, et permettant de **modifier l'égaliseur**.
       - ⚠️ **Cadrage seulement — rien à implémenter pour l'instant** (décision Thomas, 2026-08-04).
       - **Pourquoi c'est utile** : en mobilité, retrouver l'IP du Pi est aujourd'hui un chemin de croix (partage de connexion du téléphone, câble USB-Ethernet + ICS, cf. TICKET-109/110 et la procédure d'accès de secours). Un écran qui l'affiche directement supprime le besoin de SSH pour la question la plus fréquente.
@@ -254,7 +264,6 @@ collision TICKET-090 → TICKET-117 du 2026-08-04.
       - **Sécurité / usage** : c'est un écran **parent**. Il ne doit pas exposer de secret (aucun jeton, aucun identifiant de la passerelle domotique) ni offrir de contournement du contrôle parental. La combinaison à deux boutons maintenus est déjà, en soi, une protection raisonnable contre un déclenchement accidentel par l'enfant.
       - ❓ **À confirmer avec Thomas** : l'écran doit-il rester accessible en dehors des horaires autorisés d'écoute (comme l'écran Chambre) ? A priori oui, c'est un outil de dépannage.
 
-# ✔️ Terminé
 
 - [x] TICKET-111 — hardware — Ventilateur GPIO/PWM pour dissipation thermique (2026-07-18) — ❌ **ANNULÉ le 2026-08-21** (renuméroté depuis TICKET-110, en collision avec le ticket roaming — 2026-07-18)
       - Demande de Thomas : boîtier chaud, ventilateur silencieux souhaité. Corroboré par TICKET-109 (`vcgencmd get_throttled = 0xe0000` le 2026-07-18 : capping fréquence + throttling + limite thermique constatés depuis le dernier boot)
