@@ -64,6 +64,19 @@ DEFAULT_CONFIG = {
     # table est fiable — et c'est là que vit la sécurité.
     "coulomb_anchor_percent": 70,
     "battery_usable_mah": 8894,
+    # ── TICKET-142 — reconnaître une batterie PLEINE ────────────────────────
+    # Sert de point d'ancrage franc, indépendant de la table : au démarrage à
+    # froid en zone plate, le comptage hériterait sinon de l'erreur de la table
+    # (jusqu'à 9 points) jusqu'au prochain passage sous le seuil.
+    #
+    # ⚠️ LES DEUX CONDITIONS SONT INDISPENSABLES. Un courant quasi nul ne
+    # suffit PAS : les arrêts de charge anormaux du TICKET-140 présentent
+    # exactement cette signature (0,91 mA pendant des heures) à **54 % et
+    # 70 %**. S'ancrer à 100 % sur le seul courant transformerait cette
+    # anomalie en fausse batterie pleine. Le critère de tension les exclut :
+    # ils se produisent à 3,80 et 3,94 V, loin des 4,10 V exigés.
+    "full_voltage_v": 4.10,
+    "full_current_ma": 150.0,
 }
 
 
@@ -204,12 +217,33 @@ def tension_a_vide(voltage_v: float, current_ma: float, resistance_ohm: float) -
     return voltage_v - (current_ma / 1000.0) * resistance_ohm
 
 
+def batterie_pleine(voc_v: float, current_ma: float, config: dict[str, Any]) -> bool:
+    """La batterie est-elle pleine, et le chargeur a-t-il fini ?
+
+    TICKET-142. Sert de point d'ancrage franc pour le comptage coulométrique,
+    indépendant de la table — donc utilisable même en pleine zone plate, là où
+    la table ne vaut rien.
+
+    ⚠️ **Les deux conditions sont indispensables.** Un courant quasi nul ne
+    suffit pas : les arrêts de charge anormaux du TICKET-140 présentent
+    exactement cette signature (0,91 mA constant pendant des heures) à **54 %
+    et 70 %**. S'ancrer sur le seul courant transformerait cette anomalie en
+    fausse batterie pleine — et la jauge afficherait 100 % avec un tiers de
+    l'énergie. Le critère de tension les exclut : ils surviennent à 3,80 et
+    3,94 V, très loin du seuil.
+    """
+    seuil_v = float(config.get("full_voltage_v", 4.10))
+    seuil_i = float(config.get("full_current_ma", 150.0))
+    return voc_v >= seuil_v and abs(current_ma) <= seuil_i
+
+
 def niveau_coulometrique(
     etat: dict[str, Any] | None,
     niveau_table: int,
     current_ma: float,
     ecoule_s: float,
     config: dict[str, Any],
+    voc_v: float | None = None,
 ) -> tuple[int, dict[str, Any] | None]:
     """Niveau de charge au-dessus du plateau, par intégration du courant.
 
@@ -245,6 +279,13 @@ def niveau_coulometrique(
     capacite = float(config.get("battery_usable_mah", 0))
     if capacite <= 0 or seuil <= 0:
         return niveau_table, None
+
+    # Batterie pleine : ancrage franc à 100 %, qui l'emporte sur tout le reste.
+    # C'est le seul repère fiable en zone plate — sans lui, un démarrage à
+    # froid au-dessus du seuil hériterait de l'erreur de la table (jusqu'à
+    # 9 points) jusqu'au prochain passage sous le seuil.
+    if voc_v is not None and batterie_pleine(voc_v, current_ma, config):
+        return 100, {"mah": capacite}
 
     # Sous le seuil : la table fait autorité et sert d'ancrage.
     if niveau_table < seuil and (etat is None or etat.get("mah") is None
@@ -391,7 +432,8 @@ def read_sensor_snapshot(
     # l'état réel de la cellule — d'où le niveau qui plonge dès qu'un podcast
     # démarre alors que rien n'a été consommé. On corrige AVANT de convertir.
     r_interne = float(config.get("internal_resistance_ohm", 0.0))
-    niveau_table = percent_from_voltage(tension_a_vide(voltage_v, current_ma, r_interne))
+    voc = tension_a_vide(voltage_v, current_ma, r_interne)
+    niveau_table = percent_from_voltage(voc)
 
     # TICKET-142 : au-dessus du plateau, la tension ne dit plus rien — on
     # intègre le courant depuis le dernier ancrage. Les appelants qui ne
@@ -401,6 +443,7 @@ def read_sensor_snapshot(
     level, nouvel_ancrage = niveau_coulometrique(
         coulomb_state, niveau_table, current_ma,
         elapsed_s if elapsed_s is not None else 0.0, config,
+        voc_v=voc,
     )
 
     # `charge_threshold_ma` (ancien seuil unique) n'est plus utilisé. Il reste

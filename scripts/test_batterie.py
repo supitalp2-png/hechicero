@@ -21,6 +21,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from battery_common import (                        # noqa: E402
     _LIPO_TABLE,
+    batterie_pleine,
     detecter_charge,
     mediane,
     niveau_coulometrique,
@@ -424,6 +425,39 @@ verifie("... et l'ancrage est effacé (pas de dérive qui survit)", etat2, None)
 verifie("sans capacité configurée, retour à la table",
         niveau_coulometrique({"mah": 100.0}, 88, -1600.0, 60.0, {"coulomb_anchor_percent": 70}),
         (88, None))
+
+# ── 15. TICKET-142 — ancrage sur batterie pleine ──────────────────────────
+# Sans ce repère, un démarrage à froid en zone plate amorce le comptage sur la
+# valeur FAUSSE de la table et la conserve jusqu'au prochain passage sous 70 %.
+CFGP = dict(CFG, full_voltage_v=4.10, full_current_ma=150.0)
+
+# Mesures réelles de fin de charge du 2026-08-21 : 4,156-4,168 V, courant résiduel.
+verifie("4,164 V et -18 mA : batterie pleine", batterie_pleine(4.164, -18.0, CFGP), True)
+verifie("4,160 V et +25 mA : batterie pleine", batterie_pleine(4.160, 24.8, CFGP), True)
+
+# ⚠️ LE PIÈGE À NE PAS RÉINTRODUIRE — les arrêts de charge anormaux du
+# TICKET-140 ont un courant quasi nul (0,91 mA constant pendant des heures)
+# mais une tension basse. Les prendre pour une batterie pleine afficherait
+# 100 % avec un tiers de l'énergie.
+verifie("arrêt anormal à 70 % (3,948 V, 0,91 mA) : PAS pleine",
+        batterie_pleine(3.948, 0.91, CFGP), False)
+verifie("arrêt anormal à 54 % (3,820 V, -60 mA) : PAS pleine",
+        batterie_pleine(3.820, -60.05, CFGP), False)
+
+# Charge en cours à fort courant : pas encore pleine, même à haute tension.
+verifie("charge à +1100 mA : pas pleine malgré 4,12 V",
+        batterie_pleine(4.12, 1100.0, CFGP), False)
+# Décharge franche : jamais pleine.
+verifie("décharge à -2200 mA : pas pleine", batterie_pleine(4.12, -2200.0, CFGP), False)
+
+# L'ancrage sur batterie pleine l'emporte sur un état hérité faux.
+niveau, etat = niveau_coulometrique({"mah": 0.60 * 8894}, 85, -18.0, 60.0, CFGP, voc_v=4.164)
+verifie("batterie pleine : le comptage est recalé à 100 %", niveau, 100)
+verifie("... et l'ancrage vaut la capacité entière", round(etat["mah"]), 8894)
+
+# Sans tension fournie, le mécanisme garde son comportement d'avant.
+verifie("sans voc_v, aucun ancrage sur batterie pleine",
+        niveau_coulometrique({"mah": 0.60 * 8894}, 85, -18.0, 60.0, CFGP)[0] != 100, True)
 
 
 print()

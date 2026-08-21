@@ -586,6 +586,17 @@ else
     fail "battery_common : le comptage n'est plus invalidé sur trou de mesure — dérive silencieuse (TICKET-142)"
 fi
 
+# ⚠️ L'ancrage sur batterie pleine doit exiger la TENSION autant que le courant.
+# Les arrêts de charge anormaux du TICKET-140 ont un courant quasi nul (0,91 mA
+# pendant des heures) à **54 % et 70 %** : un critère fondé sur le seul courant
+# les prendrait pour une batterie pleine et afficherait 100 % avec un tiers de
+# l'énergie — pile le genre de faux positif qui trompe sans rien casser.
+if grep -q "voc_v >= seuil_v and abs(current_ma) <= seuil_i" "$ROOT/scripts/battery_common.py" 2>/dev/null; then
+    pass "batterie pleine reconnue sur tension ET courant (TICKET-142/140)"
+else
+    fail "battery_common : critère de batterie pleine affaibli — un arrêt de charge anormal serait pris pour un plein (TICKET-142)"
+fi
+
 # Capacité utile non nulle dans la config EFFECTIVE : à zéro, le mécanisme se
 # neutralise et on retombe silencieusement sur la table fausse.
 cap_eff=$(cd "$ROOT/scripts" && timeout 10 python3 -c "

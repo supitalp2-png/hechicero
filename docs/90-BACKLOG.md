@@ -10,7 +10,7 @@
 
 | Ticket | Sujet | Où ça en est |
 |---|---|---|
-| **142** | Comptage coulométrique au-dessus du plateau (régression du 137) | ✅ **corrigé le 2026-08-21** : ancré sous 70 %, invalidé sur trou. Rejeu réel : 78 % vs 77,9 %. **Non testé en réel** |
+| **142** | Comptage coulométrique au-dessus du plateau (régression du 137) | ✅ **corrigé le 2026-08-21** : ancré sous 70 %, invalidé sur trou. Rejeu réel : 78 % vs 77,9 %, écart max ±1,2 pt. **Non testé en réel** |
 | **141** | L'enregistreur est aveugle pendant les plateaux et ignore le courant | ✅ **corrigé le 2026-08-19** : cadence plancher 5 min, courant comme critère, purge 30 j, 44 assertions. **Non testé en réel** |
 | **140** | Arrêt de charge nocturne à 61 % (00:16 → 07:09), alimentation présente | 🔬 établi ; ❌ piste du temporisateur 6 h **démentie** (charge jusqu'à 97 %) — **cause inconnue**, bloqué par le 141 |
 | **139** | « Charge arrêtée à 60 % » = signal non lissé, pas un plateau | ✅ **corrigé le 2026-08-21** : rafale de 5 lectures + médiane. **Non testé en réel** |
@@ -80,8 +80,11 @@ collision TICKET-090 → TICKET-117 du 2026-08-04.
         - Au-dessus : intégration du courant depuis le dernier ancrage.
         - La dérive ne peut donc s'accumuler que sur **une seule traversée** de la bande haute — quelques heures — avant remise à zéro. C'est la différence avec un compteur libre, et la seule raison pour laquelle ce mécanisme est acceptable ici.
       - ⚠️ **Garde-fou central** : au-delà de **10 min** de trou entre deux relevés, l'ancrage est **abandonné** et la table reprend. Un compteur qui intègre à travers un trou dérive **sans le dire** — le pire défaut possible pour ce genre de mécanisme. `level_table` est aussi publié dans `battery_stats.json` : sans lui, une dérive serait indétectable sans refaire un cycle complet.
-      - ✅ **Vérifié sur les données réelles** du 2026-08-21, rejouées à travers le mécanisme : **78 % contre 77,9 %** de référence — un dixième de point.
-      - ✅ **Tests** : 62 → **75 assertions**. Quatre tests du comptage ont **d'abord échoué**, non par erreur de code mais parce qu'ils simulaient un pas d'une heure que le garde-fou de trou rejette — ce qui a prouvé au passage que le garde-fou mord. Smoke test §5 : mécanisme branché, ancrage persisté, invalidation sur trou, capacité effective non nulle.
+      - 🔗 **Ancrage sur batterie pleine** (ajouté après la première mise en service) : sans lui, un démarrage à froid en zone plate amorce le comptage sur la valeur **fausse** de la table et la conserve jusqu'au prochain passage sous 70 %. `batterie_pleine()` exige **tension ≥ 4,10 V ET |courant| ≤ 150 mA**.
+        - ⚠️ **Les deux conditions sont indispensables** : les arrêts de charge anormaux du TICKET-140 ont exactement la signature d'un courant nul (0,91 mA constant pendant des heures) mais à **54 % et 70 %**. Un critère fondé sur le seul courant afficherait **100 % avec un tiers de l'énergie**. Le seuil de tension les exclut (3,80 et 3,94 V). Quatre assertions et un test du smoke test verrouillent ce point.
+      - ✅ **Vérifié sur les données réelles** du 2026-08-21, rejouées à travers le mécanisme : **78 % contre 77,9 %** de référence — un dixième de point. Sur le cycle entier, écart maximal **±1,2 point**, y compris en simulant un démarrage à froid en cours de route.
+      - 📌 **Limite connue** : le rattrapage d'un démarrage à froid dépend de l'ancrage sur batterie pleine. Un démarrage à 4,05 V — sous le seuil de plein, au-dessus du seuil de table — hériterait de l'erreur de la table jusqu'au prochain passage sous 70 %. Borné à un cycle, non corrigé.
+      - ✅ **Tests** : 62 → **84 assertions**. Quatre tests du comptage ont **d'abord échoué**, non par erreur de code mais parce qu'ils simulaient un pas d'une heure que le garde-fou de trou rejette — ce qui a prouvé au passage que le garde-fou mord. Smoke test §5 : mécanisme branché, ancrage persisté, invalidation sur trou, capacité effective non nulle.
       - 📌 **Le watchdog n'utilise PAS le comptage** (il ne transmet pas d'ancrage) et reçoit le niveau de la table. Sans conséquence : il ne décide qu'en bas de plage, précisément là où la table est fiable.
 
 - [x] TICKET-137 + TICKET-139 — batterie/précision — Table mesurée, compensation d'affaissement et lissage (2026-08-21) — ✅ **CORRIGÉ**
