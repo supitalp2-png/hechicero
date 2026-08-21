@@ -476,7 +476,35 @@ verifier_service battery_watchdog "battery_watchdog.py"
 # avec lui sans jamais rien rapporter. C'est exactement ce qui a permis à un
 # MPD bloqué de passer 24 h inaperçu. On sonde donc le socket Unix (le même que
 # radio.php) avec un délai de garde.
-if reponse=$(timeout 10 python3 "$ROOT/scripts/mpd_watchdog.py" --probe 2>&1 | tail -1); then
+# ⚠️ DEUX défauts corrigés le 2026-08-21, et le second m'a failli échapper.
+#
+# 1. PAS de pipe dans la condition. Le code de retour d'un pipeline est celui de
+#    sa DERNIÈRE commande : avec `... --probe | tail -1`, c'est `tail` qui
+#    décide, et `tail` réussit toujours. Ce contrôle était donc VERT quoi qu'il
+#    arrive depuis le 2026-08-05 — il a affiché une coche verte suivie du mot
+#    « INJOIGNABLE ». C'est la fonction vitale V1, et son garde était inerte.
+#
+# 2. ⚠️ UNE SEULE SONDE NE SUFFIT PAS À CONCLURE. Le socket d'écoute de MPD a un
+#    backlog de 0, et le kiosque l'interroge très souvent (`syncAudioMode` et
+#    `syncPlaybackState` toutes les 100 ms). Une sonde qui tombe au mauvais
+#    moment reçoit EAGAIN — file d'attente saturée — alors que MPD va très bien.
+#    Corriger le point 1 sans celui-ci aurait transformé un faux négatif
+#    intermittent en ÉCHEC DUR, et rendu le smoke test inutilisable.
+#
+# On reproduit donc la logique du chien de garde : plusieurs tentatives, et on
+# ne conclut à la panne que si TOUTES échouent. Lui exige 3 échecs consécutifs
+# avant d'agir — c'est précisément pourquoi il n'a rien fait pendant que ce
+# test criait à l'injoignable.
+code_mpd=1
+for essai in 1 2 3; do
+    sortie_mpd=$(timeout 10 python3 "$ROOT/scripts/mpd_watchdog.py" --probe 2>&1)
+    code_mpd=$?
+    [ "$code_mpd" -eq 0 ] && break
+    sleep 1
+done
+reponse=$(printf '%s' "$sortie_mpd" | tail -1)
+if [ "$code_mpd" -eq 0 ]; then
+    [ "$essai" -gt 1 ] && reponse="$reponse (au $essai" && reponse="$reponse e essai — socket chargée, normal)"
     pass "MPD répond — $reponse"
 else
     fail "MPD ne répond pas — $reponse"
@@ -818,7 +846,14 @@ fi
 # d'une lecture de la démo constructeur, qui écrit ce registre juste avant
 # `poweroff` — la séquence ressemblait à un armement de coupure.
 # --check-hat ne fait qu'une DÉTECTION, aucune écriture : lançable en écoute.
-if hat=$(timeout 10 python3 "$ROOT/scripts/battery_watchdog.py" --check-hat 2>&1 | head -1); then
+#
+# ⚠️ Même défaut que la sonde MPD, trouvé le 2026-08-21 par le même audit : le
+# `| head -1` DANS la condition rendait ce test incapable d'échouer — c'est
+# `head` qui décidait, et il réussit toujours. On capture, puis on teste.
+sortie_hat=$(timeout 10 python3 "$ROOT/scripts/battery_watchdog.py" --check-hat 2>&1)
+code_hat=$?
+hat=$(printf '%s' "$sortie_hat" | head -1)
+if [ "$code_hat" -eq 0 ]; then
     pass "redémarrage auto au rebranchement disponible — $hat"
 else
     warn "MCU du HAT 0x2d non détecté — l'arrêt d'urgence fonctionnera, mais la radio ne repartira pas seule au rebranchement ($hat)"

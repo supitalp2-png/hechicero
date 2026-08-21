@@ -708,6 +708,53 @@ cassé. Toujours le même mécanisme :
 > **Un `grep` qui cherche un nom trouve aussi les textes qui parlent de ce nom.**
 > Et un garde qui vérifie une *forme de code* casse au premier remaniement légitime.
 
+### 🔴 Le défaut inverse, et il est bien pire : un garde qui ne peut pas échouer
+
+Les trois cas ci-dessus **criaient au loup**. Deux autres, trouvés le 2026-08-21, faisaient
+l'inverse — ils annonçaient une réussite quoi qu'il arrive :
+
+```bash
+if reponse=$(timeout 10 python3 scripts/mpd_watchdog.py --probe 2>&1 | tail -1); then
+    pass "MPD répond — $reponse"
+```
+
+**Le code de retour d'un pipeline est celui de sa DERNIÈRE commande.** Ici `tail`, qui
+réussit toujours. Le test était donc vert depuis le 2026-08-05 — il a affiché
+`✅ MPD répond — MPD INJOIGNABLE` sans que personne ne le relève, moi compris, trois fois
+dans la même journée.
+
+C'était le garde de la **fonction vitale V1** du projet. Le même défaut affectait
+`--check-hat` avec `| head -1`.
+
+> **Un test qui échoue à tort se remarque. Un test qui réussit à tort ne se remarque
+> jamais.** C'est la panne silencieuse, exactement ce que ce registre existe pour éviter.
+
+**Règle** : jamais de pipe dans une condition dont on teste le résultat. Capturer d'abord,
+lire `$?`, tester ensuite.
+
+```bash
+sortie=$(commande 2>&1)
+code=$?
+resume=$(printf '%s' "$sortie" | tail -1)
+if [ "$code" -eq 0 ]; then ...
+```
+
+### ⚠️ Et corriger cela sans réfléchir aurait cassé autre chose
+
+Rendre la sonde MPD capable d'échouer l'a rendue **capable d'échouer à tort**. Le socket
+d'écoute de MPD a un backlog de 0, et le kiosque l'interroge toutes les 100 ms
+(`syncAudioMode`, `syncPlaybackState`) : une sonde isolée reçoit parfois `EAGAIN` — file
+d'attente saturée — alors que **MPD fonctionne parfaitement**. Thomas l'a signalé
+immédiatement : « il y a un souci dans ton test car Hechicero marche normalement ».
+
+Le smoke test fait donc désormais **trois tentatives**, comme le chien de garde qui exige
+trois échecs consécutifs avant d'agir. C'est d'ailleurs pour cette raison que le chien de
+garde, lui, n'avait rien signalé : sa logique était juste depuis le début.
+
+📌 **Réparer un garde inerte sans reproduire sa tolérance au bruit, c'est échanger une
+panne silencieuse contre un test instable** — et un test instable finit par être ignoré,
+ce qui ramène au point de départ.
+
 **Trois règles, dans cet ordre de préférence :**
 
 1. **Vérifier un comportement, pas un texte.** Le meilleur garde exécute la fonction et
