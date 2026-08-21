@@ -10,6 +10,7 @@
 
 | Ticket | Sujet | Où ça en est |
 |---|---|---|
+| **142** | Comptage coulométrique au-dessus du plateau (régression du 137) | ✅ **corrigé le 2026-08-21** : ancré sous 70 %, invalidé sur trou. Rejeu réel : 78 % vs 77,9 %. **Non testé en réel** |
 | **141** | L'enregistreur est aveugle pendant les plateaux et ignore le courant | ✅ **corrigé le 2026-08-19** : cadence plancher 5 min, courant comme critère, purge 30 j, 44 assertions. **Non testé en réel** |
 | **140** | Arrêt de charge nocturne à 61 % (00:16 → 07:09), alimentation présente | 🔬 établi ; ❌ piste du temporisateur 6 h **démentie** (charge jusqu'à 97 %) — **cause inconnue**, bloqué par le 141 |
 | **139** | « Charge arrêtée à 60 % » = signal non lissé, pas un plateau | ✅ **corrigé le 2026-08-21** : rafale de 5 lectures + médiane. **Non testé en réel** |
@@ -63,6 +64,25 @@ collision TICKET-090 → TICKET-117 du 2026-08-04.
 ---
 
 # 🔥 Priorité haute
+
+- [x] TICKET-142 — batterie/précision — Comptage coulométrique ancré au-dessus du plateau (2026-08-21) — ✅ **CORRIGÉ**
+      - 🔴 **Ouvert parce que TICKET-137 avait introduit une régression.** Après déploiement, la nouvelle table annonçait **86 %** alors que l'intégration du courant depuis la charge pleine donnait **77,9 %**. L'ancienne table, elle, disait 75 % — juste à 2 points près.
+      - 🔍 **Pourquoi l'ancienne tombait juste** : elle cumulait **deux erreurs opposées** qui s'annulaient en décharge — la table sur-évaluait de 4 à 8 points, et l'usage de la tension **brute** (au lieu de la tension à vide) sous-évaluait d'à peu près autant. Fragile et faux dès qu'on ne décharge pas, mais juste en pratique.
+      - ⚠️ **MA FAUTE, et c'est la leçon la plus transférable de tout le projet : j'ai validé dans la mauvaise unité.** J'ai annoncé « 6,4 mV de désaccord médian » comme une réussite sans jamais convertir ces millivolts en **points de pourcentage**. Or :
+        | bande | largeur | ce que valent 10 mV |
+        |---|---|---|
+        | 75-80 % | 5,0 mV | **10 points** |
+        | 80-85 % | 5,0 mV | **10 points** |
+        | 0-70 % | 26-66 mV | 0,8 à 1,9 point |
+        6 mV d'accord est excellent à 50 % et **sans valeur à 80 %**. Mes deux cycles de calibration étaient en désaccord de ~12 **points** dans la zone plate, et je ne l'ai pas vu parce que je regardais des volts. **Le produit s'exprime en pourcents ; je l'ai validé en volts.**
+      - 🛠️ **Remède — comptage ancré, et c'est l'ancrage qui le rend sûr** :
+        - Sous `coulomb_anchor_percent` (70 %) : la table fait autorité. La courbe y est franche et **se recale d'elle-même**.
+        - Au-dessus : intégration du courant depuis le dernier ancrage.
+        - La dérive ne peut donc s'accumuler que sur **une seule traversée** de la bande haute — quelques heures — avant remise à zéro. C'est la différence avec un compteur libre, et la seule raison pour laquelle ce mécanisme est acceptable ici.
+      - ⚠️ **Garde-fou central** : au-delà de **10 min** de trou entre deux relevés, l'ancrage est **abandonné** et la table reprend. Un compteur qui intègre à travers un trou dérive **sans le dire** — le pire défaut possible pour ce genre de mécanisme. `level_table` est aussi publié dans `battery_stats.json` : sans lui, une dérive serait indétectable sans refaire un cycle complet.
+      - ✅ **Vérifié sur les données réelles** du 2026-08-21, rejouées à travers le mécanisme : **78 % contre 77,9 %** de référence — un dixième de point.
+      - ✅ **Tests** : 62 → **75 assertions**. Quatre tests du comptage ont **d'abord échoué**, non par erreur de code mais parce qu'ils simulaient un pas d'une heure que le garde-fou de trou rejette — ce qui a prouvé au passage que le garde-fou mord. Smoke test §5 : mécanisme branché, ancrage persisté, invalidation sur trou, capacité effective non nulle.
+      - 📌 **Le watchdog n'utilise PAS le comptage** (il ne transmet pas d'ancrage) et reçoit le niveau de la table. Sans conséquence : il ne décide qu'en bas de plage, précisément là où la table est fiable.
 
 - [x] TICKET-137 + TICKET-139 — batterie/précision — Table mesurée, compensation d'affaissement et lissage (2026-08-21) — ✅ **CORRIGÉ**
       - **Condition posée par Thomas remplie** : après plusieurs cycles, les courbes convergent. Deux décharges profondes indépendantes (cycles 12 du 18/08 et 18 du 19/08) ont délivré **8892 et 8896 mAh** — à 0,05 % près — et leurs courbes tension→charge s'accordent à **6,4 mV** après compensation (12,0 mV sans).

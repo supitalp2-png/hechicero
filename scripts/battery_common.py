@@ -52,6 +52,18 @@ DEFAULT_CONFIG = {
     # constante physique. À réévaluer si un cycle à faible courant devient
     # disponible : c'est lui qui donnerait le bras de levier qui manque.
     "internal_resistance_ohm": 0.034,
+    # ── TICKET-142 — au-dessus de ce niveau, la tension ne dit plus rien ─────
+    # Mesuré le 2026-08-21 : dans la bande 75-85 %, la table mesurée étale
+    # 5 points de pourcentage sur 5 mV. Autrement dit **10 mV d'écart valent
+    # 10 points**. Deux cycles de calibration s'accordant à 10 mV dans cette
+    # zone étaient donc en désaccord de 12 points — accord excellent en volts,
+    # sans valeur en pourcents. C'est le plateau de la chimie Li-ion : aucune
+    # table de tension, si bien mesurée soit-elle, n'y arrivera.
+    #
+    # En dessous, la courbe est franche (0,8 à 1,9 point pour 10 mV) et la
+    # table est fiable — et c'est là que vit la sécurité.
+    "coulomb_anchor_percent": 70,
+    "battery_usable_mah": 8894,
 }
 
 
@@ -192,6 +204,78 @@ def tension_a_vide(voltage_v: float, current_ma: float, resistance_ohm: float) -
     return voltage_v - (current_ma / 1000.0) * resistance_ohm
 
 
+def niveau_coulometrique(
+    etat: dict[str, Any] | None,
+    niveau_table: int,
+    current_ma: float,
+    ecoule_s: float,
+    config: dict[str, Any],
+) -> tuple[int, dict[str, Any] | None]:
+    """Niveau de charge au-dessus du plateau, par intégration du courant.
+
+    ── POURQUOI (TICKET-142, 2026-08-21) ─────────────────────────────────────
+    Au-dessus de `coulomb_anchor_percent`, la tension ne distingue plus rien :
+    10 mV valent 10 points de pourcentage. Le 2026-08-21, la table mesurée
+    annonçait **86 %** alors que l'intégration du courant depuis la charge
+    pleine donnait **77 %** — et l'ancienne table générique, elle, tombait
+    juste par compensation de deux erreurs opposées.
+
+    ── LE PRINCIPE, ET CE QUI LE REND SÛR ────────────────────────────────────
+    Un comptage coulométrique libre dérive sans fin. Celui-ci est **ancré** :
+
+    - Sous le seuil, on rend le niveau de la TABLE et on garde l'ancrage à jour.
+      La courbe y est franche, donc la table se recale d'elle-même.
+    - Au-dessus, on part du dernier ancrage et on intègre le courant.
+
+    La dérive ne peut donc s'accumuler que sur **une seule traversée** de la
+    bande haute — quelques heures — avant d'être remise à zéro au passage
+    suivant sous le seuil. C'est ce qui distingue ce mécanisme d'un compteur
+    libre, et c'est la seule raison pour laquelle il est acceptable ici.
+
+    ⚠️ `ecoule_s` doit être le temps réel écoulé depuis le relevé précédent. Un
+    trou de mesure (tracker arrêté, appareil éteint) rend l'intégration fausse
+    sans le dire : au-delà de `_COULOMB_TROU_MAX_S`, on **abandonne l'ancrage**
+    et on repasse à la table. Mieux vaut une valeur imprécise qu'une valeur
+    fausse qu'on croit juste.
+
+    Renvoie `(niveau, nouvel_etat)`. `nouvel_etat` vaut `None` quand on est
+    revenu à la table — l'ancrage est alors sans objet.
+    """
+    seuil = int(config.get("coulomb_anchor_percent", 70))
+    capacite = float(config.get("battery_usable_mah", 0))
+    if capacite <= 0 or seuil <= 0:
+        return niveau_table, None
+
+    # Sous le seuil : la table fait autorité et sert d'ancrage.
+    if niveau_table < seuil and (etat is None or etat.get("mah") is None
+                                 or etat["mah"] / capacite * 100 < seuil):
+        return niveau_table, None
+
+    # Trou de mesure : l'intégration est aveugle sur l'intervalle manquant.
+    if etat is None or ecoule_s <= 0 or ecoule_s > _COULOMB_TROU_MAX_S:
+        if niveau_table < seuil:
+            return niveau_table, None
+        return niveau_table, {"mah": niveau_table / 100.0 * capacite}
+
+    mah = float(etat.get("mah", niveau_table / 100.0 * capacite))
+    mah += current_ma * (ecoule_s / 3600.0)
+    mah = max(0.0, min(capacite, mah))
+
+    niveau = int(round(mah / capacite * 100))
+    if niveau < seuil:
+        # On retombe dans la zone où la tension est fiable : elle reprend la
+        # main, et l'ancrage disparaît. Ne PAS garder l'état ici, sinon la
+        # dérive accumulée survivrait au recalage.
+        return niveau_table, None
+    return max(0, min(100, niveau)), {"mah": mah}
+
+
+# Au-delà de ce trou entre deux relevés, l'intégration a manqué trop d'énergie
+# pour être crédible. 10 min = dix tours de boucle manqués : bien au-delà d'un
+# simple retard, et très en deçà d'une extinction.
+_COULOMB_TROU_MAX_S = 600
+
+
 def percent_from_voltage(voltage_v: float) -> int:
     """Convertit la tension LiPo 1S en pourcentage de capacité (courbe non-linéaire)."""
     if voltage_v >= _LIPO_TABLE[0][0]:
@@ -271,6 +355,8 @@ def read_sensor_snapshot(
     sensor: Any,
     config: dict[str, Any],
     previous_charging: bool | None = None,
+    coulomb_state: dict[str, Any] | None = None,
+    elapsed_s: float | None = None,
 ) -> dict[str, Any]:
     """Lecture instantanée du capteur.
 
@@ -305,7 +391,17 @@ def read_sensor_snapshot(
     # l'état réel de la cellule — d'où le niveau qui plonge dès qu'un podcast
     # démarre alors que rien n'a été consommé. On corrige AVANT de convertir.
     r_interne = float(config.get("internal_resistance_ohm", 0.0))
-    level = percent_from_voltage(tension_a_vide(voltage_v, current_ma, r_interne))
+    niveau_table = percent_from_voltage(tension_a_vide(voltage_v, current_ma, r_interne))
+
+    # TICKET-142 : au-dessus du plateau, la tension ne dit plus rien — on
+    # intègre le courant depuis le dernier ancrage. Les appelants qui ne
+    # transmettent pas d'état (le watchdog) reçoivent le niveau de la table :
+    # c'est sans conséquence pour eux, puisqu'ils ne décident qu'en BAS de
+    # plage, là où la table est justement fiable.
+    level, nouvel_ancrage = niveau_coulometrique(
+        coulomb_state, niveau_table, current_ma,
+        elapsed_s if elapsed_s is not None else 0.0, config,
+    )
 
     # `charge_threshold_ma` (ancien seuil unique) n'est plus utilisé. Il reste
     # toléré dans config.json sans effet — voir DEFAULT_CONFIG et TICKET-133.
@@ -314,6 +410,11 @@ def read_sensor_snapshot(
 
     return {
         "level": level,
+        # Le niveau brut de la table est conservé : c'est lui qui permet de
+        # constater une dérive du comptage, et de la corriger sans refaire un
+        # cycle complet. Sans lui, une dérive serait indétectable.
+        "level_table": niveau_table,
+        "coulomb_state": nouvel_ancrage,
         "voltage_v": round(voltage_v, 3),
         "current_ma": round(current_ma, 2),
         "power_w": round(power_w, 3),

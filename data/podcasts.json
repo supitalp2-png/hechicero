@@ -342,6 +342,15 @@
             "language": "es",
             "image": "images/eyjake.jpg",
             "max_episodes": 999
+        },
+        {
+            "id": "cestprouve",
+            "label": "C'est Prouvé",
+            "rss": "https://radiofrance-podcast.net/podcast09/podcast_07530c36-af4e-4bb7-b62c-0f5f1906c0cb.xml",
+            "enabled": true,
+            "language": "fr",
+            "image": "images/cestprouve.jpg",
+            "max_episodes": 999
         }
     ],
     "radios": [

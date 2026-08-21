@@ -454,7 +454,39 @@ la jauge plongerait dès qu'un podcast démarre, alors que rien n'a été consom
 C'est le même schéma que le durcissement systemd de la zone Z2 : **deux éléments corrects
 séparément, faux une fois dissociés.** Deux tests du smoke test §5 les maintiennent liés.
 
-**Cinquième piège — le haut de la courbe n'est pas mesurable par la tension** : entre 75 et
+**Cinquième piège, et la leçon la plus transférable du projet — VALIDER DANS LA
+MAUVAISE UNITÉ (2026-08-21, TICKET-142)** : la table mesurée a été validée sur un
+**désaccord médian de 6,4 mV** entre deux cycles, annoncé comme une réussite. Personne
+n'a converti ces millivolts en **points de pourcentage** — or cette conversion dépend
+entièrement de la pente locale :
+
+| bande | largeur | ce que valent 10 mV |
+|---|---|---|
+| 75-80 % | 5,0 mV | **10 points** |
+| 80-85 % | 5,0 mV | **10 points** |
+| 90-95 % | 9,0 mV | **5,6 points** |
+| 0-70 % | 26-66 mV | 0,8 à 1,9 point |
+
+6 mV d'accord, c'est excellent à 50 % et **sans aucune valeur à 80 %**. Résultat mesuré
+sur l'appareil : la table annonçait **86 %** là où l'intégration du courant depuis la
+charge pleine donnait **77,9 %**. L'ancienne table générique, elle, tombait juste — par
+compensation de deux erreurs opposées (elle sur-évaluait, et l'usage de la tension brute
+sous-évaluait d'autant en décharge). **Le correctif avait donc dégradé la partie de la
+plage où l'enfant passe le plus clair de son temps.**
+
+> **Une métrique de validation exprimée dans une autre unité que le produit ne valide
+> rien.** Convertir dans l'unité de l'utilisateur avant de conclure.
+
+**Remède livré (TICKET-142)** : comptage coulométrique **ancré**. Sous 70 %, la table
+fait autorité — la courbe y est franche et se recale d'elle-même. Au-dessus, on intègre
+le courant depuis le dernier ancrage. La dérive ne peut s'accumuler que sur **une seule
+traversée** de la bande haute avant remise à zéro, ce qui est la seule raison rendant le
+mécanisme acceptable. ⚠️ Et il **s'invalide au-delà de 10 min de trou de mesure** : un
+compteur qui intègre à travers un trou dérive *sans le dire*, ce qui est le pire défaut
+possible pour ce genre de mécanisme. Vérifié sur la journée réelle du 2026-08-21 : **78 %
+contre 77,9 % de référence.**
+
+**Sixième piège — le haut de la courbe n'est pas mesurable par la tension** : entre 75 et
 95 %, la table mesurée étale 20 points de pourcentage sur **40 mV** (contre 60 mV pour
 l'ancienne). C'est le plateau de la chimie Li-ion, pas un défaut. Conséquence pratique :
 la nouvelle table est **environ sept fois plus sensible au bruit** dans cette zone. Le
@@ -634,7 +666,7 @@ Par ordre d'urgence. C'est la liste de travail de ce document.
 | Z8 batterie — coupure HAT | Le registre `0x2d` est détecté et armé avant l'arrêt, mais **rien ne prouve que la coupure soit différée** et non immédiate. `--simulate-critical` s'arrête volontairement avant l'écriture I2C. | TICKET-128 |
 | ~~Z8 batterie — observabilité~~ | ✅ **couvert** depuis le 2026-08-19 : cadence plancher de 5 min, courant devenu critère d'enregistrement, purge à 30 j. `test_batterie.py` passe à 44 assertions ; les 4 clés **vérifiées en échec sur le code d'avant** (l'ancien retenait **0 point** sur un plateau de 30 min). | TICKET-141 |
 | ~~Z8 batterie — table de conversion~~ | ✅ **couvert** depuis le 2026-08-21 : table mesurée sur **deux décharges profondes indépendantes** (6,4 mV de désaccord médian), compensation d'affaissement (R = 34 mΩ), lissage par médiane sur rafale. **62 assertions** ; 4 des 5 clés **vérifiées en échec sur l'ancienne table**. Smoke test §5 : couplage table/compensation, résistance non nulle, rafale active. | TICKET-137 · TICKET-139 |
-| Z8 batterie — haut de courbe (75-95 %) | **Non résoluble par la tension** : 20 points sur 40 mV. Le lissage rend la jauge stable, pas juste. Seul un comptage coulométrique y répondrait — écarté le 2026-08-21 (mécanisme neuf, dérive à gérer). À rouvrir si l'imprécision gêne à l'usage. | TICKET-137 |
+| ~~Z8 batterie — haut de courbe (75-95 %)~~ | ✅ **couvert** depuis le 2026-08-21 : comptage coulométrique ancré sous 70 %, invalidé après 10 min de trou. Rejeu de la journée réelle : **78 % contre 77,9 %** de référence, là où la table seule se trompait de 9 points. 75 assertions ; 4 tests du comptage ont d'abord **échoué sur le garde-fou de trou**, ce qui a prouvé qu'il mord. | TICKET-142 |
 | Z8 batterie — R mal contraint | R = 34 mΩ est le meilleur accord entre les deux cycles, mais le minimum est **plat entre 20 et 60 mΩ** : le courant de décharge varie trop peu (1540-2170 mA) pour donner du bras de levier. À réévaluer si un cycle à faible courant devient disponible. | TICKET-137 |
 | Z8 batterie — arrêt de charge nocturne | Le chargeur s'est arrêté de 00:16 à 07:09 le 2026-08-19 **alimentation présente**, à 61 %. Piste du temporisateur 6 h **démentie** (charge poursuivie jusqu'à 97 % le lendemain). Cause inconnue — **était indiagnosticable avant TICKET-141**, à reprendre sur les données du prochain épisode. | TICKET-140 |
 

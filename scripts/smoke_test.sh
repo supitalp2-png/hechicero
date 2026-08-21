@@ -557,6 +557,47 @@ else
     fail "battery_common : retour à l'échantillon unique — un creux isolé fera basculer l'état (TICKET-139)"
 fi
 
+# ── TICKET-142 — comptage coulométrique au-dessus du plateau ───────────────
+# Bug surveillé : le 2026-08-21, la table mesurée annonçait 86 % là où la
+# batterie était réellement à 78 %. Entre 75 et 85 %, 10 mV valent 10 points :
+# aucune table de tension ne peut répondre dans cette bande.
+if grep -q "level, nouvel_ancrage = niveau_coulometrique(" "$ROOT/scripts/battery_common.py" 2>/dev/null \
+   && grep -q "coulomb_state=coulomb_state" "$ROOT/scripts/battery_tracker.py" 2>/dev/null; then
+    pass "comptage coulométrique branché au-dessus du plateau (TICKET-142)"
+else
+    fail "battery_common : comptage coulométrique absent — le niveau sera faux de ~9 points au-dessus de 70 % (TICKET-142)"
+fi
+
+# L'ancrage doit être PERSISTÉ, sinon il repart de la table à chaque
+# redémarrage du service et le comptage ne sert à rien.
+if grep -q '"coulomb_state": sample.get("coulomb_state")' "$ROOT/scripts/battery_tracker.py" 2>/dev/null; then
+    pass "ancrage du comptage persisté dans battery_stats.json (TICKET-142)"
+else
+    fail "battery_tracker : l'ancrage n'est plus persisté — le comptage repart de zéro à chaque redémarrage (TICKET-142)"
+fi
+
+# ⚠️ LE GARDE-FOU CENTRAL. Un compteur qui intègre à travers un trou de mesure
+# dérive SANS LE DIRE — c'est le pire défaut possible pour ce mécanisme, et la
+# seule raison pour laquelle il est acceptable ici est qu'il s'invalide.
+if grep -qE "^_COULOMB_TROU_MAX_S *= *[1-9]" "$ROOT/scripts/battery_common.py" 2>/dev/null \
+   && grep -q "ecoule_s > _COULOMB_TROU_MAX_S" "$ROOT/scripts/battery_common.py" 2>/dev/null; then
+    pass "comptage invalidé après un trou de mesure (garde anti-dérive silencieuse, TICKET-142)"
+else
+    fail "battery_common : le comptage n'est plus invalidé sur trou de mesure — dérive silencieuse (TICKET-142)"
+fi
+
+# Capacité utile non nulle dans la config EFFECTIVE : à zéro, le mécanisme se
+# neutralise et on retombe silencieusement sur la table fausse.
+cap_eff=$(cd "$ROOT/scripts" && timeout 10 python3 -c "
+from battery_common import load_config
+print(load_config().get('battery_usable_mah', 0))
+" 2>/dev/null)
+if [ -n "$cap_eff" ] && python3 -c "import sys; sys.exit(0 if float('$cap_eff') > 0 else 1)" 2>/dev/null; then
+    pass "capacité utile configurée — ${cap_eff} mAh (comptage effectif)"
+else
+    fail "capacité utile nulle ou absente (${cap_eff:-?}) — le comptage se neutralise (TICKET-142)"
+fi
+
 # Coupure matérielle du HAT (TICKET-128). --check-hat ne fait qu'une DÉTECTION,
 # aucune écriture i2cset : lançable pendant que l'enfant écoute.
 if hat=$(timeout 10 python3 "$ROOT/scripts/battery_watchdog.py" --check-hat 2>&1 | head -1); then

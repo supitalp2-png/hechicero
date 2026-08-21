@@ -471,7 +471,9 @@ def compute_estimates(history: dict[str, Any], stats: dict[str, Any], window: in
 
 
 def build_sample(sensor: Any, config: dict[str, Any], simulate: bool = False,
-                 previous_charging: bool | None = None) -> dict[str, Any]:
+                 previous_charging: bool | None = None,
+                 coulomb_state: dict[str, Any] | None = None,
+                 elapsed_s: float | None = None) -> dict[str, Any]:
     if simulate:
         stats = load_stats()
         status = stats.get("status") or "discharging"
@@ -490,7 +492,12 @@ def build_sample(sensor: Any, config: dict[str, Any], simulate: bool = False,
         # Il est relu depuis battery_stats.json à chaque tour — le tracker n'a
         # pas d'état en mémoire, c'est le disque qui fait foi (cf. la procédure
         # de remise à zéro de TICKET-126).
-        sensor_data = read_sensor_snapshot(sensor, config, previous_charging=previous_charging)
+        sensor_data = read_sensor_snapshot(
+            sensor, config,
+            previous_charging=previous_charging,
+            coulomb_state=coulomb_state,
+            elapsed_s=elapsed_s,
+        )
 
     mpd = read_mpd_status()
     screen_on = read_screen_on()
@@ -567,6 +574,11 @@ def update_history_and_stats(sample: dict[str, Any], *, compute_only: bool = Fal
             "current_ma": sample["current_ma"],
             "power_w": sample["power_w"],
             "last_updated": sample["timestamp"],
+            # TICKET-142 : ancrage du comptage coulométrique, et niveau brut de
+            # la table. Ce dernier n'est pas décoratif : c'est le seul moyen de
+            # voir une dérive du comptage sans refaire un cycle complet.
+            "coulomb_state": sample.get("coulomb_state"),
+            "level_table": sample.get("level_table"),
         }
     )
     if transitioned:
@@ -651,9 +663,18 @@ def _shutdown_pct_from_config(config: dict[str, Any]) -> int:
 
 def collect_once(sensor: Any, config: dict[str, Any], simulate: bool = False, compute_only: bool = False) -> tuple[dict[str, Any], dict[str, Any], bool]:
     # TICKET-133 : état de charge du relevé précédent, lu sur disque.
-    etat_precedent = load_stats().get("charging")
+    stats_precedentes = load_stats()
+    etat_precedent = stats_precedentes.get("charging")
+    # TICKET-142 : l'ancrage du comptage coulométrique vit sur disque, comme le
+    # reste — le tracker n'a pas d'état en mémoire. `elapsed_s` se mesure sur
+    # `last_updated`, réécrit à CHAQUE tour même sans point retenu : c'est donc
+    # le seul témoin fiable du temps réellement écoulé, y compris après un
+    # redémarrage du service ou une extinction (cf. GAP_MINUTES_THRESHOLD).
+    ecoule = minutes_between(stats_precedentes.get("last_updated"), now_iso())
     sample = build_sample(sensor, config, simulate=simulate,
-                          previous_charging=etat_precedent if isinstance(etat_precedent, bool) else None)
+                          previous_charging=etat_precedent if isinstance(etat_precedent, bool) else None,
+                          coulomb_state=stats_precedentes.get("coulomb_state"),
+                          elapsed_s=(ecoule * 60.0) if ecoule is not None else None)
     history, stats, recorded = update_history_and_stats(sample, compute_only=compute_only)
     compute_estimates(
         history, stats,

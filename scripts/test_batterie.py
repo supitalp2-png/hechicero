@@ -23,6 +23,7 @@ from battery_common import (                        # noqa: E402
     _LIPO_TABLE,
     detecter_charge,
     mediane,
+    niveau_coulometrique,
     percent_from_voltage,
     tension_a_vide,
 )
@@ -357,6 +358,72 @@ verifie("sans compensation, la jauge perd des points à tort",
         percent_from_voltage(brut) < 35, True)
 verifie("avec compensation, elle retombe sur 40 %",
         percent_from_voltage(tension_a_vide(brut, -2200.0, R)), 40)
+
+
+# ── 14. TICKET-142 — comptage coulométrique ancré ─────────────────────────
+# Le 2026-08-21, la table mesurée annonçait 86 % là où l'intégration du courant
+# depuis la charge pleine donnait 77 %. Dans la bande 75-85 %, 10 mV valent
+# 10 points : aucune table de tension ne peut y répondre.
+CFG = {"coulomb_anchor_percent": 70, "battery_usable_mah": 8894}
+
+# Sous le seuil : la table fait autorité, et l'ancrage est abandonné.
+verifie("sous 70 %, la table décide",
+        niveau_coulometrique(None, 45, -1600.0, 60.0, CFG), (45, None))
+verifie("sous 70 %, aucun ancrage conservé",
+        niveau_coulometrique({"mah": 4000.0}, 45, -1600.0, 60.0, CFG)[1], None)
+
+# Au-dessus, sans ancrage : on part du niveau de la table et on s'ancre.
+niveau, etat = niveau_coulometrique(None, 85, -1600.0, 60.0, CFG)
+verifie("au-dessus de 70 % sans ancrage : on part de la table", niveau, 85)
+verifie("... et on mémorise l'ancrage", round(etat["mah"]), round(0.85 * 8894))
+
+# ⚠️ L'intégration se teste en pas de 60 s, comme elle tourne réellement. Un pas
+# d'une heure serait REJETÉ par le garde-fou de trou — et c'est voulu : ces
+# quatre tests ont d'abord échoué pour cette raison, ce qui a confirmé que le
+# garde-fou mord.
+def integre(mah_depart: float, courant_ma: float, minutes: int, niveau_table: int):
+    etat = {"mah": mah_depart}
+    niveau = niveau_table
+    for _ in range(minutes):
+        niveau, etat = niveau_coulometrique(etat, niveau_table, courant_ma, 60.0, CFG)
+        if etat is None:
+            break
+    return niveau, etat
+
+
+# Décharge : 1 h à -889,4 mA = -889,4 mAh = -10 points de 8894.
+niveau, _ = integre(0.90 * 8894, -889.4, 60, 99)
+verifie("décharge d'1 h à -889 mA : -10 points", niveau, 80)
+verifie("la table à 99 % est ignorée au profit du comptage", niveau != 99, True)
+
+# Charge : le niveau doit MONTER, et la table à 75 % ne doit pas le retenir.
+niveau, _ = integre(0.75 * 8894, +889.4, 60, 75)
+verifie("charge d'1 h à +889 mA : +10 points", niveau, 85)
+
+# Saturation : on ne dépasse jamais 100 %, même en surchargeant l'intégrale.
+niveau, _ = integre(0.98 * 8894, +5000.0, 60, 99)
+verifie("le comptage sature à 100 %", niveau, 100)
+
+# ⚠️ LE GARDE-FOU CENTRAL : un trou de mesure rend l'intégration aveugle sur
+# l'intervalle manquant. Sans cette invalidation, la dérive deviendrait
+# silencieuse — le pire défaut possible pour un compteur.
+etat = {"mah": 0.90 * 8894}
+niveau, _ = niveau_coulometrique(etat, 82, -1600.0, 3600.0 * 3, CFG)
+verifie("trou de 3 h : on abandonne l'ancrage et on reprend la table", niveau, 82)
+niveau, _ = niveau_coulometrique(etat, 82, -1600.0, 599.0, CFG)
+verifie("trou de 599 s : encore acceptable, on intègre", niveau != 82, True)
+
+# Retour sous le seuil par le comptage : la table reprend la main ET l'ancrage
+# disparaît, sinon la dérive accumulée survivrait au recalage.
+etat = {"mah": 0.71 * 8894}
+niveau, etat2 = niveau_coulometrique(etat, 68, -1600.0, 3600.0, CFG)
+verifie("en repassant sous 70 %, la table reprend", niveau, 68)
+verifie("... et l'ancrage est effacé (pas de dérive qui survit)", etat2, None)
+
+# Capacité absente : le mécanisme se neutralise au lieu de diviser par zéro.
+verifie("sans capacité configurée, retour à la table",
+        niveau_coulometrique({"mah": 100.0}, 88, -1600.0, 60.0, {"coulomb_anchor_percent": 70}),
+        (88, None))
 
 
 print()
