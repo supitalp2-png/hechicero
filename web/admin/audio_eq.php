@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/../bootstrap.php';  // TICKET-129 : fuseau Europe/Paris, sinon PHP tourne en UTC
 // ============================================================
 // Hechicero — Admin égaliseur audio (TICKET-030)
 // Page dédiée, réseau local, mode Expert uniquement (cf. nav index.php)

@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/bootstrap.php';  // TICKET-129 : fuseau Europe/Paris, sinon PHP tourne en UTC
 define('DB_PATH', '/home/thomas/hechicero/data/tracking.db');
 
 header('Content-Type: application/json; charset=utf-8');

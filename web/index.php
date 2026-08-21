@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/bootstrap.php';  // TICKET-129 : fuseau Europe/Paris, sinon PHP tourne en UTC
 // ============================================================
 // Hechicero — Interface d'administration
 // Accès : http://<rpi>/

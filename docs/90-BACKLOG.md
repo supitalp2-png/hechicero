@@ -6,44 +6,36 @@
 
 ## 📌 État des lieux — ce qui est ouvert
 
-*Mis à jour le 2026-08-17. Cette table est le sommaire : le détail de chaque ticket est plus bas.*
+*Mis à jour le 2026-08-21. **Cette table ne liste QUE ce qui est ouvert** — un ticket
+terminé descend immédiatement dans la section Terminé. Le détail de chaque ticket est
+plus bas.*
 
 | Ticket | Sujet | Où ça en est |
 |---|---|---|
-| **142** | Comptage coulométrique au-dessus du plateau (régression du 137) | ✅ **corrigé le 2026-08-21** : ancré sous 70 %, invalidé sur trou. Rejeu réel : 78 % vs 77,9 %, écart max ±1,2 pt. **Non testé en réel** |
-| **141** | L'enregistreur est aveugle pendant les plateaux et ignore le courant | ✅ **corrigé le 2026-08-19** : cadence plancher 5 min, courant comme critère, purge 30 j, 44 assertions. **Non testé en réel** |
-| **140** | Arrêt de charge nocturne à 61 % (00:16 → 07:09), alimentation présente | 🔬 établi ; ❌ piste du temporisateur 6 h **démentie** (charge jusqu'à 97 %) — **cause inconnue**, bloqué par le 141 |
-| **139** | « Charge arrêtée à 60 % » = signal non lissé, pas un plateau | ✅ **corrigé le 2026-08-21** : rafale de 5 lectures + médiane. **Non testé en réel** |
-| **138** | Deux minuteries de veille désaccordées (dalle allumée, page noire 9 min) | 🔍 **cause racine prouvée le 2026-08-19** ; correctif décidé, **pas encore écrit** |
-| **137** | Recalibrer la table tension→pourcentage sur les cellules réelles | ✅ **corrigé le 2026-08-21** : table mesurée sur 2 cycles (6,4 mV d'accord) + compensation R = 34 mΩ. **Non testé en réel** |
-| **134** | Test de décharge profonde | ✅ **fait le 2026-08-18** : 97 % → 5 % en 4 h 49, coupure propre à 4 %, **3,328 V sous −2,2 A**. Seuils abaissés à 5 % / 10 % sur cette preuve |
-| **133** | Détection charge/décharge + cycles faussés par l'arrêt | ✅ corrigé et testé ; reste à accumuler des cycles pour le modèle |
+| **140** | Arrêt de charge nocturne, alimentation présente | 🔬 reproduit **3 fois** (54 %, 70 %, 96 %) ; temporisateur 6 h démenti — **cause inconnue**, désormais observable grâce au 141 |
 | **132** | `buttons_daemon` avertit à chaque play/pause (bruit de journal) | à faire, sans gravité |
-| **130** | 9 podcasts disparus de la config | ✅ restaurés, verrou + sauvegardes livrés ; `parental.json` et `config.json` courent le même risque |
-| **129** | PHP en UTC, le reste en heure locale | à faire — 2 h d'écart entre journaux croisés pendant une panne |
-| **128** | Coupure matérielle du HAT à l'arrêt critique | armée ; **le caractère différé n'est pas prouvé** |
-| **127** | Écran noir figé (la page cesse d'exécuter du JS) | ⚠️ **l'épisode du 2026-08-19 n'était PAS un gel** — voir TICKET-138. Le vrai gel du 2026-08-17 reste non réexpliqué |
-| **126** | Remise à zéro des mesures batterie | ✅ faite ; surveiller le modèle sur les prochains cycles |
+| **128** | Coupure matérielle du HAT à l'arrêt critique | ⚠️ **la fonction et sa doc sont fausses** : `0x55` = démarrage à la mise sous tension, pas une coupure. À réécrire |
+| **127** | Vrai gel du kiosque du 2026-08-17 | l'épisode du 19/08 n'en était **pas** un (c'était le 138). Le gel du 17/08 reste **non expliqué** ; battement de cœur en place pour le prochain |
 | **122** | MPD se fige si le réseau disparaît en webradio | chien de garde installé, **jamais éprouvé en réel** |
-| **121** | Audit des services durcis | ✅ 4 défauts corrigés ; **reste le test réel d'arrêt sous seuil** |
 | **119** | Écran technique caché (combinaison de boutons) | cadré, **à ne pas implémenter pour l'instant** |
 | **111** | Ventilateur GPIO/PWM | à décider |
 | **058** | Série podcast « Décisions Prises » + easter egg | 2 épisodes écrits |
 
-**Clos le 2026-08-17** : 112 · 116 · 123 · 124 · 125 · 131 · 079 · 079bis · 017 (supprimé)
-**Clos le 2026-08-18** : 134 (décharge profonde mesurée) · 136 (bandeau batterie figé depuis 50 jours)
+### ⏳ Livré mais pas encore éprouvé en conditions réelles
 
-- [ ] TICKET-137 — batterie/précision — Recalibrer la conversion tension→pourcentage sur les cellules réelles (2026-08-18)
-      - **`battery_common._LIPO_TABLE` est une courbe générique d'accumulateur à poche**, héritée du montage d'origine. Les cellules sont des EVE INR21700/58E (Li-ion NMC). La table n'a jamais été recalée — et **tout le pourcentage affiché du projet en dépend** : écran enfant, tableau de bord, page d'accueil, seuils d'alerte et d'arrêt.
-      - 🔬 **Mesures du cycle du 2026-08-18** (`scripts/recalibrer_table_batterie.py`, 484 points) :
-        - **Résistance interne : 53 mΩ** — crédible pour deux 21700 en parallèle. À −2,2 A, l'affaissement vaut **117 mV**, soit ≈ 10 points de pourcentage. **Le niveau affiché plonge donc dès que l'enfant lance un podcast, alors que rien n'a été consommé.** C'est le défaut le plus visible au quotidien.
-        - **Énergie délivrée : 8892 mAh** entre 97 % et 4 %, soit ≈ 9560 mAh utiles contre 11 200 nominaux (85 % — normal pour une coupure à 3,33 V sous charge). ➡️ Pour le calcul d'autonomie temps réel, **9560 serait plus juste que 11 200**.
-        - **La table actuelle sur-évalue le niveau de 8 à 10 points** dans toute la plage médiane (à 3,798 V elle annonce ~48 % là où la mesure donne 40 %).
-      - ⛔ **NE PAS remplacer la table telle quelle** — trois raisons :
-        1. La table proposée donne des tensions **à vide** (corrigées de l'affaissement), alors que `percent_from_voltage()` reçoit la tension **brute**. L'échanger sans ajouter la compensation `V_oc = V + |I| × R` rendrait le calcul **plus faux qu'avant**.
-        2. Son point à 0 % tombe à 3,44 V — c'est le **seuil d'arrêt**, pas la cellule vide. On afficherait 0 % avec de l'énergie restante, et on perdrait l'autonomie qu'on vient de gagner.
-        3. Le plateau haut est mal résolu : 15 points de pourcentage pour 10 mV entre 4,09 et 4,06 V. Un seul cycle ne suffit pas à le décrire.
-      - ⏳ **Décision de Thomas (2026-08-18)** : attendre **3 ou 4 cycles**, relancer le script, vérifier que les courbes convergent. Puis livrer **ensemble** la compensation d'affaissement et la nouvelle table, avec les tests unitaires.
+Ces tickets sont clos côté code et tests, mais **rien ne remplace l'usage**. À surveiller
+dans les jours qui viennent :
+
+| Ticket | Ce qui reste à observer |
+|---|---|
+| **138** | Qu'une veille survienne bien au bout de **600 s**, et que dalle et overlay s'éteignent ensemble. Si l'écran ne s'endort plus du tout, c'est TICKET-102 qui revient |
+| **137 · 139 · 142** | Que le niveau affiché reste cohérent sur un cycle complet. `level_table` est publié à côté de `level` : leur écart mesure la dérive du comptage |
+| **141** | Que la cadence plancher tienne, et que la purge s'exerce quand l'historique dépassera 30 jours |
+
+**Clos le 2026-08-17** : 112 · 116 · 123 · 124 · 125 · 131 · 079 · 079bis · 017 (supprimé)
+**Clos le 2026-08-18** : 134 (décharge profonde mesurée) · 136 (bandeau batterie figé 50 j)
+**Clos le 2026-08-19** : 141 (enregistreur aveugle aux plateaux)
+**Clos le 2026-08-21** : 137 · 139 · 142 (chaîne de mesure batterie) · 143 (outil de recalibration) · 138 (veille unique) · 129 (PHP en UTC, après 4 morsures) · 121 (arrêt critique prouvé 2× en réel) · 126 · 130 · 133
 
 ⚠️ **Collision de numéro résolue le 2026-08-17** : `TICKET-123` désignait **deux**
 tickets différents — le bug d'écran (corrigé ce jour) et le registre de
@@ -64,91 +56,6 @@ collision TICKET-090 → TICKET-117 du 2026-08-04.
 ---
 
 # 🔥 Priorité haute
-
-- [x] TICKET-142 — batterie/précision — Comptage coulométrique ancré au-dessus du plateau (2026-08-21) — ✅ **CORRIGÉ**
-      - 🔴 **Ouvert parce que TICKET-137 avait introduit une régression.** Après déploiement, la nouvelle table annonçait **86 %** alors que l'intégration du courant depuis la charge pleine donnait **77,9 %**. L'ancienne table, elle, disait 75 % — juste à 2 points près.
-      - 🔍 **Pourquoi l'ancienne tombait juste** : elle cumulait **deux erreurs opposées** qui s'annulaient en décharge — la table sur-évaluait de 4 à 8 points, et l'usage de la tension **brute** (au lieu de la tension à vide) sous-évaluait d'à peu près autant. Fragile et faux dès qu'on ne décharge pas, mais juste en pratique.
-      - ⚠️ **MA FAUTE, et c'est la leçon la plus transférable de tout le projet : j'ai validé dans la mauvaise unité.** J'ai annoncé « 6,4 mV de désaccord médian » comme une réussite sans jamais convertir ces millivolts en **points de pourcentage**. Or :
-        | bande | largeur | ce que valent 10 mV |
-        |---|---|---|
-        | 75-80 % | 5,0 mV | **10 points** |
-        | 80-85 % | 5,0 mV | **10 points** |
-        | 0-70 % | 26-66 mV | 0,8 à 1,9 point |
-        6 mV d'accord est excellent à 50 % et **sans valeur à 80 %**. Mes deux cycles de calibration étaient en désaccord de ~12 **points** dans la zone plate, et je ne l'ai pas vu parce que je regardais des volts. **Le produit s'exprime en pourcents ; je l'ai validé en volts.**
-      - 🛠️ **Remède — comptage ancré, et c'est l'ancrage qui le rend sûr** :
-        - Sous `coulomb_anchor_percent` (70 %) : la table fait autorité. La courbe y est franche et **se recale d'elle-même**.
-        - Au-dessus : intégration du courant depuis le dernier ancrage.
-        - La dérive ne peut donc s'accumuler que sur **une seule traversée** de la bande haute — quelques heures — avant remise à zéro. C'est la différence avec un compteur libre, et la seule raison pour laquelle ce mécanisme est acceptable ici.
-      - ⚠️ **Garde-fou central** : au-delà de **10 min** de trou entre deux relevés, l'ancrage est **abandonné** et la table reprend. Un compteur qui intègre à travers un trou dérive **sans le dire** — le pire défaut possible pour ce genre de mécanisme. `level_table` est aussi publié dans `battery_stats.json` : sans lui, une dérive serait indétectable sans refaire un cycle complet.
-      - 🔗 **Ancrage sur batterie pleine** (ajouté après la première mise en service) : sans lui, un démarrage à froid en zone plate amorce le comptage sur la valeur **fausse** de la table et la conserve jusqu'au prochain passage sous 70 %. `batterie_pleine()` exige **tension ≥ 4,10 V ET |courant| ≤ 150 mA**.
-        - ⚠️ **Les deux conditions sont indispensables** : les arrêts de charge anormaux du TICKET-140 ont exactement la signature d'un courant nul (0,91 mA constant pendant des heures) mais à **54 % et 70 %**. Un critère fondé sur le seul courant afficherait **100 % avec un tiers de l'énergie**. Le seuil de tension les exclut (3,80 et 3,94 V). Quatre assertions et un test du smoke test verrouillent ce point.
-      - ✅ **Vérifié sur les données réelles** du 2026-08-21, rejouées à travers le mécanisme : **78 % contre 77,9 %** de référence — un dixième de point. Sur le cycle entier, écart maximal **±1,2 point**, y compris en simulant un démarrage à froid en cours de route.
-      - 📌 **Limite connue** : le rattrapage d'un démarrage à froid dépend de l'ancrage sur batterie pleine. Un démarrage à 4,05 V — sous le seuil de plein, au-dessus du seuil de table — hériterait de l'erreur de la table jusqu'au prochain passage sous 70 %. Borné à un cycle, non corrigé.
-      - ✅ **Tests** : 62 → **84 assertions**. Quatre tests du comptage ont **d'abord échoué**, non par erreur de code mais parce qu'ils simulaient un pas d'une heure que le garde-fou de trou rejette — ce qui a prouvé au passage que le garde-fou mord. Smoke test §5 : mécanisme branché, ancrage persisté, invalidation sur trou, capacité effective non nulle.
-      - 📌 **Le watchdog n'utilise PAS le comptage** (il ne transmet pas d'ancrage) et reçoit le niveau de la table. Sans conséquence : il ne décide qu'en bas de plage, précisément là où la table est fiable.
-
-- [x] TICKET-137 + TICKET-139 — batterie/précision — Table mesurée, compensation d'affaissement et lissage (2026-08-21) — ✅ **CORRIGÉ**
-      - **Condition posée par Thomas remplie** : après plusieurs cycles, les courbes convergent. Deux décharges profondes indépendantes (cycles 12 du 18/08 et 18 du 19/08) ont délivré **8892 et 8896 mAh** — à 0,05 % près — et leurs courbes tension→charge s'accordent à **6,4 mV** après compensation (12,0 mV sans).
-      - 📉 **Ampleur du défaut corrigé** : l'ancienne table, courbe générique jamais recalée, **sur-évaluait de 4 à 8 points** sur presque toute la plage et annonçait encore **7 % à la coupure réelle**.
-      - 🛠️ **Livré ensemble, et c'est indispensable** :
-        - `tension_a_vide(V, I, R)` — la table donne des tensions **à vide**, l'INA219 mesure **sous charge**. À −2,2 A l'écart vaut 75 mV, soit ~8 points : c'est ce qui faisait plonger la jauge dès qu'un podcast démarrait.
-        - `_LIPO_TABLE` remplacée par la courbe mesurée.
-        - `mediane()` + rafale de 5 lectures dans `read_sensor_snapshot()`. **Médiane et non moyenne** : une seule valeur aberrante déplace une moyenne, il en faut la moitié pour déplacer une médiane. C'est le creux isolé à −210 mA qui faisait annoncer « charge arrêtée ».
-      - ⚠️ **Pourquoi le 139 devait précéder le 137** : la table mesurée étale **20 points de pourcentage sur 40 mV** entre 75 et 95 % (contre 60 mV avant) — le plateau de la chimie Li-ion. Elle est donc **~7× plus sensible au bruit**. Livrer la table sans le lissage aurait aggravé le sautillement qu'on cherchait à corriger.
-      - ⚠️ **Changement de sens silencieux du seuil** : « 5 % » désigne maintenant 3,458 V à vide au lieu de 3,350 V, soit **108 mV plus tôt** et ~14 min d'autonomie en moins. **Décision de Thomas : garder 5 %** — ces minutes sont dans la zone où la tension s'effondre et où les cellules souffrent.
-      - 🔍 **Défaut trouvé en chemin dans `recalibrer_table_batterie.py`** : il sélectionnait le cycle **en cours**, dont `level_end` est absent, donc profondeur calculée à 96 points au lieu de ~30 — il proposait une table absurde (85 points sur 80 mV). Sa sortie n'était pas exploitable ; l'analyse a été refaite par intégration du courant sur les cycles clos. Le script code aussi en dur `/home/thomas/hechicero` au lieu d'un chemin relatif. **Non corrigé — à reprendre.**
-      - 📌 **Limites assumées** : R = 34 mΩ est le meilleur accord entre cycles, mais le minimum est **plat de 20 à 60 mΩ** (le courant de décharge varie trop peu pour contraindre R). Et le haut de courbe reste imprécis — seul un comptage coulométrique y répondrait, écarté pour l'instant.
-      - ✅ **Tests** : `test_batterie.py` passe de 44 à **62 assertions**. **4 des 5 clés vérifiées en échec sur l'ancienne table** (la 5ᵉ est un invariant de structure, annoté comme tel). Smoke test §5 : couplage table/compensation, résistance non nulle, rafale active.
-
-- [ ] TICKET-139 — mesure/batterie — La charge plafonne vers 60 % : vraie asymptote ou charge annulée par la consommation ? (2026-08-19)
-      - **Signalé par Thomas**, après la refonte du suivi (TICKET-133) : « le dashboard indique que la charge se stoppe mais que la batterie est à 60 % ».
-      - 📸 **Instantané pris le 2026-08-19 à 08:26** (`data/battery_stats.json`) :
-        ```
-        niveau 63 %  ·  3,896 V  ·  +318,82 mA  ·  0,43 W
-        charging: true, en charge depuis 07:14:39 (72 min)
-        MPD : webradio EN LECTURE (France Inter)  ·  écran allumé
-        estimated_charge_time_minutes_live : 1092  ← 18 heures
-        cycles_recorded: 2, model_confidence: "low"
-        ```
-      - ❌ **Ma première analyse était fausse, et Thomas a eu raison d'en douter.** J'avais conclu d'un instantané unique que la consommation de la webradio annulait la charge. **Un seul point, pris au creux d'un signal qui oscille de −210 à +1459 mA.** L'historique complet dément :
-        ```
-        points en charge, tous cycles :
-        webradio   n=136   médiane  +886 mA   (min −173, max +1459)
-        idle       n=116   médiane +1059 mA   (min  −60, max +1518)
-        ```
-        La webradio ne coûte que **173 mA de médiane** — très loin des ~800 mA qu'exigerait mon explication. ⚠️ **Construire une histoire cohérente à partir d'un échantillon d'un signal bruité produit une certitude, pas une connaissance.**
-      - 🔍 **Cause racine réelle : aucun lissage, nulle part.** L'état charge/décharge **et** le niveau sont calculés chacun sur un **échantillon instantané**. Séquence mesurée le 2026-08-19 :
-        ```
-        08:29:41   61 %   3,880 V   −210 mA   charging: FALSE   webradio
-        08:30:41   65 %   3,912 V   +224 mA   charging: true    webradio
-        08:31:41   69 %   3,940 V   +992 mA   charging: true    webradio  ← radio toujours allumée
-        08:33:41   70 %   3,952 V  +1111 mA   charging: true    idle
-        ```
-        1. **L'état bascule sur un seul échantillon.** À 08:29 un creux passager à −210 mA franchit la bande morte de 200 mA (TICKET-133) → le tableau de bord annonce « charge arrêtée ». **C'est exactement ce que Thomas a signalé.** Ni plateau, ni arrêt : un artefact d'un point.
-        2. **Le niveau saute de 61 à 70 % en quatre minutes**, parce que 72 mV valent 9 points dans cette zone de la table. **Il n'y a donc aucune asymptote à 60 %** — le palier n'existe pas.
-      - 🛠️ **À faire — lisser avant de décider** (rien n'est écrit) :
-        - Médiane glissante sur N échantillons pour le **courant** avant de trancher charge/décharge. La bande morte seule ne protège pas d'un signal dont l'écart-type dépasse la bande.
-        - Même traitement pour la **tension** avant conversion en pourcentage — sinon le niveau affiché restera nerveux même avec une table recalée.
-        - Test de garde : injecter une série bruitée avec un creux isolé et vérifier que l'état **ne bascule pas**.
-      - ⏳ **Décision de Thomas (2026-08-19)** : reparamétrer proprement la gestion de l'énergie le soir. ✅ **Le test « charge sans radio » est inutile** — l'écart entre modes (173 mA) est noyé dans un bruit de ±1400 mA et demanderait des heures pour être extrait.
-
-- [x] TICKET-141 — mesure/batterie — L'enregistreur devient aveugle pendant les plateaux, et ignore le courant (2026-08-19) — ✅ **CORRIGÉ**
-      - 🛠️ **Livré** : cadence plancher `RECORD_FLOOR_SECONDS = 300` (un point au moins toutes les 5 min) · le courant devient critère (`CURRENT_DELTA_MA = 300`, plus le franchissement de la bande morte `CURRENT_ZERO_BAND_MA = 50` — « le courant a cessé de couler » est un événement même à niveau constant) · purge `RETENTION_FULL_DAYS = 30` puis 1 point/h · historique écrit **seulement s'il a changé**.
-      - 🔒 **Piège évité, zone Z8** : le second élément du tuple pilote `close_discharge()` / `new_cycle()`. Y ajouter la cadence plancher aurait fabriqué **un faux cycle toutes les 5 minutes**. Il reste strictement `transition or state_changed`, et **trois assertions le vérifient**.
-      - 💾 **Contrepartie traitée** : `collect_once()` réécrivait l'historique entier toutes les 60 s — **283 Mo/jour** sur la carte SD pour un fichier le plus souvent inchangé, et **aucune purge n'existait**. Livrer la cadence seule aurait transformé un gain de diagnostic en usure de carte SD (fichier de 22 Mo au bout d'un an, réécrit en continu).
-      - ⏱️ **Purge dans le tracker, pas dans un cron** : une purge confiée à un service tiers finit par ne plus tourner sans que personne ne le remarque, et on ne le découvre qu'une fois la carte usée.
-      - ✅ **Tests** : `test_batterie.py` passe de 24 à **44 assertions**. Les 4 clés ont été **rejouées contre l'ancienne implémentation et échouent bien** — mesure de l'aveuglement : sur un plateau de 30 min, l'ancien code retenait **0 point**. Smoke test §5 : présence des trois constantes, appel de `purge_history()`, écriture conditionnelle.
-      - 📌 **Débloque TICKET-140** : l'arrêt de charge nocturne redevient observable au prochain épisode.
-      - **Signalé par Thomas** : « je trouve que le relevé de points de charge est trompeur, on voit encore une sorte de trou dans la charge ». Ce n'est pas un défaut de rendu : **il n'y a réellement aucun point à enregistrer**.
-      - 🔍 **Cause** — `should_record_point()` n'écrit un point que sur : bascule `charging`, changement de `mpd_mode`, variation de niveau **≥ 2 points**, ou changement de `status`. Le tracker échantillonne pourtant **toutes les 60 s** (`battery_check_interval_seconds`) et **jette tout le reste**. Pendant un plateau, aucun critère ne se déclenche → trou.
-      - 📊 **Trous du 2026-08-19** : `14:39 → 15:17` (38 min) · `15:17 → 17:44` (**147 min**, la terminaison de charge s'y produit sans un seul point) · `17:59 → 18:48` (49 min).
-      - 🔴 **Défaut central : le courant n'est pas un critère d'enregistrement.** Ni sa valeur, ni sa variation. La nuit du 18 au 19, il s'est effondré de **+1111 à −60 mA** — le phénomène entier du TICKET-140 — et cela n'a été capté que **par accident**, parce que le niveau avait bougé de 61 à 54 au même moment. D'où **3 points en 6 h 53**.
-      - ⚠️ **L'ironie à retenir** : l'enregistreur cesse d'écrire exactement quand le système fait la chose qu'on cherche à étudier (tenir un plateau). On a ensuite passé une journée à s'étonner que les plateaux soient indiagnosticables. **Un échantillonnage déclenché par le changement ne peut pas documenter une absence de changement.**
-      - 🛠️ **Ce qui était à faire, et qui est fait** :
-        1. **Cadence plancher garantie** : un point au moins toutes les 5 min quoi qu'il arrive, en plus des déclencheurs événementiels. Coût : 288 points/jour, négligeable.
-        2. **Ajouter le courant aux critères** : variation ≥ ~300 mA, et franchissement de zéro.
-        3. Test de garde : simuler un plateau de 30 min à niveau constant et vérifier qu'il produit ≥ 6 points.
-      - 🔗 Distinct du TICKET-139 (lissage des valeurs **affichées**) : ici c'est la **politique d'enregistrement** qui perd l'information avant tout affichage.
 
 - [ ] TICKET-140 — matériel/batterie — Le chargeur du HAT termine la charge à ~61 % et ne reprend qu'à la sollicitation (2026-08-19)
       - **Signalé par Thomas** : « je ne comprends pas l'arrêt de recharge entre minuit en gros et 7h30 ». Ses heures, lues sur le tableau de bord, sont exactes : **00:16 → 07:09**.
@@ -171,59 +78,6 @@ collision TICKET-090 → TICKET-117 du 2026-08-04.
       - 🔁 **Observé en fin de journée — le HAT cycle en haut de charge** : `17:44 −411 mA` · `17:54 +156` · `17:59 +330` · `18:48 −395`. Une fois plein, le chargeur coupe et laisse le Pi puiser dans les cellules jusqu'au seuil de reprise, puis recharge. Sans danger, mais **consomme des cycles pour rien** et fausse le comptage.
       - 🛠️ **À instrumenter ce soir** : journaliser la **température** (Pi et HAT si exposée) à chaque relevé. La plupart des chargeurs Li-ion inhibent la charge hors d'une fenêtre thermique, et le Pi 5 tourne à 67-68 °C sous le HAT. C'est le second candidat sérieux après le temporisateur.
       - 🔗 **À croiser avec TICKET-137** : `cycles_recorded: 2` et `model_confidence: "low"`. Cette journée de charge fournit un cycle de plus vers les 3-4 nécessaires à la recalibration de la table. Si le plateau est réel, il change aussi la capacité utile retenue pour le calcul d'autonomie (9 560 mAh envisagés).
-
-- [ ] TICKET-138 — bug/veille — Deux minuteries de veille désaccordées : dalle allumée, page noire pendant 9 minutes (2026-08-19)
-      - **Signalé par Thomas** : « j'ai appuyé sur le bouton physique play et la dalle s'est allumée mais l'écran est noir ». Symptôme rapporté plusieurs fois depuis des semaines, jusqu'ici attribué à un gel du kiosque (TICKET-127).
-      - ❌ **Ce n'était pas un gel.** Le battement de cœur posé au TICKET-127 a tranché en trente secondes : 2 886 battements ininterrompus, dernier battement à 5 s, `kiosk_freeze.log` muet depuis le 2026-08-17. **La page exécutait du JavaScript pendant tout l'épisode.** L'instrumentation a servi à innocenter une piste, ce qui est exactement son rôle.
-      - 🔍 **Cause racine** — `web/lecteur/config.json` porte **deux délais de veille indépendants, sans aucun lien entre eux** :
-        - `"sleep_delay": 60` → l'overlay `#sleep-overlay` du navigateur (écran `retro_clock` : fond `#070503`, horloge en `rgba(210,140,12,.35)`)
-        - `"screen_off_delay": 600` → l'extinction de la dalle par `swayidle` via `screen_dpms.sh`
-      - ➡️ Entre les deux il existe une fenêtre de **540 secondes** où la dalle est allumée et la page affiche un écran quasi noir. **En plein jour l'horloge rétro est illisible** : l'appareil paraît en panne alors que tout fonctionne. C'est le symptôme, entier.
-      - 📊 **Chronologie du 2026-08-19** (heure locale ; `sleep_debug.log` est en UTC — TICKET-129 mord une **quatrième** fois) :
-        ```
-        07:19:21  swayidle éteint la dalle
-        08:00:38  appui play → dalle rallumée (rebond de mode) + wake_up keydown was_active=true
-                  ↑ la chaîne GPIO → wtype → navigateur fonctionne parfaitement
-        08:00:56  click, click, keydown — Thomas manipule l'écran
-        08:01:57  activate_sleep — l'overlay revient, 60 s après la dernière interaction
-        08:10:57  swayidle éteint la dalle — soit 540 s d'écran noir sur dalle allumée
-        08:20:47  appui play → wake_up keydown was_active=true, overlay levé, mpd=play
-        ```
-      - ⚠️ **Pourquoi ça a résisté si longtemps** : rien n'était cassé. Chaque moitié faisait exactement son travail. Cherchée comme une panne, la cause était introuvable — parce que c'est un **désaccord de configuration**, pas un défaut de code. Le réflexe « quel composant a échoué ? » est aveugle à ce genre de bug.
-      - ⏳ **Décision de Thomas (2026-08-19)** : **une seule veille à 600 s** — overlay et dalle s'éteignent au même instant. Plus jamais de dalle allumée sur page noire, et la radio reste lisible 10 minutes après le dernier appui (utile quand l'enfant écoute sans toucher l'écran).
-      - 🛠️ **À faire** (rien n'est encore écrit) :
-        1. Faire dériver les deux délais d'une **source unique**. Ne pas se contenter d'aligner les deux nombres dans le fichier : deux réglages libres se désaccorderont à nouveau au premier passage dans l'admin. Soit `sleep_delay` disparaît au profit de `screen_off_delay`, soit l'admin les lie explicitement.
-        2. **Interdire par construction** `sleep_delay < screen_off_delay` (la combinaison qui produit le bug), avec un test de garde au smoke test.
-        3. Vérifier le comportement de l'overlay **pendant la lecture** : aujourd'hui il s'active même si MPD joue. À confirmer avec Thomas — c'est peut-être souhaitable le soir.
-      - 🧹 **Second défaut, trouvé en chemin** : `data/sleep_debug.log` pèse **8,2 Mo / 87 698 lignes** et contient **92 601 octets nuls** — écritures concurrentes depuis PHP sans verrou (`grep` le rejette comme binaire). C'était un traceur temporaire du TICKET-102, jamais retiré ni borné. **Décision de Thomas : le garder** — il vient de résoudre ce bug — mais **sous `flock` et avec rotation à 2 Mo**.
-
-- [x] TICKET-136 — bug/affichage — Le bandeau batterie affichait 50 jours de données figées (2026-08-18) — ✅ **CORRIGÉ**
-      - **Signalé par Thomas** sur capture de la page d'accueil admin : 91 %, 4,092 V, 49 mA. Ces valeurs venaient de `web/status.json`, dont l'horodatage était **`ts: 1782657996` — le 2026-06-28**.
-      - 🔍 **Cause** : `web/status.json` était écrit par `scripts/get_status.py`, **supprimé en session 11** (`05-POWER_MANAGEMENT.md` le note noir sur blanc : « ne plus utiliser »). Le fichier est resté, plus personne ne l'écrivait, et deux consommateurs continuaient de le lire.
-      - ⚠️ **Cinquante jours sans que personne le voie, et c'est ça le vrai enseignement** : les valeurs restaient **plausibles**. Un pourcentage de 91 %, une tension de 4,09 V, un courant de 49 mA — rien qui saute aux yeux. Une donnée absurde se repère ; une donnée périmée mais crédible, non.
-      - 🔴 **L'écran de l'enfant était touché aussi.** `fetchBatteryStats()` retombait sur `fetchBatteryFromStatus()` (lignes 1384 et 1387) dès que l'appel principal échouait : l'enfant voyait alors les 91 % de juin. **Un repli vers des données périmées masque la panne au lieu de la montrer.** Supprimé — l'indicateur disparaît quand la mesure est indisponible, et l'absence est un signal honnête.
-      - 🛠️ **Corrections livrées** :
-        - `web/index.php` action `status` lit désormais `data/battery_stats.json` (réécrit toutes les 60 s), plus le fichier mort.
-        - **Fraîcheur exposée** (`age_seconds`, `stale`) : au-delà de 3 min sans mise à jour, le panneau se grise et annonce depuis quand. C'est ce qui rend une donnée figée visible.
-        - **Signe du courant restauré** : le bandeau affichait « 49 mA » sans dire s'il entrait ou sortait, alors que depuis TICKET-133 c'est le signe qui décide de l'état.
-        - **Autonomie estimée ajoutée**, en heures/minutes — et **masquée pendant la charge** : le tracker conserve la dernière moyenne de cycles et la renvoyait telle quelle, ce qui affichait « 39 min » en pleine recharge. Un chiffre juste dans le mauvais contexte trompe plus qu'une absence.
-        - ⏰ Le calcul d'âge force le fuseau `Europe/Paris` : `last_updated` est écrit par Python en heure locale, PHP tourne en UTC. Sans ça, tout aurait paru périmé de deux heures en permanence. **TICKET-129 mord une troisième fois.**
-      - 📌 **Défaut trouvé dans mon propre test de garde** : il cherchait la chaîne `status.json` n'importe où dans le fichier, donc **y compris dans le commentaire qui documente le correctif**. Il échouait sur sa propre explication. Corrigé pour ne matcher qu'un `fetch(...)` — la vraie signature du défaut. Un garde-fou qui crie au loup sur sa documentation fait douter de toute la suite.
-      - ✅ **Tests de garde** (smoke test §3) : plus de `fetch` vers le fichier mort côté enfant, bandeau admin alimenté par `battery_stats.json`, et fraîcheur exposée. **61 contrôles, 0 échec.**
-      - 🗑️ `web/status.json` supprimé.
-
-- [ ] TICKET-134 — mesure/batterie — Test de décharge profonde : jusqu'où descendre avant que le Pi décroche (2026-08-17)
-      - **Demande de Thomas** : un cycle unique, seuils au plus bas, quitte à subir une coupure non maîtrisée du Pi — risque carte SD accepté et couvert par une sauvegarde complète. **Contrainte de temps** : charge + décharge ≈ 12 h, donc un seul essai, lancé le soir.
-      - ⛔ **Non négociable** : ne pas dégrader les cellules. Elles ont un jour.
-      - **Pourquoi 5 % et pas plus bas** — table LiPo du projet, tensions mesurées **sous charge** : 15 % = 3,49 V · 10 % = 3,44 V · **5 % = 3,35 V** · 0 % = 3,00 V. Le constructeur du HAT coupe à **3,15 V**. En dessous de 5 %, l'interpolation devient hasardeuse (3 % ≈ 3,21 V) et on approche vraiment le seuil constructeur.
-      - ⚠️ **Nuance apportée par les caractéristiques réelles des cellules** (2 × EVE INR21700/58E) : à 3 A de consommation totale on tire 1,5 A par cellule, soit ≈ **0,27 C** — un régime très doux. L'affaissement sous charge sera donc **bien plus faible** qu'avec les anciennes 18650. Conséquence : le pourcentage affiché sera **plus proche de l'état de charge réel**, donc **moins de marge cachée** qu'avec l'ancien pack. La marge reste réelle (3,35 V contre un plancher pratique de 3,0 V), mais plus mince que ce qu'un raisonnement sur les anciennes cellules laissait croire.
-      - 🛠️ **Outillage livré** :
-        - `scripts/test_decharge_profonde.sh armer|restaurer|etat` — abaisse le seuil à 5 %, resserre le relevé à 15 s et le watchdog à 10 s, sauvegarde `config.json` avant, refuse de s'armer deux fois. **`restaurer` est impératif après le test.**
-        - `battery_tracker` enregistre désormais **tous** les échantillons sous 20 % (`VERBOSE_BELOW_LEVEL`) : on ignore la forme du coude de fin de décharge sur ces cellules, et cette courbe ne se rejoue pas sans refaire 12 h.
-      - ⚠️ **Ce qu'on ne touche PAS** : la protection matérielle du HAT (registre `0x2d` et circuit de protection du pack). Non désactivable depuis le Pi, et c'est tant mieux — c'est le vrai filet de sécurité des cellules.
-      - **Les deux issues sont informatives** : si le watchdog coupe à 5 %, on lit la tension exacte et la marge restante ; si le Pi décroche avant, le dernier point donne la tension de décrochage réelle du HAT — la valeur cherchée.
-      - 📌 **Ce que ce test ne dira PAS** : la limite chimique des cellules. Il mesure la limite de l'**électronique du HAT**. La limite des cellules se connaît par la fiche technique (2,5 V coupure, 3,0 V plancher pratique), pas par l'expérience.
-      - ⏳ **À relever au réveil** : `journalctl -u battery_watchdog`, les 25 derniers points de `battery_history.json` (avec `voltage_v`), puis **`restaurer`**.
 
 - [~] TICKET-133 — bug/batterie — Détection charge/décharge par le signe du courant, et cycles faussés par l'arrêt d'urgence (2026-08-17)
       - ✅ **D'ABORD, LA BONNE NOUVELLE : l'arrêt d'urgence FONCTIONNE.** La décharge complète du 2026-08-17 est descendue à **15 %** et le Pi s'est éteint. C'est la preuve en conditions réelles du correctif de TICKET-121 — le `shutdown` sans `sudo`, bloqué en silence par `NoNewPrivileges` depuis juillet. Ce chemin n'avait jamais été exercé.
@@ -258,28 +112,6 @@ collision TICKET-090 → TICKET-117 du 2026-08-04.
         - **Ligne du seuil d'arrêt** sur les courbes de décharge, lue depuis `config.json` (pas codée en dur) : la marge se juge d'un coup d'œil, ce qui servira quand le seuil sera réinterrogé.
         - Le graphe tension reste vide tant que les relevés ne se sont pas accumulés — la tension n'est enregistrée que depuis ce soir. Le panneau l'explique plutôt que d'afficher un cadre vide.
       - ⏳ **Reste** : les cycles de charge/décharge de Thomas alimenteront un modèle enfin correct. Le seuil de coupure sera réinterrogé à ce moment-là, pas avant.
-
-- [x] TICKET-131 — bug — Les épisodes des « Explorateurs de l'Univers » s'affichaient à l'envers (2026-08-17) — ✅ **CORRIGÉ**
-      - **Signalé par le petit** : « les épisodes des Explorateurs de l'Univers, ils sont à l'envers ». Il avait raison, et **le tri n'était pas en cause**.
-      - 🔍 **La cause est dans les données.** L'éditeur a téléversé les neuf épisodes le même soir, à **une minute d'écart, en commençant par le dernier** : épisode 8 à 19:59, épisode 7 à 20:00, … épisode 1 à 20:06, la présentation à 20:07. Les dates de publication sont donc **exactement l'inverse de l'ordre narratif**, et notre tri chronologique croissant — correct en soi — rendait 8, 7, 6 … 1.
-      - Même famille que le bug TINA (republication en lot avec dates incohérentes), mais le correctif TINA ne s'applique qu'**à l'intérieur d'une saison détectée**, et `_SEASON_EP_RE` attend le motif « Nom N/M : ». Ici les titres disent « Episode 8 : » ou « Episode 7. » — aucune saison détectée, donc repli sur la date.
-      - 🛠️ **Correctif — `parser.trier_episodes()`**, avec **trois conditions cumulatives** avant de faire confiance aux numéros de titre plutôt qu'aux dates :
-        1. **Aucune saison détectée** — sinon le tri à deux niveaux de TICKET-104 est déjà le bon, on n'y touche pas.
-        2. **Numéros UNIQUES sur tout le podcast.** ⚠️ **C'est la condition qui a sauvé Olma** : ses titres sont aussi « Episode N. … », mais la numérotation **redémarre** à chaque série (1→32, puis 1→20). Trier par numéro l'aurait entrelacé — une régression sur 55 épisodes pour en réparer 9. Trouvé en relisant les données avant d'écrire le code, pas après.
-        3. **Au moins deux tiers des épisodes numérotés** — un seul titre « Episode 1 » ne doit pas faire basculer tout l'ordre d'affichage.
-      - 🧹 **Cause racine annexe corrigée — le tri était DUPLIQUÉ** entre `parse_rss()` et `merge_episodes()`. Deux copies de la même logique, donc deux occasions de diverger, et un ordre potentiellement différent selon qu'on recharge le flux ou qu'on fusionne l'historique (TICKET-107). C'est désormais **une seule fonction appelée des deux côtés**.
-      - ✅ **PREMIERS TESTS UNITAIRES DU PROJET** — `scripts/rss_ingest/test_tri_episodes.py`, **13 assertions**, sans fichier ni réseau. Ils prouvent dans le même mouvement que le cas cassé est réparé **et** que les cas qui marchaient n'ont pas bougé : Olma (numérotation qui redémarre) et Tina (saisons) sont des cas de non-régression **réels, pas inventés**. Intégrés au smoke test §9.
-      - 📌 **Leçon** : un correctif qui touche l'ordre d'affichage de **tous** les podcasts ne se valide pas à l'œil sur celui qui était cassé. La condition d'unicité n'est venue qu'en allant relire les titres d'un autre podcast.
-      - ✅ **Clos le 2026-08-17 par Thomas.**
-
-- [ ] TICKET-129 — infra — PHP tourne en UTC alors que le reste du projet écrit en heure locale (2026-08-17)
-      - **Constaté** deux fois, à un mois d'intervalle, sans que la cause soit traitée : le 2026-07-18 sur `hechicero_battery_stats_age_seconds` à −7185 (TICKET-017), et le 2026-08-17 en lisant `data/sleep_debug.log` pour TICKET-127 — son « 07:52:48 » correspondait en réalité à **09:52:48** sur l'horloge de la maison.
-      - **Le piège** : `date()` en PHP renvoie de l'UTC (aucun `date.timezone` configuré), tandis que le shell (`data/screen_dpms.log`) et Python (`data/kiosk_freeze.log`, `datetime.now()`) écrivent en heure locale. **Deux heures d'écart entre trois journaux qu'on croise justement pendant une panne.** Chaque fois, on perd du temps ou on tire une conclusion décalée.
-      - **Pourquoi ça n'a jamais été réglé** : les deux fois, le contournement était local (`date_default_timezone_set()` dans un seul fichier). Celui de `metrics.php` vient d'ailleurs de disparaître avec le fichier.
-      - ✅ **Vérifié : le contrôle parental n'est PAS concerné.** `radio.php?action=parental_status` ne sert que le planning brut ; les horaires sont évalués **côté navigateur**, donc à l'heure locale de l'écran. Le risque de régression sur cette partie est nul.
-      - **Piste** : `date.timezone = Europe/Paris` dans le `php.ini` d'Apache, ou un `date_default_timezone_set()` dans un fichier commun inclus par toutes les pages. La première est plus propre mais vit hors du dépôt — donc à versionner et documenter comme la conf Apache et `asound.conf` (zone Z12).
-      - **À vérifier avant de livrer** : les horodatages écrits par PHP dans `data/favoris.json` (`added_at`) et `data/sleep_debug.log` deviendraient locaux. Aucun consommateur ne fait de calcul dessus, mais les valeurs déjà en base resteraient en UTC — mélange assumé, à noter dans le fichier.
-      - **En attendant** : `data/kiosk_heartbeat.json` expose `ts` (epoch, sans ambiguïté), `iso` (UTC) **et** `local`. C'est le contournement propre, pas la correction.
 
 - [ ] TICKET-132 — hygiène — `buttons_daemon` journalise un avertissement à chaque appui play/pause (2026-08-17)
       - **Constaté** en validant TICKET-123 : chaque appui sur GPIO12 produit `WARNING Appel radio.php échoué (action=pause) : Expecting value: line 1 column 1`.
@@ -372,32 +204,6 @@ collision TICKET-090 → TICKET-117 du 2026-08-04.
       - ⏳ **À surveiller après le premier cycle complet — `charge_threshold_ma = 300`** : ce seuil (`data/config.json`) avait été réglé en Session 12 pour la phase CV des **anciennes** cellules, afin d'éliminer les oscillations charge/décharge. Si les nouvelles cellules se comportent autrement, les **faux micro-cycles de juillet 2026 peuvent réapparaître** (cf. les dizaines de cycles `invalid` du 2026-07-15 et du 2026-08-15 dans l'historique supprimé). Le signe à guetter : une rafale de cycles de 1 à 2 minutes dans `battery_history.json`, ou `cycles_recorded` qui grimpe anormalement vite. Correctif alors : ajuster le seuil au courant réel observé en fin de charge (`current_ma` dans `battery_stats.json` quand le niveau plafonne).
       - 🐛 **Défaut annexe trouvé en passant — `battery_watchdog.py:127`** : dans la branche `--simulate-critical`, `level, _ = read_level(sensor, config)` dépaquette **deux** valeurs alors que `read_level()` en retourne **trois** (`level, charging, sensor`) → `ValueError` immédiat. C'est précisément le chemin qui sert à tester l'arrêt critique, ce qui explique sans doute que le `battery_watchdog` soit resté le **seul service non prouvé du durcissement TICKET-011**. Correctif : `level, _, _ = read_level(...)`. À traiter avec TICKET-121.
 
-- [x] TICKET-123 — bug — L'écran ne s'éteint plus après un réveil non tactile (2026-08-05) — ✅ **CORRIGÉ ET VALIDÉ le 2026-08-17**
-      - ═══ RÉSOLUTION (2026-08-17) ═══
-      - 🔬 **Bug d'abord CONFIRMÉ par la mesure**, après un premier protocole raté. Le test valide : laisser **swayidle lui-même** éteindre l'écran (pas un `screen_dpms.sh off` manuel, qui éteint la dalle dans son dos sans toucher à son compteur), puis réveiller **par le bouton antenne seul**, sans jamais toucher la dalle. Résultat : **25 minutes, aucun `off`**. swayidle n'a jamais réarmé.
-        - ❌ **Le premier protocole ne prouvait rien** : un `off` manuel laisse swayidle en pleine course, donc l'extinction observée 54 s plus tard était simplement son compte à rebours arrivant à échéance — elle serait survenue de toute façon. Vérifié : `ps -o etime -C swayidle` montrait 7 h 10 sans relance, donc pas de redémarrage non plus.
-      - 🛠️ **Correctif — `buttons_daemon.signaler_activite()`** : émission d'une **vraie frappe clavier virtuelle** (`wtype -k Shift_L`, protocole Wayland) à **tout front descendant, sur n'importe quelle broche**. Le compositeur la compte comme de l'activité, swayidle sort de son état « déjà expiré » et réarme son compte à rebours.
-        - **Placé dans la boucle de polling, pas dans les handlers** : un seul point couvre les neuf boutons — y compris les « tap ou maintien » dispatchés à part — et tout bouton ajouté plus tard en bénéficiera sans qu'on y pense. C'est exactement l'oubli qui a créé ce bug : TICKET-112 a câblé un réveil de dalle sans signaler l'activité.
-        - **`Shift_L`, modificatrice seule** : n'insère aucun caractère, ne déclenche aucun clic, donc aucun effet possible sur l'IHM enfant. On signale une présence, on ne pilote pas la page.
-        - **Étranglé à 5 s**, thread détaché, best-effort : un rebond GPIO ne déclenche pas de rafale de sous-processus, et la boucle GPIO n'est jamais ralentie. `wtype` absent → un avertissement une seule fois, le daemon continue.
-      - ✅ **Validé en réel le 2026-08-17** : `wtype -k Shift_L` a immédiatement produit `17:08:29 [sh<-swayidle] on` dans `data/screen_dpms.log` — la preuve que swayidle a vu l'activité et lancé son `resume`. Puis `buttons_daemon` redémarré, appui sur GPIO12 confirmé au journal, action MPD exécutée. Smoke test **56 OK · 0 échec**.
-      - 💡 **MÉTHODE DE TEST À RÉUTILISER — 5 secondes au lieu de 25 minutes.** Quand swayidle est **déjà bloqué en état expiré**, le premier vrai événement d'entrée déclenche son `resume` **immédiatement**, donc une ligne `[sh<-swayidle] on` dans le journal en une seconde. **Cette ligne suffit à prouver le déblocage** — inutile d'attendre l'extinction suivante. J'ai fait attendre Thomas 25 minutes pour rien avant de m'en apercevoir.
-        - ⚠️ Piège de syntaxe rencontré : `wtype -k shift` → `Unknown key`. Les noms de touches sont des **keysyms XKB**, sensibles à la casse : `Shift_L`.
-      - 🎁 **Bénéfice secondaire, au moins aussi important au quotidien** : un enfant qui n'utilise **que** les boutons physiques voyait son écran s'éteindre au bout de 20 minutes alors qu'il était en train de s'en servir. Ce n'est plus le cas.
-      - 🛡️ **Tests de garde** (smoke test §5) : présence de `signaler_activite()` dans `buttons_daemon.py`, et exécutable `wtype` installé. Les deux en **`fail`** — sans l'un ou l'autre, le cycle de veille se refige en silence. Zone Z4 du registre complétée.
-      - ⚠️ **Prérequis d'installation** : `sudo apt install wtype`. À ne pas oublier sur une image SD fraîche — c'est pour ça que le smoke test le vérifie.
-      - ❓ **Reste sans réponse, et le restera** : qui a rallumé l'écran le 2026-08-05 à 14:24, maison vide. L'événement précède l'instrumentation des appelants (posée le soir même). Sans importance désormais : le correctif traite les deux causes possibles, bouton parasite comme toucher fantôme.
-      - ═══ DIAGNOSTIC D'ORIGINE (2026-08-05) ═══
-      - **Symptôme** : l'écran est resté allumé tout un après-midi, maison vide. Thomas : « c'est incompréhensible ».
-      - 🔍 **Cause établie, et démontrée** : `swayidle` n'observe **que les entrées Wayland**. Les 9 boutons GPIO sont lus par `buttons_daemon`, un processus Python — **le compositeur ne les voit jamais**. Or le cycle de `swayidle` est : compter 1200 s → lancer `off` → **rester en état « déjà expiré »** jusqu'à une entrée réelle → lancer `resume` → et seulement alors réarmer.
-      - **Conséquence** : réveiller la dalle autrement que par le tactile (bouton GPIO23, TICKET-112) laisse `swayidle` bloqué. Il ne réarmera jamais son compte à rebours, et **l'écran reste allumé indéfiniment** jusqu'au prochain vrai toucher.
-      - **Preuve** (`data/screen_dpms.log`, 2026-08-05) : trois `on` à 18:34:53, 18:38:16 et 18:41:10 n'ont **pas** empêché l'extinction programmée de 18:52:15. Ces appels ne réarment donc rien. Et le trou : `off` à 13:50:28, `on` à 14:24:11 maison vide, puis **3 h 24 sans rien** jusqu'au retour de Thomas.
-      - ❌ **Hypothèses éliminées par la mesure** : `swayidle` relancé en boucle par `idle_screen.sh` (il tourne sans interruption depuis 09:41:08, soit 42 s après le boot) · clause `resume` manquante (`ps -ww` confirme la commande complète) · réglages incorrects (`screen_off_enabled: True`, `screen_off_delay: 1200`).
-      - ❌ **Pas une régression de TICKET-115** : ni `idle_screen.sh` ni les délais n'ont été touchés, et le chemin `off` est resté identique. Le mécanisme date de TICKET-112 (2026-07-24), quand GPIO23 a été câblé sur le réveil de l'écran.
-      - 🛠️ **Instrumentation posée** (`scripts/screen_dpms.sh`, md5 `270794ad…`) : chaque ligne de journal préfixe désormais l'appelant sur deux niveaux, `[père<-aïeul]` — le parent direct est souvent un simple `sh -c`, le vrai demandeur est au-dessus. Vérifié en bac à sable : `[sh<-swayidle]`, `[python3<-…]`, `[bash<-sshd-session]` sont bien distingués.
-      - ⏳ **Question ouverte, bloquante pour le correctif** : **qui a rallumé l'écran à 14:24 alors que la maison était vide ?** Deux appels à 3 s d'intervalle. Si la trace dit `buttons_daemon`, c'est un déclenchement parasite du bouton antenne ; si elle dit `swayidle`, c'est un vrai événement d'entrée survenu tout seul, et les touchers fantômes du panneau `wch.cn` (TICKET-098) reviennent en tête. Les deux appellent des correctifs sans rapport.
-      - 💡 **Correctif de fond envisagé** (à valider une fois la trace obtenue) : faire émettre à `buttons_daemon` un **événement d'entrée virtuel via `uinput`** à chaque appui. Le réveil de la dalle deviendrait un effet de bord naturel, `swayidle` verrait l'activité comme pour un toucher, et le compteur se réarmerait seul. Bénéfice secondaire réel : aujourd'hui, un enfant qui n'utilise **que** les boutons physiques voit son écran s'éteindre au bout de 20 min alors qu'il est en train de s'en servir.
-
 - [ ] TICKET-122 — bug/infra — MPD se fige indéfiniment quand le réseau disparaît pendant une webradio (2026-08-05)
       - **Symptôme** : plus aucune lecture possible, ni podcast ni webradio. `mpc status` → `MPD error: Invalid argument`, `radio.php?action=status` → `MPD connection failed: Resource temporarily unavailable`. Pourtant `systemctl status mpd` affiche `active (running)` **depuis plus de 24 h, sans un seul crash au journal**.
       - **Déclencheur** : Thomas est parti plusieurs heures avec son téléphone, alors que le Pi était sur son partage de connexion et jouait une webradio.
@@ -427,7 +233,83 @@ collision TICKET-090 → TICKET-117 du 2026-08-04.
       - ⏳ **Reste** : installer le service, puis valider en conditions réelles — couper le partage de connexion pendant une webradio et vérifier dans `data/mpd_watchdog.log` que l'arrêt préventif se déclenche avant tout blocage.
       - 🧹 Détail sans rapport relevé dans `dmesg` : `/etc/systemd/system/audio_eq_apply.service is marked executable` → `sudo chmod 644`.
 
-- [ ] TICKET-121 — sec/infra — Auditer les 8 services durcis : fichiers de travail hors `ReadWritePaths` (2026-08-04)
+- [ ] TICKET-128 — batterie/matériel — Coupure matérielle du HAT à l'arrêt critique (2026-08-17)
+      - **Découvert** dans la démo du fabricant restée au bas de `scripts/INA219.py` (sous `if __name__=='__main__':`, donc du code mort — mais instructif) : le HAT UPS expose un **registre d'extinction**. Écrire `0x55` dans le registre `0x01` du périphérique I2C `0x2d` lui demande de couper sa sortie.
+      - **Pourquoi ça compte** : `shutdown -h now` arrête le système d'exploitation, mais **le HAT continue de tirer sur les cellules** — le Pi en état « halted », les LED, tout ce qui reste alimenté. Sur une décharge profonde, arrêter l'OS ne protège donc pas les cellules, ça ralentit seulement leur vidage. C'était une demi-protection, et on ne s'en était jamais aperçu parce que l'arrêt lui-même ne fonctionnait pas (défaut 1 de TICKET-121).
+      - 🛠️ **Implémenté le 2026-08-17** dans `battery_watchdog.py` : `hat_present()` puis `arm_hat_power_cutoff()`, armés **après** le `sync` et **avant** le `shutdown`, dans l'ordre de la démo du fabricant.
+      - **Trois garde-fous, parce que ce code coupe le courant** :
+        1. **Détection obligatoire de `0x2d` avant toute écriture.** Écrire à l'aveugle sur une adresse I2C qui n'est pas celle qu'on croit peut reconfigurer un tout autre composant. Reprend la vérification `i2cdetect` du fabricant.
+        2. **Échec non fatal.** HAT absent ou `i2cset` en erreur → journalisé en `ERROR`, et on laisse `shutdown` faire ce qu'il peut. Une protection partielle vaut mieux qu'un chien de garde qui plante.
+        3. **`--check-hat`** : vérifie la présence du périphérique **sans rien écrire**. C'est le contrôle à risque nul, intégré au smoke test.
+      - ⚠️ **Ce qui n'est PAS prouvé, et c'est le point important** : que la coupure soit **différée**. Si le HAT coupait instantanément au lieu d'attendre l'arrêt du système, on aurait une coupure brutale en pleine écriture — ce projet en porte déjà les cicatrices (octets NUL dans `data/sleep_debug.log`, `.tmp` orphelin de `battery_history.json` après le changement de cellules). La démo du fabricant écrit le registre **puis** appelle `poweroff`, ce qui laisse fortement penser que la coupure est différée, mais ce n'est qu'une déduction. Mitigation en place : le `sync` a lieu **avant** l'armement, donc même une coupure immédiate trouverait les données déjà sur la carte.
+      - ⏳ **Reste** : le test réel, une seule fois, en étant présent. `--simulate-critical` s'arrête volontairement avant l'écriture — il ne prouvera jamais ce point.
+      - ✅ Vérifié le 2026-08-17 : `--check-hat` → `HAT 0x2d détecté : True`.
+
+- [ ] TICKET-058 — feature/UX — Série podcast "Décisions Prises" + easter egg
+      - Première découverte : 3 taps sur "Hechicero" à l'écran d'accueil → déverrouille + lance l'épisode 0 automatiquement
+      - Accès ensuite : menu secret séparé (PAS fusionné au catalogue normal) — geste d'accès plus simple qu'au premier déverrouillage (proposition à valider : simple clic sur "Hechicero")
+      - Épisode 0 ne se relance pas auto à chaque entrée dans le menu — devient un épisode normal de la liste après sa 1ère lecture
+      - Hints progressifs : hint 1 vague (après X jours), hint 2 explicite (après ~1h si pas trouvé)
+      - Hints jamais pendant la lecture, one-shot, disparus après découverte
+      - 8 épisodes planifiés (épisode 0 d'ouverture + 7) — scripts en cours dans `docs/55-PODCAST_SERIE_DECISIONS.md`
+      - Ton : léger mais sérieux (blagues assumées, sans exclure le sérieux)
+      - Production : voix papa + voix IA (Descript/ElevenLabs)
+
+---
+
+# 🟢 Priorité basse / À décider
+
+- [ ] TICKET-119 — feature/admin — Écran technique caché, ouvert par combinaison de boutons physiques (2026-08-04)
+      - **Demande de Thomas** : un **appui long simultané sur le bouton casque (GPIO25, « source ») et le bouton antenne (GPIO23)** ouvre une page d'administration technique affichant l'**adresse IP** d'Hechicero, des **informations batterie**, et permettant de **modifier l'égaliseur**.
+      - ⚠️ **Cadrage seulement — rien à implémenter pour l'instant** (décision Thomas, 2026-08-04).
+      - **Pourquoi c'est utile** : en mobilité, retrouver l'IP du Pi est aujourd'hui un chemin de croix (partage de connexion du téléphone, câble USB-Ethernet + ICS, cf. TICKET-109/110 et la procédure d'accès de secours). Un écran qui l'affiche directement supprime le besoin de SSH pour la question la plus fréquente.
+      - **Contenu envisagé** :
+        - IP de **chaque interface active** (`wlan0`, `eth0` USB-Ethernet), pas seulement la première trouvée — c'est précisément quand elles changent qu'on a besoin de l'écran. Plus SSID et qualité du signal.
+        - Batterie : niveau, statut (secteur / décharge / charge), autonomie estimée — données déjà disponibles dans `data/battery_stats.json` (cf. `docs/05-POWER_MANAGEMENT.md`).
+        - Égaliseur : réglage des 10 bandes pour les 2 profils HP/casque — la mécanique existe déjà (TICKET-030, `alsaequal`, `web/admin/audio_eq.php`, `scripts/audio_eq_apply.py`).
+      - **Points à trancher avant de coder** :
+        1. **Écran du lecteur ou page admin ?** Naviguer Chromium vers `/admin/` sortirait du kiosque et couperait le fil de la lecture. Le modèle de l'écran Chambre (TICKET-112) — un écran de plus dans `index.html`, avec mini-lecteur conservé — est probablement le bon, quitte à ne réimplémenter que l'essentiel de l'EQ. À arbitrer selon l'effort.
+        2. **Détection de la combinaison.** `buttons_daemon.py` gère aujourd'hui chaque broche indépendamment (poll 10 ms, anti-rebond 3 niveaux, `TAP_OR_HOLD`). Une combinaison demande un état supplémentaire : détecter que **les deux** broches sont maintenues, **et supprimer les actions individuelles** — sinon l'appui déclencherait aussi la bascule HP/casque (GPIO25) et l'ouverture de l'écran Chambre (GPIO23). C'est le vrai travail du ticket.
+        3. **Fenêtre de tolérance** : les deux boutons ne seront jamais pressés à la milliseconde près. Prévoir un délai de grâce (~300 ms) avant de considérer qu'il s'agit d'un appui simple, donc un léger retard sur les actions de GPIO25 et GPIO23 — à vérifier qu'il reste imperceptible.
+        4. **Sortie de l'écran** : retour à l'écran précédent (modèle Chambre), pas retour forcé à l'accueil.
+      - **Réutiliser l'existant** : le canal `request_screen` / `get_ui_request` (`radio.php`, déjà générique) sert exactement à ça — le daemon Python écrit la demande, `index.html` la consomme par polling. Aucune modification PHP nécessaire côté transport, comme pour les favoris (TICKET-046) et la Chambre (TICKET-112).
+      - **Sécurité / usage** : c'est un écran **parent**. Il ne doit pas exposer de secret (aucun jeton, aucun identifiant de la passerelle domotique) ni offrir de contournement du contrôle parental. La combinaison à deux boutons maintenus est déjà, en soi, une protection raisonnable contre un déclenchement accidentel par l'enfant.
+      - ❓ **À confirmer avec Thomas** : l'écran doit-il rester accessible en dehors des horaires autorisés d'écoute (comme l'écran Chambre) ? A priori oui, c'est un outil de dépannage.
+
+- [ ] TICKET-111 — hardware — Ventilateur GPIO/PWM pour dissipation thermique (2026-07-18) (renuméroté depuis TICKET-110, en collision avec le ticket roaming — 2026-07-18)
+      - Demande de Thomas : boîtier chaud, ventilateur silencieux souhaité. Corroboré par TICKET-109 (`vcgencmd get_throttled = 0xe0000` le 2026-07-18 : capping fréquence + throttling + limite thermique constatés depuis le dernier boot)
+      - Ventilateur déjà acheté par Thomas — **en attente qu'il soit mis en place physiquement** avant de configurer/tester quoi que ce soit côté logiciel
+      - Plan retenu : essayer d'abord le connecteur PWM dédié du Pi 5 (séparé du header 40 broches GPIO, ne consomme donc aucun des GPIO déjà utilisés — boutons, I2C batterie, I2S audio). Si inaccessible une fois les HAT (ampli + batterie) empilés → repli sur un montage GPIO libre avec un transistor/MOSFET (un GPIO seul ne peut pas alimenter un moteur directement) — ⚠️ GPIO16 n'est plus disponible depuis TICKET-046 (favori), seul GPIO6 reste vraiment libre
+      - Activation prévue : `dtoverlay=pwm-fan` dans `/boot/firmware/config.txt` (section `[all]`) — pas encore ajouté, contrôle automatique de la vitesse selon la température, seuils ajustables ensuite (`fan_temp0`, `fan_temp0_hyst`, etc.) si besoin de le rendre plus/moins agressif
+      - ⏳ Reste à faire : Thomas monte le ventilateur dans le boîtier, puis on active l'overlay et on vérifie (`vcgencmd measure_temp`, `cat /sys/class/thermal/cooling_device*/type`)
+
+---
+
+# ✔️ Terminé
+
+- [x] TICKET-143 — outillage — `recalibrer_table_batterie.py` produit une table absurde (2026-08-21) — ✅ **CORRIGÉ le 2026-08-21**
+      - 🛠️ **Réécrit.** Quatre défauts corrigés, et deux autres trouvés **en le réparant** :
+        1. **Cycles non clos** : il retenait le cycle le plus profond sans exiger `discharge_end`. Sur un cycle en cours, `level_end` est absent donc vaut 0 → profondeur 96 au lieu de 30.
+        2. **Départ non plein** : chaque cycle était normalisé sur *sa propre* énergie délivrée. Le « 50 % restant » d'une décharge partie de 54 % ne désigne pas le même état que celui d'une décharge partie du plein. Filtre sur la **tension** de départ — pas sur le niveau enregistré, ce serait circulaire puisque c'est lui qu'on recalibre.
+        3. **Normalisation sur le cycle et non sur la batterie** : trouvé après le correctif 2. Un cycle parti plein mais peu profond (2503 mAh) était comparé à une décharge complète (8892 mAh) comme s'ils couvraient la même plage. Rapportait **500 mV** de désaccord là où les courbes s'accordent à 6 mV. **Même erreur de fond que TICKET-142** : donner le même nom à deux grandeurs qui n'en sont pas une.
+        4. **Verdict en millivolts** : il ne rapportait que des mV. Il affiche désormais la **sensibilité locale** (points de % par mV) et **c'est l'écart en POINTS qui décide**.
+        5. **Refus trop brutal** : ma première version rejetait tout dès que la bande la plus haute échouait. Le plateau haut n'étant *jamais* reproductible, cela aurait jeté la courbe basse — celle dont dépend la sécurité. Il annonce maintenant **jusqu'où** il est fiable.
+        6. **Réparation silencieuse de la monotonie** : repéré par Thomas dans la sortie. Les données mesurent 4,031 V à 85 % et **4,037 V à 80 %** — la tension *monte* quand la charge baisse, donc bruit pur. Le script forçait la monotonie (obligatoire, sinon `percent_from_voltage()` divise par zéro) **sans le dire** : on lisait une table d'apparence propre dont un palier était fabriqué, pas mesuré. Il l'annonce désormais explicitement.
+        7. Chemin codé en dur, `R` estimée sur un seul saut de courant, table de comparaison recopiée au lieu d'être importée : corrigés.
+      - ✅ **Résultat sur les données réelles** : verdict « fiable jusqu'à 90 % », R = **32 mΩ** (j'avais trouvé 34 à la main), et la table proposée **confirme celle déployée** à 3-5 mV près — sur **trois** cycles au lieu de deux. Confirmation indépendante, donc, obtenue en réparant l'outil qui avait failli nous égarer.
+      - 📌 **Table non modifiée** : les écarts sont sous le bruit, la changer serait de l'agitation.
+      - ✅ **Test de garde** (smoke test §5) : présence des deux filtres, du verdict en points, et absence de chemin absolu. Vérifié en échec sur l'ancienne version.
+
+      - **Trouvé en s'en servant** pour TICKET-137. Le script a proposé une table plaçant **85 points de pourcentage sur 80 mV** — physiquement impossible.
+      - 🔍 **Cause** : il sélectionne le cycle **le plus profond** sans exiger qu'il soit **clos**. Sur un cycle en cours, `level_end` est absent et vaut donc 0 : la profondeur est calculée à 96 points au lieu de ~30, et toute la conversion mAh/point s'effondre.
+      - ⚠️ **Le vrai danger n'est pas la panne, c'est la crédibilité de la sortie** : le script n'a pas planté. Il a rendu un tableau bien formaté, avec des chiffres plausibles au premier regard, assorti de son propre avertissement rassurant (« refaire tourner après deux ou trois décharges »). **Un outil d'analyse qui se trompe sans échouer est plus dangereux qu'un outil cassé.** L'analyse du 137 a dû être refaite à la main.
+      - 🐛 **Second défaut** : chemin codé en dur `/home/thomas/hechicero/data/battery_history.json` au lieu d'un chemin relatif — le script ne tourne que sur le Pi.
+      - **À faire** : n'accepter que les cycles avec `discharge_end` **et** `invalid != true` ; chemin relatif ; et afficher l'écart entre cycles **en points de pourcentage** autant qu'en millivolts (leçon de TICKET-142).
+
+
+- [x] TICKET-121 — sec/infra — Auditer les 8 services durcis : fichiers de travail hors `ReadWritePaths` (2026-08-04) — ✅ **CLOS le 2026-08-21**
+      - ✅ **Ce qui restait ouvert — le test réel d'arrêt sous seuil — est désormais PROUVÉ DEUX FOIS en conditions réelles**, sans simulation : coupure du **2026-08-18 à 12:22:20** (fin du cycle 12, décharge 97 % → 5 %) et du **2026-08-20 à 01:29:05** (fin du cycle 18, 83 % → 5 %). Les deux ont laissé une trace propre dans `data/last_session.json`, et le Pi s'est bien éteint.
+      - 💡 **Ce que ça vaut** : `battery_watchdog` était **le seul des huit services durcis dont le comportement d'arrêt n'avait jamais été prouvé** — et pour cause, deux défauts se couvraient l'un l'autre (le `sudo` cassé par `NoNewPrivileges`, et le chemin de test qui aurait dû le révéler, cassé lui aussi). La protection contre la décharge profonde n'a pas fonctionné du 2026-07-19 au 2026-08-17. Elle fonctionne maintenant, et on l'a vue fonctionner.
       - **Déclencheur** : TICKET-120 a révélé une panne **armée depuis deux semaines et totalement invisible**. Depuis le durcissement TICKET-011, `buttons_daemon` ne pouvait plus créer son tube lgpio dans `scripts/` (devenu non inscriptible) ; le service ne survivait que parce qu'un fichier créé **avant** le durcissement traînait encore et se laissait ouvrir. Sa suppression a fait tomber les boutons physiques.
       - **Hypothèse à vérifier** : les 7 autres services durcis peuvent être dans le même état — fonctionnels aujourd'hui uniquement grâce à un fichier antérieur au 2026-07-19, et condamnés au premier nettoyage ou à la première réinstallation depuis une image neuve.
       - ⚠️ **Ce n'est plus une hypothèse — confirmé une deuxième fois le 2026-08-05 (TICKET-122)** : trois unités portaient `Requires=mpd.service`, directive qui **propage l'arrêt**. Un simple redémarrage de MPD éteignait les boutons physiques et arrêtait le suivi d'écoute. Le durcissement de juillet a manifestement été appliqué **en recopiant un modèle d'unité d'un service à l'autre**, sans vérifier ce que chaque directive impliquait pour ce service précis.
@@ -457,17 +339,216 @@ collision TICKET-090 → TICKET-117 du 2026-08-04.
       - ⏳ **Reste** : un unique test réel d'arrêt critique, batterie chargée et en étant présent — laisser descendre sous 15 % et vérifier que le Pi s'éteint. C'est la seule preuve qui vaille, et elle n'est pas encore faite. Ne pas laisser l'appareil à l'enfant pendant ce test.
       - 📌 **Leçon** : `grep -n "sudo" scripts/*.py` a trouvé en une seconde ce qu'un mois de fonctionnement apparemment normal avait caché. Quand un durcissement retire un privilège, chercher les endroits du code qui en avaient besoin — pas relire les unités.
 
-- [ ] TICKET-128 — batterie/matériel — Coupure matérielle du HAT à l'arrêt critique (2026-08-17)
-      - **Découvert** dans la démo du fabricant restée au bas de `scripts/INA219.py` (sous `if __name__=='__main__':`, donc du code mort — mais instructif) : le HAT UPS expose un **registre d'extinction**. Écrire `0x55` dans le registre `0x01` du périphérique I2C `0x2d` lui demande de couper sa sortie.
-      - **Pourquoi ça compte** : `shutdown -h now` arrête le système d'exploitation, mais **le HAT continue de tirer sur les cellules** — le Pi en état « halted », les LED, tout ce qui reste alimenté. Sur une décharge profonde, arrêter l'OS ne protège donc pas les cellules, ça ralentit seulement leur vidage. C'était une demi-protection, et on ne s'en était jamais aperçu parce que l'arrêt lui-même ne fonctionnait pas (défaut 1 de TICKET-121).
-      - 🛠️ **Implémenté le 2026-08-17** dans `battery_watchdog.py` : `hat_present()` puis `arm_hat_power_cutoff()`, armés **après** le `sync` et **avant** le `shutdown`, dans l'ordre de la démo du fabricant.
-      - **Trois garde-fous, parce que ce code coupe le courant** :
-        1. **Détection obligatoire de `0x2d` avant toute écriture.** Écrire à l'aveugle sur une adresse I2C qui n'est pas celle qu'on croit peut reconfigurer un tout autre composant. Reprend la vérification `i2cdetect` du fabricant.
-        2. **Échec non fatal.** HAT absent ou `i2cset` en erreur → journalisé en `ERROR`, et on laisse `shutdown` faire ce qu'il peut. Une protection partielle vaut mieux qu'un chien de garde qui plante.
-        3. **`--check-hat`** : vérifie la présence du périphérique **sans rien écrire**. C'est le contrôle à risque nul, intégré au smoke test.
-      - ⚠️ **Ce qui n'est PAS prouvé, et c'est le point important** : que la coupure soit **différée**. Si le HAT coupait instantanément au lieu d'attendre l'arrêt du système, on aurait une coupure brutale en pleine écriture — ce projet en porte déjà les cicatrices (octets NUL dans `data/sleep_debug.log`, `.tmp` orphelin de `battery_history.json` après le changement de cellules). La démo du fabricant écrit le registre **puis** appelle `poweroff`, ce qui laisse fortement penser que la coupure est différée, mais ce n'est qu'une déduction. Mitigation en place : le `sync` a lieu **avant** l'armement, donc même une coupure immédiate trouverait les données déjà sur la carte.
-      - ⏳ **Reste** : le test réel, une seule fois, en étant présent. `--simulate-critical` s'arrête volontairement avant l'écriture — il ne prouvera jamais ce point.
-      - ✅ Vérifié le 2026-08-17 : `--check-hat` → `HAT 0x2d détecté : True`.
+
+- [x] TICKET-129 — infra — PHP tourne en UTC alors que le reste du projet écrit en heure locale (2026-08-17) — ✅ **CORRIGÉ le 2026-08-21**
+      - 🛠️ **Livré** : `web/bootstrap.php`, inclus par les **dix** points d'entrée PHP, qui force `date_default_timezone_set('Europe/Paris')`.
+      - ⚠️ **Pourquoi pas dans `php.ini`** : il vit hors du dépôt. Une carte SD fraîchement restaurée repartirait en UTC sans que rien ne le signale — la panne latente typique de la zone Z2. **Le fuseau doit voyager avec le code.**
+      - 📌 **Ce défaut a mordu QUATRE fois** avant d'être traité à la racine : TICKET-102 (traceur de veille), 127 (chronologie du gel), 136 (fraîcheur batterie périmée de 2 h), 138 (`sleep_debug.log` en UTC face à `screen_dpms.log` en local, sur le même diagnostic). **Les trois premières fois, on a posé une rustine à l'endroit qui faisait mal.**
+      - 💡 **La leçon** : une correction posée au point de douleur ne corrige que ce point. Le défaut restait entier partout ailleurs et revenait sous un autre visage — à chaque fois pendant une panne, c'est-à-dire au pire moment.
+      - ✅ **Tests de garde** (smoke test §2) : le **fuseau effectif** est vérifié à l'exécution (`php -r`), pas la simple présence du fichier ; et chaque point d'entrée est contrôlé individuellement — un seul oubli laisserait une page en UTC, incohérence locale bien plus difficile à trouver qu'un défaut uniforme.
+      - 🔗 Trois rustines locales subsistent (`web/index.php` ×2, `web/lecteur/radio.php`) : désormais redondantes mais **inoffensives** (forcer Paris sur une base déjà en Paris est neutre). Laissées en place volontairement.
+      - **Constaté** deux fois, à un mois d'intervalle, sans que la cause soit traitée : le 2026-07-18 sur `hechicero_battery_stats_age_seconds` à −7185 (TICKET-017), et le 2026-08-17 en lisant `data/sleep_debug.log` pour TICKET-127 — son « 07:52:48 » correspondait en réalité à **09:52:48** sur l'horloge de la maison.
+      - **Le piège** : `date()` en PHP renvoie de l'UTC (aucun `date.timezone` configuré), tandis que le shell (`data/screen_dpms.log`) et Python (`data/kiosk_freeze.log`, `datetime.now()`) écrivent en heure locale. **Deux heures d'écart entre trois journaux qu'on croise justement pendant une panne.** Chaque fois, on perd du temps ou on tire une conclusion décalée.
+      - **Pourquoi ça n'a jamais été réglé** : les deux fois, le contournement était local (`date_default_timezone_set()` dans un seul fichier). Celui de `metrics.php` vient d'ailleurs de disparaître avec le fichier.
+      - ✅ **Vérifié : le contrôle parental n'est PAS concerné.** `radio.php?action=parental_status` ne sert que le planning brut ; les horaires sont évalués **côté navigateur**, donc à l'heure locale de l'écran. Le risque de régression sur cette partie est nul.
+      - **Piste** : `date.timezone = Europe/Paris` dans le `php.ini` d'Apache, ou un `date_default_timezone_set()` dans un fichier commun inclus par toutes les pages. La première est plus propre mais vit hors du dépôt — donc à versionner et documenter comme la conf Apache et `asound.conf` (zone Z12).
+      - **À vérifier avant de livrer** : les horodatages écrits par PHP dans `data/favoris.json` (`added_at`) et `data/sleep_debug.log` deviendraient locaux. Aucun consommateur ne fait de calcul dessus, mais les valeurs déjà en base resteraient en UTC — mélange assumé, à noter dans le fichier.
+      - **En attendant** : `data/kiosk_heartbeat.json` expose `ts` (epoch, sans ambiguïté), `iso` (UTC) **et** `local`. C'est le contournement propre, pas la correction.
+
+
+- [x] TICKET-137 — ANALYSE PRÉPARATOIRE (2026-08-18) — conservée pour l'historique des mesures ; livraison en tête de la section Terminé
+      - **`battery_common._LIPO_TABLE` est une courbe générique d'accumulateur à poche**, héritée du montage d'origine. Les cellules sont des EVE INR21700/58E (Li-ion NMC). La table n'a jamais été recalée — et **tout le pourcentage affiché du projet en dépend** : écran enfant, tableau de bord, page d'accueil, seuils d'alerte et d'arrêt.
+      - 🔬 **Mesures du cycle du 2026-08-18** (`scripts/recalibrer_table_batterie.py`, 484 points) :
+        - **Résistance interne : 53 mΩ** — crédible pour deux 21700 en parallèle. À −2,2 A, l'affaissement vaut **117 mV**, soit ≈ 10 points de pourcentage. **Le niveau affiché plonge donc dès que l'enfant lance un podcast, alors que rien n'a été consommé.** C'est le défaut le plus visible au quotidien.
+        - **Énergie délivrée : 8892 mAh** entre 97 % et 4 %, soit ≈ 9560 mAh utiles contre 11 200 nominaux (85 % — normal pour une coupure à 3,33 V sous charge). ➡️ Pour le calcul d'autonomie temps réel, **9560 serait plus juste que 11 200**.
+        - **La table actuelle sur-évalue le niveau de 8 à 10 points** dans toute la plage médiane (à 3,798 V elle annonce ~48 % là où la mesure donne 40 %).
+      - ⛔ **NE PAS remplacer la table telle quelle** — trois raisons :
+        1. La table proposée donne des tensions **à vide** (corrigées de l'affaissement), alors que `percent_from_voltage()` reçoit la tension **brute**. L'échanger sans ajouter la compensation `V_oc = V + |I| × R` rendrait le calcul **plus faux qu'avant**.
+        2. Son point à 0 % tombe à 3,44 V — c'est le **seuil d'arrêt**, pas la cellule vide. On afficherait 0 % avec de l'énergie restante, et on perdrait l'autonomie qu'on vient de gagner.
+        3. Le plateau haut est mal résolu : 15 points de pourcentage pour 10 mV entre 4,09 et 4,06 V. Un seul cycle ne suffit pas à le décrire.
+      - ⏳ **Décision de Thomas (2026-08-18)** : attendre **3 ou 4 cycles**, relancer le script, vérifier que les courbes convergent. Puis livrer **ensemble** la compensation d'affaissement et la nouvelle table, avec les tests unitaires.
+
+
+- [x] TICKET-142 — batterie/précision — Comptage coulométrique ancré au-dessus du plateau (2026-08-21) — ✅ **CORRIGÉ**
+      - 🔴 **Ouvert parce que TICKET-137 avait introduit une régression.** Après déploiement, la nouvelle table annonçait **86 %** alors que l'intégration du courant depuis la charge pleine donnait **77,9 %**. L'ancienne table, elle, disait 75 % — juste à 2 points près.
+      - 🔍 **Pourquoi l'ancienne tombait juste** : elle cumulait **deux erreurs opposées** qui s'annulaient en décharge — la table sur-évaluait de 4 à 8 points, et l'usage de la tension **brute** (au lieu de la tension à vide) sous-évaluait d'à peu près autant. Fragile et faux dès qu'on ne décharge pas, mais juste en pratique.
+      - ⚠️ **MA FAUTE, et c'est la leçon la plus transférable de tout le projet : j'ai validé dans la mauvaise unité.** J'ai annoncé « 6,4 mV de désaccord médian » comme une réussite sans jamais convertir ces millivolts en **points de pourcentage**. Or :
+        | bande | largeur | ce que valent 10 mV |
+        |---|---|---|
+        | 75-80 % | 5,0 mV | **10 points** |
+        | 80-85 % | 5,0 mV | **10 points** |
+        | 0-70 % | 26-66 mV | 0,8 à 1,9 point |
+        6 mV d'accord est excellent à 50 % et **sans valeur à 80 %**. Mes deux cycles de calibration étaient en désaccord de ~12 **points** dans la zone plate, et je ne l'ai pas vu parce que je regardais des volts. **Le produit s'exprime en pourcents ; je l'ai validé en volts.**
+      - 🛠️ **Remède — comptage ancré, et c'est l'ancrage qui le rend sûr** :
+        - Sous `coulomb_anchor_percent` (70 %) : la table fait autorité. La courbe y est franche et **se recale d'elle-même**.
+        - Au-dessus : intégration du courant depuis le dernier ancrage.
+        - La dérive ne peut donc s'accumuler que sur **une seule traversée** de la bande haute — quelques heures — avant remise à zéro. C'est la différence avec un compteur libre, et la seule raison pour laquelle ce mécanisme est acceptable ici.
+      - ⚠️ **Garde-fou central** : au-delà de **10 min** de trou entre deux relevés, l'ancrage est **abandonné** et la table reprend. Un compteur qui intègre à travers un trou dérive **sans le dire** — le pire défaut possible pour ce genre de mécanisme. `level_table` est aussi publié dans `battery_stats.json` : sans lui, une dérive serait indétectable sans refaire un cycle complet.
+      - 🔗 **Ancrage sur batterie pleine** (ajouté après la première mise en service) : sans lui, un démarrage à froid en zone plate amorce le comptage sur la valeur **fausse** de la table et la conserve jusqu'au prochain passage sous 70 %. `batterie_pleine()` exige **tension ≥ 4,10 V ET |courant| ≤ 150 mA**.
+        - ⚠️ **Les deux conditions sont indispensables** : les arrêts de charge anormaux du TICKET-140 ont exactement la signature d'un courant nul (0,91 mA constant pendant des heures) mais à **54 % et 70 %**. Un critère fondé sur le seul courant afficherait **100 % avec un tiers de l'énergie**. Le seuil de tension les exclut (3,80 et 3,94 V). Quatre assertions et un test du smoke test verrouillent ce point.
+      - ✅ **Vérifié sur les données réelles** du 2026-08-21, rejouées à travers le mécanisme : **78 % contre 77,9 %** de référence — un dixième de point. Sur le cycle entier, écart maximal **±1,2 point**, y compris en simulant un démarrage à froid en cours de route.
+      - 📌 **Limite connue** : le rattrapage d'un démarrage à froid dépend de l'ancrage sur batterie pleine. Un démarrage à 4,05 V — sous le seuil de plein, au-dessus du seuil de table — hériterait de l'erreur de la table jusqu'au prochain passage sous 70 %. Borné à un cycle, non corrigé.
+      - ✅ **Tests** : 62 → **84 assertions**. Quatre tests du comptage ont **d'abord échoué**, non par erreur de code mais parce qu'ils simulaient un pas d'une heure que le garde-fou de trou rejette — ce qui a prouvé au passage que le garde-fou mord. Smoke test §5 : mécanisme branché, ancrage persisté, invalidation sur trou, capacité effective non nulle.
+      - 📌 **Le watchdog n'utilise PAS le comptage** (il ne transmet pas d'ancrage) et reçoit le niveau de la table. Sans conséquence : il ne décide qu'en bas de plage, précisément là où la table est fiable.
+
+- [x] TICKET-137 + TICKET-139 — batterie/précision — Table mesurée, compensation d'affaissement et lissage (2026-08-21) — ✅ **CORRIGÉ**
+      - **Condition posée par Thomas remplie** : après plusieurs cycles, les courbes convergent. Deux décharges profondes indépendantes (cycles 12 du 18/08 et 18 du 19/08) ont délivré **8892 et 8896 mAh** — à 0,05 % près — et leurs courbes tension→charge s'accordent à **6,4 mV** après compensation (12,0 mV sans).
+      - 📉 **Ampleur du défaut corrigé** : l'ancienne table, courbe générique jamais recalée, **sur-évaluait de 4 à 8 points** sur presque toute la plage et annonçait encore **7 % à la coupure réelle**.
+      - 🛠️ **Livré ensemble, et c'est indispensable** :
+        - `tension_a_vide(V, I, R)` — la table donne des tensions **à vide**, l'INA219 mesure **sous charge**. À −2,2 A l'écart vaut 75 mV, soit ~8 points : c'est ce qui faisait plonger la jauge dès qu'un podcast démarrait.
+        - `_LIPO_TABLE` remplacée par la courbe mesurée.
+        - `mediane()` + rafale de 5 lectures dans `read_sensor_snapshot()`. **Médiane et non moyenne** : une seule valeur aberrante déplace une moyenne, il en faut la moitié pour déplacer une médiane. C'est le creux isolé à −210 mA qui faisait annoncer « charge arrêtée ».
+      - ⚠️ **Pourquoi le 139 devait précéder le 137** : la table mesurée étale **20 points de pourcentage sur 40 mV** entre 75 et 95 % (contre 60 mV avant) — le plateau de la chimie Li-ion. Elle est donc **~7× plus sensible au bruit**. Livrer la table sans le lissage aurait aggravé le sautillement qu'on cherchait à corriger.
+      - ⚠️ **Changement de sens silencieux du seuil** : « 5 % » désigne maintenant 3,458 V à vide au lieu de 3,350 V, soit **108 mV plus tôt** et ~14 min d'autonomie en moins. **Décision de Thomas : garder 5 %** — ces minutes sont dans la zone où la tension s'effondre et où les cellules souffrent.
+      - 🔍 **Défaut trouvé en chemin dans `recalibrer_table_batterie.py`** : il sélectionnait le cycle **en cours**, dont `level_end` est absent, donc profondeur calculée à 96 points au lieu de ~30 — il proposait une table absurde (85 points sur 80 mV). Sa sortie n'était pas exploitable ; l'analyse a été refaite par intégration du courant sur les cycles clos. Le script code aussi en dur `/home/thomas/hechicero` au lieu d'un chemin relatif. **Non corrigé — à reprendre.**
+      - 📌 **Limites assumées** : R = 34 mΩ est le meilleur accord entre cycles, mais le minimum est **plat de 20 à 60 mΩ** (le courant de décharge varie trop peu pour contraindre R). Et le haut de courbe reste imprécis — seul un comptage coulométrique y répondrait, écarté pour l'instant.
+      - ✅ **Tests** : `test_batterie.py` passe de 44 à **62 assertions**. **4 des 5 clés vérifiées en échec sur l'ancienne table** (la 5ᵉ est un invariant de structure, annoté comme tel). Smoke test §5 : couplage table/compensation, résistance non nulle, rafale active.
+
+- [x] TICKET-139 — mesure/batterie — La charge plafonne vers 60 % : vraie asymptote ou charge annulée par la consommation ? (2026-08-19) — ✅ **CORRIGÉ** (voir TICKET-137+139 ci-dessus)
+      - **Signalé par Thomas**, après la refonte du suivi (TICKET-133) : « le dashboard indique que la charge se stoppe mais que la batterie est à 60 % ».
+      - 📸 **Instantané pris le 2026-08-19 à 08:26** (`data/battery_stats.json`) :
+        ```
+        niveau 63 %  ·  3,896 V  ·  +318,82 mA  ·  0,43 W
+        charging: true, en charge depuis 07:14:39 (72 min)
+        MPD : webradio EN LECTURE (France Inter)  ·  écran allumé
+        estimated_charge_time_minutes_live : 1092  ← 18 heures
+        cycles_recorded: 2, model_confidence: "low"
+        ```
+      - ❌ **Ma première analyse était fausse, et Thomas a eu raison d'en douter.** J'avais conclu d'un instantané unique que la consommation de la webradio annulait la charge. **Un seul point, pris au creux d'un signal qui oscille de −210 à +1459 mA.** L'historique complet dément :
+        ```
+        points en charge, tous cycles :
+        webradio   n=136   médiane  +886 mA   (min −173, max +1459)
+        idle       n=116   médiane +1059 mA   (min  −60, max +1518)
+        ```
+        La webradio ne coûte que **173 mA de médiane** — très loin des ~800 mA qu'exigerait mon explication. ⚠️ **Construire une histoire cohérente à partir d'un échantillon d'un signal bruité produit une certitude, pas une connaissance.**
+      - 🔍 **Cause racine réelle : aucun lissage, nulle part.** L'état charge/décharge **et** le niveau sont calculés chacun sur un **échantillon instantané**. Séquence mesurée le 2026-08-19 :
+        ```
+        08:29:41   61 %   3,880 V   −210 mA   charging: FALSE   webradio
+        08:30:41   65 %   3,912 V   +224 mA   charging: true    webradio
+        08:31:41   69 %   3,940 V   +992 mA   charging: true    webradio  ← radio toujours allumée
+        08:33:41   70 %   3,952 V  +1111 mA   charging: true    idle
+        ```
+        1. **L'état bascule sur un seul échantillon.** À 08:29 un creux passager à −210 mA franchit la bande morte de 200 mA (TICKET-133) → le tableau de bord annonce « charge arrêtée ». **C'est exactement ce que Thomas a signalé.** Ni plateau, ni arrêt : un artefact d'un point.
+        2. **Le niveau saute de 61 à 70 % en quatre minutes**, parce que 72 mV valent 9 points dans cette zone de la table. **Il n'y a donc aucune asymptote à 60 %** — le palier n'existe pas.
+      - 🛠️ **À faire — lisser avant de décider** (rien n'est écrit) :
+        - Médiane glissante sur N échantillons pour le **courant** avant de trancher charge/décharge. La bande morte seule ne protège pas d'un signal dont l'écart-type dépasse la bande.
+        - Même traitement pour la **tension** avant conversion en pourcentage — sinon le niveau affiché restera nerveux même avec une table recalée.
+        - Test de garde : injecter une série bruitée avec un creux isolé et vérifier que l'état **ne bascule pas**.
+      - ⏳ **Décision de Thomas (2026-08-19)** : reparamétrer proprement la gestion de l'énergie le soir. ✅ **Le test « charge sans radio » est inutile** — l'écart entre modes (173 mA) est noyé dans un bruit de ±1400 mA et demanderait des heures pour être extrait.
+
+- [x] TICKET-141 — mesure/batterie — L'enregistreur devient aveugle pendant les plateaux, et ignore le courant (2026-08-19) — ✅ **CORRIGÉ**
+      - 🛠️ **Livré** : cadence plancher `RECORD_FLOOR_SECONDS = 300` (un point au moins toutes les 5 min) · le courant devient critère (`CURRENT_DELTA_MA = 300`, plus le franchissement de la bande morte `CURRENT_ZERO_BAND_MA = 50` — « le courant a cessé de couler » est un événement même à niveau constant) · purge `RETENTION_FULL_DAYS = 30` puis 1 point/h · historique écrit **seulement s'il a changé**.
+      - 🔒 **Piège évité, zone Z8** : le second élément du tuple pilote `close_discharge()` / `new_cycle()`. Y ajouter la cadence plancher aurait fabriqué **un faux cycle toutes les 5 minutes**. Il reste strictement `transition or state_changed`, et **trois assertions le vérifient**.
+      - 💾 **Contrepartie traitée** : `collect_once()` réécrivait l'historique entier toutes les 60 s — **283 Mo/jour** sur la carte SD pour un fichier le plus souvent inchangé, et **aucune purge n'existait**. Livrer la cadence seule aurait transformé un gain de diagnostic en usure de carte SD (fichier de 22 Mo au bout d'un an, réécrit en continu).
+      - ⏱️ **Purge dans le tracker, pas dans un cron** : une purge confiée à un service tiers finit par ne plus tourner sans que personne ne le remarque, et on ne le découvre qu'une fois la carte usée.
+      - ✅ **Tests** : `test_batterie.py` passe de 24 à **44 assertions**. Les 4 clés ont été **rejouées contre l'ancienne implémentation et échouent bien** — mesure de l'aveuglement : sur un plateau de 30 min, l'ancien code retenait **0 point**. Smoke test §5 : présence des trois constantes, appel de `purge_history()`, écriture conditionnelle.
+      - 📌 **Débloque TICKET-140** : l'arrêt de charge nocturne redevient observable au prochain épisode.
+      - **Signalé par Thomas** : « je trouve que le relevé de points de charge est trompeur, on voit encore une sorte de trou dans la charge ». Ce n'est pas un défaut de rendu : **il n'y a réellement aucun point à enregistrer**.
+      - 🔍 **Cause** — `should_record_point()` n'écrit un point que sur : bascule `charging`, changement de `mpd_mode`, variation de niveau **≥ 2 points**, ou changement de `status`. Le tracker échantillonne pourtant **toutes les 60 s** (`battery_check_interval_seconds`) et **jette tout le reste**. Pendant un plateau, aucun critère ne se déclenche → trou.
+      - 📊 **Trous du 2026-08-19** : `14:39 → 15:17` (38 min) · `15:17 → 17:44` (**147 min**, la terminaison de charge s'y produit sans un seul point) · `17:59 → 18:48` (49 min).
+      - 🔴 **Défaut central : le courant n'est pas un critère d'enregistrement.** Ni sa valeur, ni sa variation. La nuit du 18 au 19, il s'est effondré de **+1111 à −60 mA** — le phénomène entier du TICKET-140 — et cela n'a été capté que **par accident**, parce que le niveau avait bougé de 61 à 54 au même moment. D'où **3 points en 6 h 53**.
+      - ⚠️ **L'ironie à retenir** : l'enregistreur cesse d'écrire exactement quand le système fait la chose qu'on cherche à étudier (tenir un plateau). On a ensuite passé une journée à s'étonner que les plateaux soient indiagnosticables. **Un échantillonnage déclenché par le changement ne peut pas documenter une absence de changement.**
+      - 🛠️ **Ce qui était à faire, et qui est fait** :
+        1. **Cadence plancher garantie** : un point au moins toutes les 5 min quoi qu'il arrive, en plus des déclencheurs événementiels. Coût : 288 points/jour, négligeable.
+        2. **Ajouter le courant aux critères** : variation ≥ ~300 mA, et franchissement de zéro.
+        3. Test de garde : simuler un plateau de 30 min à niveau constant et vérifier qu'il produit ≥ 6 points.
+      - 🔗 Distinct du TICKET-139 (lissage des valeurs **affichées**) : ici c'est la **politique d'enregistrement** qui perd l'information avant tout affichage.
+
+- [x] TICKET-138 — bug/veille — Deux minuteries de veille désaccordées : dalle allumée, page noire pendant 9 minutes (2026-08-19) — ✅ **CORRIGÉ le 2026-08-21**
+      - 🛠️ **Livré** : l'overlay JS dérive de `screen_off_delay` au lieu de `sleep_delay`. **Une seule source de vérité** — aligner les deux nombres dans `config.json` n'aurait pas suffi, deux réglages libres se désaccordent au premier passage dans l'admin. `sleep_delay` devient un simple repli de compatibilité.
+      - 🔴 **Effet de bord identifié et verrouillé** : le délai de veille passe de 60 s à **600 s**, alors que toutes les boucles périodiques de l'IHM tournent entre 100 ms et 60 s. Le garde `changed` de `applySleepConfig` — jusqu'ici une optimisation — devient la **seule** protection contre le retour de TICKET-102 (veille qui ne se déclenche jamais). La marge est passée de ×5 en notre faveur à ÷10 en notre défaveur. **Deux tests de garde** ajoutés au smoke test §3, dont un vérifié en échec sur l'ancienne ligne.
+      - 📌 **Le registre de non-régression affirmait que ce comportement était « normal, pas un bug »** — c'est ce qui l'a classé sans suite pendant des semaines. Corrigé dans `75-NON_REGRESSION.md`.
+      - ⏳ **Reste à observer en réel** : qu'une veille se déclenche bien au bout de 600 s d'inactivité, et que dalle et overlay s'éteignent ensemble.
+      - **Signalé par Thomas** : « j'ai appuyé sur le bouton physique play et la dalle s'est allumée mais l'écran est noir ». Symptôme rapporté plusieurs fois depuis des semaines, jusqu'ici attribué à un gel du kiosque (TICKET-127).
+      - ❌ **Ce n'était pas un gel.** Le battement de cœur posé au TICKET-127 a tranché en trente secondes : 2 886 battements ininterrompus, dernier battement à 5 s, `kiosk_freeze.log` muet depuis le 2026-08-17. **La page exécutait du JavaScript pendant tout l'épisode.** L'instrumentation a servi à innocenter une piste, ce qui est exactement son rôle.
+      - 🔍 **Cause racine** — `web/lecteur/config.json` porte **deux délais de veille indépendants, sans aucun lien entre eux** :
+        - `"sleep_delay": 60` → l'overlay `#sleep-overlay` du navigateur (écran `retro_clock` : fond `#070503`, horloge en `rgba(210,140,12,.35)`)
+        - `"screen_off_delay": 600` → l'extinction de la dalle par `swayidle` via `screen_dpms.sh`
+      - ➡️ Entre les deux il existe une fenêtre de **540 secondes** où la dalle est allumée et la page affiche un écran quasi noir. **En plein jour l'horloge rétro est illisible** : l'appareil paraît en panne alors que tout fonctionne. C'est le symptôme, entier.
+      - 📊 **Chronologie du 2026-08-19** (heure locale ; `sleep_debug.log` est en UTC — TICKET-129 mord une **quatrième** fois) :
+        ```
+        07:19:21  swayidle éteint la dalle
+        08:00:38  appui play → dalle rallumée (rebond de mode) + wake_up keydown was_active=true
+                  ↑ la chaîne GPIO → wtype → navigateur fonctionne parfaitement
+        08:00:56  click, click, keydown — Thomas manipule l'écran
+        08:01:57  activate_sleep — l'overlay revient, 60 s après la dernière interaction
+        08:10:57  swayidle éteint la dalle — soit 540 s d'écran noir sur dalle allumée
+        08:20:47  appui play → wake_up keydown was_active=true, overlay levé, mpd=play
+        ```
+      - ⚠️ **Pourquoi ça a résisté si longtemps** : rien n'était cassé. Chaque moitié faisait exactement son travail. Cherchée comme une panne, la cause était introuvable — parce que c'est un **désaccord de configuration**, pas un défaut de code. Le réflexe « quel composant a échoué ? » est aveugle à ce genre de bug.
+      - ⏳ **Décision de Thomas (2026-08-19)** : **une seule veille à 600 s** — overlay et dalle s'éteignent au même instant. Plus jamais de dalle allumée sur page noire, et la radio reste lisible 10 minutes après le dernier appui (utile quand l'enfant écoute sans toucher l'écran).
+      - 🛠️ **À faire** (rien n'est encore écrit) :
+        1. Faire dériver les deux délais d'une **source unique**. Ne pas se contenter d'aligner les deux nombres dans le fichier : deux réglages libres se désaccorderont à nouveau au premier passage dans l'admin. Soit `sleep_delay` disparaît au profit de `screen_off_delay`, soit l'admin les lie explicitement.
+        2. **Interdire par construction** `sleep_delay < screen_off_delay` (la combinaison qui produit le bug), avec un test de garde au smoke test.
+        3. Vérifier le comportement de l'overlay **pendant la lecture** : aujourd'hui il s'active même si MPD joue. À confirmer avec Thomas — c'est peut-être souhaitable le soir.
+      - 🧹 **Second défaut, trouvé en chemin** : `data/sleep_debug.log` pèse **8,2 Mo / 87 698 lignes** et contient **92 601 octets nuls** — écritures concurrentes depuis PHP sans verrou (`grep` le rejette comme binaire). C'était un traceur temporaire du TICKET-102, jamais retiré ni borné. **Décision de Thomas : le garder** — il vient de résoudre ce bug — mais **sous `flock` et avec rotation à 2 Mo**.
+
+- [x] TICKET-136 — bug/affichage — Le bandeau batterie affichait 50 jours de données figées (2026-08-18) — ✅ **CORRIGÉ**
+      - **Signalé par Thomas** sur capture de la page d'accueil admin : 91 %, 4,092 V, 49 mA. Ces valeurs venaient de `web/status.json`, dont l'horodatage était **`ts: 1782657996` — le 2026-06-28**.
+      - 🔍 **Cause** : `web/status.json` était écrit par `scripts/get_status.py`, **supprimé en session 11** (`05-POWER_MANAGEMENT.md` le note noir sur blanc : « ne plus utiliser »). Le fichier est resté, plus personne ne l'écrivait, et deux consommateurs continuaient de le lire.
+      - ⚠️ **Cinquante jours sans que personne le voie, et c'est ça le vrai enseignement** : les valeurs restaient **plausibles**. Un pourcentage de 91 %, une tension de 4,09 V, un courant de 49 mA — rien qui saute aux yeux. Une donnée absurde se repère ; une donnée périmée mais crédible, non.
+      - 🔴 **L'écran de l'enfant était touché aussi.** `fetchBatteryStats()` retombait sur `fetchBatteryFromStatus()` (lignes 1384 et 1387) dès que l'appel principal échouait : l'enfant voyait alors les 91 % de juin. **Un repli vers des données périmées masque la panne au lieu de la montrer.** Supprimé — l'indicateur disparaît quand la mesure est indisponible, et l'absence est un signal honnête.
+      - 🛠️ **Corrections livrées** :
+        - `web/index.php` action `status` lit désormais `data/battery_stats.json` (réécrit toutes les 60 s), plus le fichier mort.
+        - **Fraîcheur exposée** (`age_seconds`, `stale`) : au-delà de 3 min sans mise à jour, le panneau se grise et annonce depuis quand. C'est ce qui rend une donnée figée visible.
+        - **Signe du courant restauré** : le bandeau affichait « 49 mA » sans dire s'il entrait ou sortait, alors que depuis TICKET-133 c'est le signe qui décide de l'état.
+        - **Autonomie estimée ajoutée**, en heures/minutes — et **masquée pendant la charge** : le tracker conserve la dernière moyenne de cycles et la renvoyait telle quelle, ce qui affichait « 39 min » en pleine recharge. Un chiffre juste dans le mauvais contexte trompe plus qu'une absence.
+        - ⏰ Le calcul d'âge force le fuseau `Europe/Paris` : `last_updated` est écrit par Python en heure locale, PHP tourne en UTC. Sans ça, tout aurait paru périmé de deux heures en permanence. **TICKET-129 mord une troisième fois.**
+      - 📌 **Défaut trouvé dans mon propre test de garde** : il cherchait la chaîne `status.json` n'importe où dans le fichier, donc **y compris dans le commentaire qui documente le correctif**. Il échouait sur sa propre explication. Corrigé pour ne matcher qu'un `fetch(...)` — la vraie signature du défaut. Un garde-fou qui crie au loup sur sa documentation fait douter de toute la suite.
+      - ✅ **Tests de garde** (smoke test §3) : plus de `fetch` vers le fichier mort côté enfant, bandeau admin alimenté par `battery_stats.json`, et fraîcheur exposée. **61 contrôles, 0 échec.**
+      - 🗑️ `web/status.json` supprimé.
+
+- [x] TICKET-134 — mesure/batterie — Test de décharge profonde : jusqu'où descendre avant que le Pi décroche (2026-08-17) — ✅ **FAIT le 2026-08-18**
+      - **Demande de Thomas** : un cycle unique, seuils au plus bas, quitte à subir une coupure non maîtrisée du Pi — risque carte SD accepté et couvert par une sauvegarde complète. **Contrainte de temps** : charge + décharge ≈ 12 h, donc un seul essai, lancé le soir.
+      - ⛔ **Non négociable** : ne pas dégrader les cellules. Elles ont un jour.
+      - **Pourquoi 5 % et pas plus bas** — table LiPo du projet, tensions mesurées **sous charge** : 15 % = 3,49 V · 10 % = 3,44 V · **5 % = 3,35 V** · 0 % = 3,00 V. Le constructeur du HAT coupe à **3,15 V**. En dessous de 5 %, l'interpolation devient hasardeuse (3 % ≈ 3,21 V) et on approche vraiment le seuil constructeur.
+      - ⚠️ **Nuance apportée par les caractéristiques réelles des cellules** (2 × EVE INR21700/58E) : à 3 A de consommation totale on tire 1,5 A par cellule, soit ≈ **0,27 C** — un régime très doux. L'affaissement sous charge sera donc **bien plus faible** qu'avec les anciennes 18650. Conséquence : le pourcentage affiché sera **plus proche de l'état de charge réel**, donc **moins de marge cachée** qu'avec l'ancien pack. La marge reste réelle (3,35 V contre un plancher pratique de 3,0 V), mais plus mince que ce qu'un raisonnement sur les anciennes cellules laissait croire.
+      - 🛠️ **Outillage livré** :
+        - `scripts/test_decharge_profonde.sh armer|restaurer|etat` — abaisse le seuil à 5 %, resserre le relevé à 15 s et le watchdog à 10 s, sauvegarde `config.json` avant, refuse de s'armer deux fois. **`restaurer` est impératif après le test.**
+        - `battery_tracker` enregistre désormais **tous** les échantillons sous 20 % (`VERBOSE_BELOW_LEVEL`) : on ignore la forme du coude de fin de décharge sur ces cellules, et cette courbe ne se rejoue pas sans refaire 12 h.
+      - ⚠️ **Ce qu'on ne touche PAS** : la protection matérielle du HAT (registre `0x2d` et circuit de protection du pack). Non désactivable depuis le Pi, et c'est tant mieux — c'est le vrai filet de sécurité des cellules.
+      - **Les deux issues sont informatives** : si le watchdog coupe à 5 %, on lit la tension exacte et la marge restante ; si le Pi décroche avant, le dernier point donne la tension de décrochage réelle du HAT — la valeur cherchée.
+      - 📌 **Ce que ce test ne dira PAS** : la limite chimique des cellules. Il mesure la limite de l'**électronique du HAT**. La limite des cellules se connaît par la fiche technique (2,5 V coupure, 3,0 V plancher pratique), pas par l'expérience.
+      - ⏳ **À relever au réveil** : `journalctl -u battery_watchdog`, les 25 derniers points de `battery_history.json` (avec `voltage_v`), puis **`restaurer`**.
+
+- [x] TICKET-131 — bug — Les épisodes des « Explorateurs de l'Univers » s'affichaient à l'envers (2026-08-17) — ✅ **CORRIGÉ**
+      - **Signalé par le petit** : « les épisodes des Explorateurs de l'Univers, ils sont à l'envers ». Il avait raison, et **le tri n'était pas en cause**.
+      - 🔍 **La cause est dans les données.** L'éditeur a téléversé les neuf épisodes le même soir, à **une minute d'écart, en commençant par le dernier** : épisode 8 à 19:59, épisode 7 à 20:00, … épisode 1 à 20:06, la présentation à 20:07. Les dates de publication sont donc **exactement l'inverse de l'ordre narratif**, et notre tri chronologique croissant — correct en soi — rendait 8, 7, 6 … 1.
+      - Même famille que le bug TINA (republication en lot avec dates incohérentes), mais le correctif TINA ne s'applique qu'**à l'intérieur d'une saison détectée**, et `_SEASON_EP_RE` attend le motif « Nom N/M : ». Ici les titres disent « Episode 8 : » ou « Episode 7. » — aucune saison détectée, donc repli sur la date.
+      - 🛠️ **Correctif — `parser.trier_episodes()`**, avec **trois conditions cumulatives** avant de faire confiance aux numéros de titre plutôt qu'aux dates :
+        1. **Aucune saison détectée** — sinon le tri à deux niveaux de TICKET-104 est déjà le bon, on n'y touche pas.
+        2. **Numéros UNIQUES sur tout le podcast.** ⚠️ **C'est la condition qui a sauvé Olma** : ses titres sont aussi « Episode N. … », mais la numérotation **redémarre** à chaque série (1→32, puis 1→20). Trier par numéro l'aurait entrelacé — une régression sur 55 épisodes pour en réparer 9. Trouvé en relisant les données avant d'écrire le code, pas après.
+        3. **Au moins deux tiers des épisodes numérotés** — un seul titre « Episode 1 » ne doit pas faire basculer tout l'ordre d'affichage.
+      - 🧹 **Cause racine annexe corrigée — le tri était DUPLIQUÉ** entre `parse_rss()` et `merge_episodes()`. Deux copies de la même logique, donc deux occasions de diverger, et un ordre potentiellement différent selon qu'on recharge le flux ou qu'on fusionne l'historique (TICKET-107). C'est désormais **une seule fonction appelée des deux côtés**.
+      - ✅ **PREMIERS TESTS UNITAIRES DU PROJET** — `scripts/rss_ingest/test_tri_episodes.py`, **13 assertions**, sans fichier ni réseau. Ils prouvent dans le même mouvement que le cas cassé est réparé **et** que les cas qui marchaient n'ont pas bougé : Olma (numérotation qui redémarre) et Tina (saisons) sont des cas de non-régression **réels, pas inventés**. Intégrés au smoke test §9.
+      - 📌 **Leçon** : un correctif qui touche l'ordre d'affichage de **tous** les podcasts ne se valide pas à l'œil sur celui qui était cassé. La condition d'unicité n'est venue qu'en allant relire les titres d'un autre podcast.
+      - ✅ **Clos le 2026-08-17 par Thomas.**
+
+- [x] TICKET-123 — bug — L'écran ne s'éteint plus après un réveil non tactile (2026-08-05) — ✅ **CORRIGÉ ET VALIDÉ le 2026-08-17**
+      - ═══ RÉSOLUTION (2026-08-17) ═══
+      - 🔬 **Bug d'abord CONFIRMÉ par la mesure**, après un premier protocole raté. Le test valide : laisser **swayidle lui-même** éteindre l'écran (pas un `screen_dpms.sh off` manuel, qui éteint la dalle dans son dos sans toucher à son compteur), puis réveiller **par le bouton antenne seul**, sans jamais toucher la dalle. Résultat : **25 minutes, aucun `off`**. swayidle n'a jamais réarmé.
+        - ❌ **Le premier protocole ne prouvait rien** : un `off` manuel laisse swayidle en pleine course, donc l'extinction observée 54 s plus tard était simplement son compte à rebours arrivant à échéance — elle serait survenue de toute façon. Vérifié : `ps -o etime -C swayidle` montrait 7 h 10 sans relance, donc pas de redémarrage non plus.
+      - 🛠️ **Correctif — `buttons_daemon.signaler_activite()`** : émission d'une **vraie frappe clavier virtuelle** (`wtype -k Shift_L`, protocole Wayland) à **tout front descendant, sur n'importe quelle broche**. Le compositeur la compte comme de l'activité, swayidle sort de son état « déjà expiré » et réarme son compte à rebours.
+        - **Placé dans la boucle de polling, pas dans les handlers** : un seul point couvre les neuf boutons — y compris les « tap ou maintien » dispatchés à part — et tout bouton ajouté plus tard en bénéficiera sans qu'on y pense. C'est exactement l'oubli qui a créé ce bug : TICKET-112 a câblé un réveil de dalle sans signaler l'activité.
+        - **`Shift_L`, modificatrice seule** : n'insère aucun caractère, ne déclenche aucun clic, donc aucun effet possible sur l'IHM enfant. On signale une présence, on ne pilote pas la page.
+        - **Étranglé à 5 s**, thread détaché, best-effort : un rebond GPIO ne déclenche pas de rafale de sous-processus, et la boucle GPIO n'est jamais ralentie. `wtype` absent → un avertissement une seule fois, le daemon continue.
+      - ✅ **Validé en réel le 2026-08-17** : `wtype -k Shift_L` a immédiatement produit `17:08:29 [sh<-swayidle] on` dans `data/screen_dpms.log` — la preuve que swayidle a vu l'activité et lancé son `resume`. Puis `buttons_daemon` redémarré, appui sur GPIO12 confirmé au journal, action MPD exécutée. Smoke test **56 OK · 0 échec**.
+      - 💡 **MÉTHODE DE TEST À RÉUTILISER — 5 secondes au lieu de 25 minutes.** Quand swayidle est **déjà bloqué en état expiré**, le premier vrai événement d'entrée déclenche son `resume` **immédiatement**, donc une ligne `[sh<-swayidle] on` dans le journal en une seconde. **Cette ligne suffit à prouver le déblocage** — inutile d'attendre l'extinction suivante. J'ai fait attendre Thomas 25 minutes pour rien avant de m'en apercevoir.
+        - ⚠️ Piège de syntaxe rencontré : `wtype -k shift` → `Unknown key`. Les noms de touches sont des **keysyms XKB**, sensibles à la casse : `Shift_L`.
+      - 🎁 **Bénéfice secondaire, au moins aussi important au quotidien** : un enfant qui n'utilise **que** les boutons physiques voyait son écran s'éteindre au bout de 20 minutes alors qu'il était en train de s'en servir. Ce n'est plus le cas.
+      - 🛡️ **Tests de garde** (smoke test §5) : présence de `signaler_activite()` dans `buttons_daemon.py`, et exécutable `wtype` installé. Les deux en **`fail`** — sans l'un ou l'autre, le cycle de veille se refige en silence. Zone Z4 du registre complétée.
+      - ⚠️ **Prérequis d'installation** : `sudo apt install wtype`. À ne pas oublier sur une image SD fraîche — c'est pour ça que le smoke test le vérifie.
+      - ❓ **Reste sans réponse, et le restera** : qui a rallumé l'écran le 2026-08-05 à 14:24, maison vide. L'événement précède l'instrumentation des appelants (posée le soir même). Sans importance désormais : le correctif traite les deux causes possibles, bouton parasite comme toucher fantôme.
+      - ═══ DIAGNOSTIC D'ORIGINE (2026-08-05) ═══
+      - **Symptôme** : l'écran est resté allumé tout un après-midi, maison vide. Thomas : « c'est incompréhensible ».
+      - 🔍 **Cause établie, et démontrée** : `swayidle` n'observe **que les entrées Wayland**. Les 9 boutons GPIO sont lus par `buttons_daemon`, un processus Python — **le compositeur ne les voit jamais**. Or le cycle de `swayidle` est : compter 1200 s → lancer `off` → **rester en état « déjà expiré »** jusqu'à une entrée réelle → lancer `resume` → et seulement alors réarmer.
+      - **Conséquence** : réveiller la dalle autrement que par le tactile (bouton GPIO23, TICKET-112) laisse `swayidle` bloqué. Il ne réarmera jamais son compte à rebours, et **l'écran reste allumé indéfiniment** jusqu'au prochain vrai toucher.
+      - **Preuve** (`data/screen_dpms.log`, 2026-08-05) : trois `on` à 18:34:53, 18:38:16 et 18:41:10 n'ont **pas** empêché l'extinction programmée de 18:52:15. Ces appels ne réarment donc rien. Et le trou : `off` à 13:50:28, `on` à 14:24:11 maison vide, puis **3 h 24 sans rien** jusqu'au retour de Thomas.
+      - ❌ **Hypothèses éliminées par la mesure** : `swayidle` relancé en boucle par `idle_screen.sh` (il tourne sans interruption depuis 09:41:08, soit 42 s après le boot) · clause `resume` manquante (`ps -ww` confirme la commande complète) · réglages incorrects (`screen_off_enabled: True`, `screen_off_delay: 1200`).
+      - ❌ **Pas une régression de TICKET-115** : ni `idle_screen.sh` ni les délais n'ont été touchés, et le chemin `off` est resté identique. Le mécanisme date de TICKET-112 (2026-07-24), quand GPIO23 a été câblé sur le réveil de l'écran.
+      - 🛠️ **Instrumentation posée** (`scripts/screen_dpms.sh`, md5 `270794ad…`) : chaque ligne de journal préfixe désormais l'appelant sur deux niveaux, `[père<-aïeul]` — le parent direct est souvent un simple `sh -c`, le vrai demandeur est au-dessus. Vérifié en bac à sable : `[sh<-swayidle]`, `[python3<-…]`, `[bash<-sshd-session]` sont bien distingués.
+      - ⏳ **Question ouverte, bloquante pour le correctif** : **qui a rallumé l'écran à 14:24 alors que la maison était vide ?** Deux appels à 3 s d'intervalle. Si la trace dit `buttons_daemon`, c'est un déclenchement parasite du bouton antenne ; si elle dit `swayidle`, c'est un vrai événement d'entrée survenu tout seul, et les touchers fantômes du panneau `wch.cn` (TICKET-098) reviennent en tête. Les deux appellent des correctifs sans rapport.
+      - 💡 **Correctif de fond envisagé** (à valider une fois la trace obtenue) : faire émettre à `buttons_daemon` un **événement d'entrée virtuel via `uinput`** à chaque appui. Le réveil de la dalle deviendrait un effet de bord naturel, `swayidle` verrait l'activité comme pour un toucher, et le compteur se réarmerait seul. Bénéfice secondaire réel : aujourd'hui, un enfant qui n'utilise **que** les boutons physiques voit son écran s'éteindre au bout de 20 min alors qu'il est en train de s'en servir.
 
 - [x] TICKET-125 — audio/infra — Le périphérique ALSA par défaut est référencé par numéro de carte (2026-08-05) — ✅ **CLOS le 2026-08-17**
       - **Trouvé** par la nouvelle garde Z6 du smoke test, alors qu'on cherchait autre chose.
@@ -515,37 +596,6 @@ collision TICKET-090 → TICKET-117 du 2026-08-04.
       - 🛠️ Appliqué : `volume_normalization "yes"` dans `/etc/mpd.conf` ; bandes EQ casque 1 kHz / 2 kHz / 4 kHz passées de 50 à 70 (~+5 dB) via `amixer -D eqcasque` — cf. TICKET-030 pour la mécanique des profils EQ.
       - ⏳ Reste : test réel en voiture. Si toujours insuffisant, le levier suivant est matériel (DAC ou ampli casque), pas logiciel.
 
-- [ ] TICKET-058 — feature/UX — Série podcast "Décisions Prises" + easter egg
-      - Première découverte : 3 taps sur "Hechicero" à l'écran d'accueil → déverrouille + lance l'épisode 0 automatiquement
-      - Accès ensuite : menu secret séparé (PAS fusionné au catalogue normal) — geste d'accès plus simple qu'au premier déverrouillage (proposition à valider : simple clic sur "Hechicero")
-      - Épisode 0 ne se relance pas auto à chaque entrée dans le menu — devient un épisode normal de la liste après sa 1ère lecture
-      - Hints progressifs : hint 1 vague (après X jours), hint 2 explicite (après ~1h si pas trouvé)
-      - Hints jamais pendant la lecture, one-shot, disparus après découverte
-      - 8 épisodes planifiés (épisode 0 d'ouverture + 7) — scripts en cours dans `docs/55-PODCAST_SERIE_DECISIONS.md`
-      - Ton : léger mais sérieux (blagues assumées, sans exclure le sérieux)
-      - Production : voix papa + voix IA (Descript/ElevenLabs)
-
----
-
-# 🟢 Priorité basse / À décider
-
-- [ ] TICKET-119 — feature/admin — Écran technique caché, ouvert par combinaison de boutons physiques (2026-08-04)
-      - **Demande de Thomas** : un **appui long simultané sur le bouton casque (GPIO25, « source ») et le bouton antenne (GPIO23)** ouvre une page d'administration technique affichant l'**adresse IP** d'Hechicero, des **informations batterie**, et permettant de **modifier l'égaliseur**.
-      - ⚠️ **Cadrage seulement — rien à implémenter pour l'instant** (décision Thomas, 2026-08-04).
-      - **Pourquoi c'est utile** : en mobilité, retrouver l'IP du Pi est aujourd'hui un chemin de croix (partage de connexion du téléphone, câble USB-Ethernet + ICS, cf. TICKET-109/110 et la procédure d'accès de secours). Un écran qui l'affiche directement supprime le besoin de SSH pour la question la plus fréquente.
-      - **Contenu envisagé** :
-        - IP de **chaque interface active** (`wlan0`, `eth0` USB-Ethernet), pas seulement la première trouvée — c'est précisément quand elles changent qu'on a besoin de l'écran. Plus SSID et qualité du signal.
-        - Batterie : niveau, statut (secteur / décharge / charge), autonomie estimée — données déjà disponibles dans `data/battery_stats.json` (cf. `docs/05-POWER_MANAGEMENT.md`).
-        - Égaliseur : réglage des 10 bandes pour les 2 profils HP/casque — la mécanique existe déjà (TICKET-030, `alsaequal`, `web/admin/audio_eq.php`, `scripts/audio_eq_apply.py`).
-      - **Points à trancher avant de coder** :
-        1. **Écran du lecteur ou page admin ?** Naviguer Chromium vers `/admin/` sortirait du kiosque et couperait le fil de la lecture. Le modèle de l'écran Chambre (TICKET-112) — un écran de plus dans `index.html`, avec mini-lecteur conservé — est probablement le bon, quitte à ne réimplémenter que l'essentiel de l'EQ. À arbitrer selon l'effort.
-        2. **Détection de la combinaison.** `buttons_daemon.py` gère aujourd'hui chaque broche indépendamment (poll 10 ms, anti-rebond 3 niveaux, `TAP_OR_HOLD`). Une combinaison demande un état supplémentaire : détecter que **les deux** broches sont maintenues, **et supprimer les actions individuelles** — sinon l'appui déclencherait aussi la bascule HP/casque (GPIO25) et l'ouverture de l'écran Chambre (GPIO23). C'est le vrai travail du ticket.
-        3. **Fenêtre de tolérance** : les deux boutons ne seront jamais pressés à la milliseconde près. Prévoir un délai de grâce (~300 ms) avant de considérer qu'il s'agit d'un appui simple, donc un léger retard sur les actions de GPIO25 et GPIO23 — à vérifier qu'il reste imperceptible.
-        4. **Sortie de l'écran** : retour à l'écran précédent (modèle Chambre), pas retour forcé à l'accueil.
-      - **Réutiliser l'existant** : le canal `request_screen` / `get_ui_request` (`radio.php`, déjà générique) sert exactement à ça — le daemon Python écrit la demande, `index.html` la consomme par polling. Aucune modification PHP nécessaire côté transport, comme pour les favoris (TICKET-046) et la Chambre (TICKET-112).
-      - **Sécurité / usage** : c'est un écran **parent**. Il ne doit pas exposer de secret (aucun jeton, aucun identifiant de la passerelle domotique) ni offrir de contournement du contrôle parental. La combinaison à deux boutons maintenus est déjà, en soi, une protection raisonnable contre un déclenchement accidentel par l'enfant.
-      - ❓ **À confirmer avec Thomas** : l'écran doit-il rester accessible en dehors des horaires autorisés d'écoute (comme l'écran Chambre) ? A priori oui, c'est un outil de dépannage.
-
 - [x] TICKET-112 — feature/sécurité — Écran « Chambre » : contrôle domotique (Legrand/Netatmo via passerelle VM) depuis l'IHM enfant (2026-07-19) — ✅ **CLOS le 2026-08-17** : Thomas confirme que le retour de position du volet fonctionne parfaitement, c'était le dernier point ouvert
       - ✅ **2026-07-24 — Phases 1 et 2 TERMINÉES et validées en réel (sur les équipements du bureau, avant bascule chambre).** Architecture Home Assistant ABANDONNÉE au profit d'une **VM passerelle FastAPI + API Netatmo Connect directe** (VM Debian déjà en place, 192.168.1.3).
           - Spike OAuth : app Netatmo déclarée, token + refresh OK, modules identifiés, lampe (on/off + `brightness` 0-100) et volet (`target_position` 0-100) pilotés en réel.
@@ -587,16 +637,6 @@ collision TICKET-090 → TICKET-117 du 2026-08-04.
       - 🔍 **Cadrage 2026-07-19 : architecture et UX décidées, rien codé.**
       - ⏳ Reste à faire à la reprise : (0) **d'abord** faire le point sur la machine Home Assistant que Thomas possède déjà (matériel, emplacement, état) — si exploitable, elle remplace l'étape 1 ; (1) sinon installer HAOS en VM sur la Freebox Ultra, (2) connecter l'intégration Netatmo/Legrand, (3) relever les vrais `entity_id` de la lumière et du volet, (4) créer un jeton d'accès longue durée HA, (5) seulement ensuite coder l'écran + le proxy PHP côté Hechicero.
 
-- [ ] TICKET-111 — hardware — Ventilateur GPIO/PWM pour dissipation thermique (2026-07-18) (renuméroté depuis TICKET-110, en collision avec le ticket roaming — 2026-07-18)
-      - Demande de Thomas : boîtier chaud, ventilateur silencieux souhaité. Corroboré par TICKET-109 (`vcgencmd get_throttled = 0xe0000` le 2026-07-18 : capping fréquence + throttling + limite thermique constatés depuis le dernier boot)
-      - Ventilateur déjà acheté par Thomas — **en attente qu'il soit mis en place physiquement** avant de configurer/tester quoi que ce soit côté logiciel
-      - Plan retenu : essayer d'abord le connecteur PWM dédié du Pi 5 (séparé du header 40 broches GPIO, ne consomme donc aucun des GPIO déjà utilisés — boutons, I2C batterie, I2S audio). Si inaccessible une fois les HAT (ampli + batterie) empilés → repli sur un montage GPIO libre avec un transistor/MOSFET (un GPIO seul ne peut pas alimenter un moteur directement) — ⚠️ GPIO16 n'est plus disponible depuis TICKET-046 (favori), seul GPIO6 reste vraiment libre
-      - Activation prévue : `dtoverlay=pwm-fan` dans `/boot/firmware/config.txt` (section `[all]`) — pas encore ajouté, contrôle automatique de la vitesse selon la température, seuils ajustables ensuite (`fan_temp0`, `fan_temp0_hyst`, etc.) si besoin de le rendre plus/moins agressif
-      - ⏳ Reste à faire : Thomas monte le ventilateur dans le boîtier, puis on active l'overlay et on vérifie (`vcgencmd measure_temp`, `cat /sys/class/thermal/cooling_device*/type`)
-
----
-
-# ✔️ Terminé
 
 - [x] TICKET-135 — process/qualité — Registre de non-régression + gardien automatique (2026-08-05)
       - ⚠️ **Renuméroté le 2026-08-17** : portait le numéro 123, déjà pris par le bug « l'écran ne s'éteint plus après un réveil non tactile ». Le bug d'écran garde le 123 car il est cité dans du code vivant (`buttons_daemon.py`, `smoke_test.sh`, `docs/75-NON_REGRESSION.md`) ; ce ticket-ci, clos et sans référence en code, prend le 135. Même remède que la collision TICKET-090 → TICKET-117.

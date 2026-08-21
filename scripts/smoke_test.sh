@@ -98,6 +98,43 @@ else
     php -l "$ROOT/web/lecteur/radio.php"
 fi
 
+# ── TICKET-129 — PHP en UTC, tout le reste en heure locale ─────────────────
+# Bug surveillé : sans `date.timezone`, PHP retombe sur UTC alors que Python et
+# le shell écrivent en heure locale. Deux heures d'écart entre journaux croisés,
+# précisément quand on croise des journaux — c'est-à-dire pendant une panne.
+# A mordu QUATRE fois (TICKET-102, 127, 136, 138) avant d'être traité à la
+# racine. Les trois premières fois, on a posé une rustine à l'endroit qui
+# faisait mal : une correction posée au point de douleur ne corrige que ce point.
+#
+# ⚠️ On vérifie le fuseau EFFECTIF, pas la présence du fichier : c'est la seule
+# preuve que l'amorçage est réellement appliqué.
+if [ -f "$ROOT/web/bootstrap.php" ]; then
+    tz=$(php -r "require '$ROOT/web/bootstrap.php'; echo date_default_timezone_get();" 2>/dev/null)
+    if [ "$tz" = "Europe/Paris" ]; then
+        pass "PHP en heure locale — fuseau effectif $tz (TICKET-129)"
+    else
+        fail "PHP en fuseau '${tz:-?}' au lieu d'Europe/Paris — 2 h d'écart avec les journaux Python (TICKET-129)"
+    fi
+else
+    fail "web/bootstrap.php absent — PHP repartira en UTC (TICKET-129)"
+fi
+
+# Chaque point d'entrée doit l'inclure. Un seul oubli et cette page-là reste en
+# UTC, ce qui est pire qu'un défaut uniforme : l'incohérence devient locale et
+# donc introuvable.
+manquants=""
+for page in web/index.php web/health.php web/tracking.php web/dashboard.php \
+            web/lecteur/radio.php web/admin/audio_eq.php web/admin/backup_dashboard.php \
+            web/admin/battery_dashboard.php web/admin/domotique.php web/admin/favoris.php; do
+    [ -f "$ROOT/$page" ] || continue
+    grep -q "bootstrap.php" "$ROOT/$page" || manquants="$manquants $(basename "$page")"
+done
+if [ -n "$manquants" ]; then
+    fail "point(s) d'entrée PHP sans amorçage de fuseau :$manquants (TICKET-129)"
+else
+    pass "tous les points d'entrée PHP amorcent le fuseau (TICKET-129)"
+fi
+
 rep=$(curl -s --max-time 5 "http://localhost/lecteur/radio.php?action=data_version")
 mtime=$(echo "$rep" | sed -n 's/.*"mtime":\([0-9]*\).*/\1/p')
 size=$(echo "$rep" | sed -n 's/.*"size":\([0-9]*\).*/\1/p')
@@ -253,6 +290,33 @@ elif echo "$corps_beat" | grep -qE "resetSleepTimer|clearTimeout|sleepTimer"; th
     fail "kioskHeartbeat() touche au timer de veille — l'écran ne s'endormira plus (piège TICKET-102)"
 else
     pass "battement sans effet sur le timer de veille (zone Z4 préservée)"
+fi
+
+# ── TICKET-138 — UNE SEULE veille, pas deux minuteries désaccordées ────────
+# Bug surveillé : l'overlay JS lisait `sleep_delay` (60 s) pendant que swayidle
+# éteignait la dalle sur `screen_off_delay` (600 s). Entre les deux, 540 s de
+# DALLE ALLUMÉE SUR PAGE NOIRE — signalé plusieurs fois comme une panne, cherché
+# comme un gel du kiosque, introuvable parce que rien n'était cassé : c'est le
+# DÉSACCORD des deux réglages qui produisait le symptôme.
+if grep -q "Number(cfg.screen_off_delay ?? cfg.sleep_delay" "$IDX"; then
+    pass "veille unique : l'overlay dérive du délai d'extinction physique (TICKET-138)"
+else
+    fail "l'overlay de veille ne dérive plus de screen_off_delay — retour à deux minuteries désaccordées (TICKET-138)"
+fi
+
+# ⚠️ CE GARDE DEVIENT CRITIQUE AVEC TICKET-138. Toutes les boucles périodiques
+# de l'IHM (30 s au plus long) sont maintenant BEAUCOUP plus courtes que le
+# délai de veille passé de 60 s à 600 s. Si `applySleepConfig` réarmait le timer
+# à chaque passage au lieu de le faire seulement quand la config a changé, la
+# veille ne se déclencherait PLUS JAMAIS — exactement TICKET-102, mais avec une
+# marge dix fois plus favorable au bug qu'avant.
+corps_apply=$(sed -n '/^function applySleepConfig(cfg)/,/^}/p' "$IDX")
+if [ -z "$corps_apply" ]; then
+    warn "applySleepConfig() introuvable sous sa forme attendue — contrôle Z4 sauté"
+elif echo "$corps_apply" | grep -q "} else if (changed) {"; then
+    pass "applySleepConfig ne réarme le timer que si la config a changé (piège TICKET-102)"
+else
+    fail "applySleepConfig réarme le timer sans garde 'changed' — la veille ne se déclenchera plus (TICKET-102/138)"
 fi
 
 titre "4. Boucle de rafraîchissement vue depuis le serveur"
@@ -525,7 +589,16 @@ fi
 # en gardant la table (ou règle la résistance à zéro), le niveau devient PLUS FAUX
 # qu'avec l'ancienne courbe générique — et rien ne plante. Un podcast en cours
 # ferait perdre 8 points instantanément.
-if grep -q "percent_from_voltage(tension_a_vide(" "$ROOT/scripts/battery_common.py" 2>/dev/null; then
+# ⚠️ CE GARDE A DÉJÀ CRIÉ AU LOUP (2026-08-21). Il cherchait la chaîne littérale
+# `percent_from_voltage(tension_a_vide(`, que le refactor de TICKET-142 a scindée
+# en deux lignes : échec rapporté alors que rien n'était cassé. **Un test qui
+# vérifie une FORME DE CODE casse au premier remaniement légitime, et fait
+# douter de toute la suite.** La vérification de fond est désormais un test de
+# COMPORTEMENT dans test_batterie.py (§16, capteur fictif : on regarde ce que
+# read_sensor_snapshot RÉPOND). Ici on ne garde qu'un contrôle de présence, lâche
+# et donc stable.
+corps_snap=$(sed -n '/^def read_sensor_snapshot(/,/^def /p' "$ROOT/scripts/battery_common.py")
+if echo "$corps_snap" | grep -q "tension_a_vide("; then
     pass "table batterie lue via la compensation d'affaissement (TICKET-137)"
 else
     fail "battery_common : la table (tensions À VIDE) est lue sans tension_a_vide() — niveau plus faux qu'avant (TICKET-137)"
@@ -607,6 +680,32 @@ if [ -n "$cap_eff" ] && python3 -c "import sys; sys.exit(0 if float('$cap_eff') 
     pass "capacité utile configurée — ${cap_eff} mAh (comptage effectif)"
 else
     fail "capacité utile nulle ou absente (${cap_eff:-?}) — le comptage se neutralise (TICKET-142)"
+fi
+
+# ── TICKET-143 — l'outil de recalibration doit refuser de se tromper ───────
+# Bug surveillé : `recalibrer_table_batterie.py` retenait le cycle EN COURS
+# (`level_end` absent → profondeur 96 au lieu de 30) et proposait une table
+# plaçant 85 points de pourcentage sur 80 mV. **Il n'a pas planté** : il a rendu
+# un tableau bien formaté et plausible, avec son propre avertissement rassurant.
+# Un outil d'analyse qui se trompe sans échouer est plus dangereux qu'un outil
+# cassé, parce qu'on le croit.
+RECAL="$ROOT/scripts/recalibrer_table_batterie.py"
+if [ ! -f "$RECAL" ]; then
+    warn "recalibrer_table_batterie.py absent — recalibration non outillée (TICKET-143)"
+else
+    manque=""
+    # Les deux filtres sans lesquels la comparaison n'a aucun sens.
+    grep -q 'c.get("discharge_end")' "$RECAL" || manque="$manque cycles-clos"
+    grep -q "depart < v_plein" "$RECAL" || manque="$manque depart-plein"
+    # La leçon de TICKET-142 : le verdict doit se prononcer EN POINTS, pas en mV.
+    grep -q "DESACCORD_MAX_POINTS" "$RECAL" || manque="$manque verdict-en-points"
+    # Et il ne doit plus dépendre d'un chemin absolu.
+    grep -q '"/home/thomas/hechicero' "$RECAL" && manque="$manque chemin-en-dur"
+    if [ -n "$manque" ]; then
+        fail "recalibrer_table_batterie.py : garde-fou(s) manquant(s) :$manque — l'outil peut à nouveau proposer une table absurde (TICKET-143)"
+    else
+        pass "outil de recalibration : cycles clos, départ plein, verdict en points (TICKET-143)"
+    fi
 fi
 
 # Coupure matérielle du HAT (TICKET-128). --check-hat ne fait qu'une DÉTECTION,

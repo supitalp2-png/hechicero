@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/../bootstrap.php';  // TICKET-129 : fuseau Europe/Paris, sinon PHP tourne en UTC
 define('PROJECT_ROOT', is_dir('/home/thomas/hechicero') ? '/home/thomas/hechicero' : dirname(__DIR__, 2));
 define('BACKUP_STATE_JSON', PROJECT_ROOT . '/data/backup_state.json');
 

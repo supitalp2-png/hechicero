@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/../bootstrap.php';  // TICKET-129 : fuseau Europe/Paris, sinon PHP tourne en UTC
 // --- CONFIG ---
 $stream = "https://icecast.radiofrance.fr/monpetitfranceinter-midfi.mp3";
 $projectRoot = "/home/thomas/hechicero";

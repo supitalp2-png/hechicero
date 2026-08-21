@@ -269,12 +269,34 @@ qu'il s'est débloqué — inutile d'attendre l'extinction suivante.
 `buttons_daemon.py` et de l'exécutable `wtype`. Les deux en `fail` : sans l'un ou l'autre, le
 cycle de veille se refige silencieusement.
 
-**Deux délais distincts, à ne pas confondre** : `sleep_delay` (120 s) pilote l'overlay de
-veille JS, `screen_off_delay` (1200 s) pilote l'extinction physique via `swayidle`. Entre
-les deux, l'écran de veille s'affiche sur une dalle allumée — c'est normal, pas un bug.
+**Quatrième piège — DEUX RÉGLAGES CORRECTS, FAUX UNE FOIS DISSOCIÉS (2026-08-19,
+TICKET-138)** : `sleep_delay` (60 s) pilotait l'overlay de veille JS, `screen_off_delay`
+(600 s) l'extinction physique par `swayidle`. Deux minuteries indépendantes, sans aucun
+lien. Entre les deux : **540 secondes de dalle allumée sur page noire**. En plein jour
+l'horloge rétro est illisible, donc l'appareil paraît en panne.
 
-**Règle** : toute nouvelle boucle périodique côté IHM doit être vérifiée contre
-`sleep_delay` avant d'être ajoutée.
+⚠️ **Ce document affirmait que c'était « normal, pas un bug »** — et c'est exactement ce
+qui a fait durer le problème des semaines. Signalé plusieurs fois par Thomas, cherché
+comme un gel du kiosque (TICKET-127), introuvable : **rien n'était cassé**. Chaque moitié
+faisait son travail. Le battement de cœur a innocenté la piste du gel en trente secondes
+(2886 battements ininterrompus pendant l'épisode).
+
+> **Cherché comme une panne de composant, un désaccord de configuration est
+> introuvable.** Le réflexe « qu'est-ce qui a échoué ? » est aveugle à ce type de bug.
+
+✅ **Corrigé le 2026-08-21** : l'overlay dérive désormais de `screen_off_delay`. Une seule
+source de vérité — **aligner les deux nombres n'aurait pas suffi**, deux réglages libres
+se désaccordent au premier passage dans l'admin. `sleep_delay` n'est plus qu'un repli.
+
+🔴 **Conséquence à ne pas manquer** : le délai de veille passe de 60 s à **600 s**, alors
+que **toutes** les boucles périodiques de l'IHM tournent entre 100 ms et 60 s. Le garde
+`changed` de `applySleepConfig` — jusqu'ici une simple optimisation — devient la **seule**
+chose qui empêche TICKET-102 de revenir. La marge qui nous protégeait est passée de ×5 à
+÷10 en défaveur. Deux tests du smoke test §3 le verrouillent.
+
+**Règle** : toute nouvelle boucle périodique côté IHM doit être vérifiée contre le délai
+de veille avant d'être ajoutée — et ce délai vaut maintenant 600 s, donc **aucune** boucle
+existante n'est naturellement à l'abri.
 
 **Instrumentation disponible** : depuis TICKET-123, `data/screen_dpms.log` préfixe chaque
 ligne de l'appelant sur deux niveaux (`[père<-aïeul]`). Un réveil inexpliqué s'attribue

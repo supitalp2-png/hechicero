@@ -1,4 +1,5 @@
 ﻿<?php
+require_once __DIR__ . '/bootstrap.php';  // TICKET-129 : fuseau Europe/Paris, sinon PHP tourne en UTC
 $currentPage = basename($_SERVER['PHP_SELF'] ?? 'dashboard.php');
 ?><!doctype html>
 <html lang="fr">

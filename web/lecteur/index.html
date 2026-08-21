@@ -3144,7 +3144,22 @@ let sleepConfigInitialized = false; // faux jusqu'au 1er applySleepConfig() réu
 function applySleepConfig(cfg) {
   if (!cfg) return;
   const enabled  = !!(cfg.sleep_enabled ?? true);
-  const newDelay = Number(cfg.sleep_delay ?? 15) * 1000;
+  // TICKET-138 : UNE SEULE source de vérité pour la veille.
+  //
+  // Avant, l'overlay JS lisait `sleep_delay` (60 s) tandis que swayidle
+  // éteignait la dalle sur `screen_off_delay` (600 s). Deux réglages libres,
+  // aucun lien entre eux : entre les deux, il existait une fenêtre de 540 s où
+  // la DALLE ÉTAIT ALLUMÉE ET LA PAGE NOIRE. En plein jour, l'horloge rétro est
+  // illisible et l'appareil paraît en panne. Signalé plusieurs fois, cherché
+  // comme un gel du kiosque, et introuvable — parce que rien n'était cassé :
+  // chaque moitié faisait son travail, c'est leur DÉSACCORD qui produisait le
+  // symptôme.
+  //
+  // ⚠️ Ne PAS revenir à `sleep_delay` ici, et ne pas se contenter d'aligner les
+  // deux nombres dans config.json : deux réglages libres se désaccorderont au
+  // premier passage dans l'admin. L'overlay dérive donc du délai d'extinction
+  // physique, et `sleep_delay` n'est plus qu'un repli de compatibilité.
+  const newDelay = Number(cfg.screen_off_delay ?? cfg.sleep_delay ?? 600) * 1000;
   const newMode  = normalizeSleepMode(cfg.sleep_mode);
   // BUG TROUVE (2026-07-09, via le tracer sleep_log -- TICKET-102) : cette
   // fonction est appelee par des refresh PERIODIQUES sans rapport avec une

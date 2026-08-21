@@ -26,6 +26,7 @@ from battery_common import (                        # noqa: E402
     mediane,
     niveau_coulometrique,
     percent_from_voltage,
+    read_sensor_snapshot,
     tension_a_vide,
 )
 from battery_tracker import (                       # noqa: E402
@@ -458,6 +459,51 @@ verifie("... et l'ancrage vaut la capacité entière", round(etat["mah"]), 8894)
 # Sans tension fournie, le mécanisme garde son comportement d'avant.
 verifie("sans voc_v, aucun ancrage sur batterie pleine",
         niveau_coulometrique({"mah": 0.60 * 8894}, 85, -18.0, 60.0, CFGP)[0] != 100, True)
+
+
+# ── 16. LA CHAÎNE COMPLÈTE — vérifier le comportement, pas la forme du code ─
+# ⚠️ Ce test remplace un garde du smoke test qui cherchait la chaîne littérale
+# `percent_from_voltage(tension_a_vide(`. Le refactor de TICKET-142 a scindé
+# cette expression en deux lignes : le garde a crié à la régression alors que
+# rien n'était cassé. **Un test qui vérifie une FORME DE CODE casse au premier
+# remaniement légitime, et fait douter de toute la suite.** On vérifie donc ce
+# que la fonction RÉPOND, pas comment elle est écrite.
+class CapteurFictif:
+    """Capteur immobile. `getCurrent_mA()` est inversé par read_sensor_snapshot."""
+    def __init__(self, volts, amperes_ma):
+        self._v, self._i = volts, amperes_ma
+    def getBusVoltage_V(self):
+        return self._v
+    def getCurrent_mA(self):
+        return -self._i          # read_sensor_snapshot renverse le signe
+    def getPower_W(self):
+        return abs(self._v * self._i / 1000.0)
+
+
+CFG_CHAINE = {
+    "sensor_burst_samples": 3, "sensor_burst_interval_s": 0.0,
+    "internal_resistance_ohm": 0.034, "charge_deadband_ma": 200,
+    "coulomb_anchor_percent": 70, "battery_usable_mah": 8894,
+    "full_voltage_v": 4.10, "full_current_ma": 150.0,
+}
+
+# 3,763 V mesurés sous −2,2 A. Sans compensation la table lit ~31 % ; avec, 40 %.
+snap = read_sensor_snapshot(CapteurFictif(3.763 - 2.2 * 0.034, -2200.0), CFG_CHAINE)
+verifie("chaîne complète : la compensation est bien appliquée à la lecture",
+        snap["level_table"], 40)
+verifie("chaîne complète : le brut aurait donné moins",
+        percent_from_voltage(3.763 - 2.2 * 0.034) < 40, True)
+verifie("chaîne complète : décharge détectée", snap["charging"], False)
+
+# Rafale : la médiane doit être exposée, et le niveau rester cohérent.
+verifie("chaîne complète : tension renvoyée arrondie au mV",
+        snap["voltage_v"], round(3.763 - 2.2 * 0.034, 3))
+
+# Batterie pleine vue de bout en bout : l'ancrage doit se former à 100 %.
+plein = read_sensor_snapshot(CapteurFictif(4.16, -18.0), CFG_CHAINE, elapsed_s=60.0)
+verifie("chaîne complète : batterie pleine ancrée à 100 %", plein["level"], 100)
+verifie("chaîne complète : ancrage renvoyé au tracker",
+        round(plein["coulomb_state"]["mah"]), 8894)
 
 
 print()
