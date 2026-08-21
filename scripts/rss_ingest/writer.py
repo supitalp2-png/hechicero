@@ -35,7 +35,12 @@ def update_data_json(all_podcasts):
         if podcasts_cfg_path.exists():
             with open(podcasts_cfg_path) as f:
                 cfg = json.load(f)
-            radios = cfg.get("radios", [])
+            # TICKET-145 : ne pas réinstaller une radio désactivée depuis
+            # l'admin. Sans ce filtre, l'ingestion nocturne annulerait le
+            # choix du parent — panne différée de quelques heures, donc
+            # d'autant plus déroutante. `enabled` absent = activée.
+            radios = [r for r in cfg.get("radios", [])
+                      if r.get("enabled", True) is not False]
         else:
             radios = []
     except (json.JSONDecodeError, OSError):

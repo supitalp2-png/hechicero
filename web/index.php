@@ -270,9 +270,21 @@ function save_radios_r(array $radios): array {
 
 // Propage la liste des radios dans data.json immédiatement (sans attendre l'ingest).
 // Les radios n'ont pas de RSS ni de téléchargement — elles doivent être instantanées sur le lecteur.
+//
+// ── TICKET-145 : les radios DÉSACTIVÉES ne descendent pas ──────────────────
+// C'est ICI que se joue le masquage, pas dans l'admin. Les podcasts sont
+// filtrés par `enabled` à l'ingestion ; les radios, elles, étaient recopiées
+// telles quelles. Un simple drapeau en base n'aurait donc rien caché à l'enfant
+// avant l'ingestion nocturne — inutile pour l'usage visé : couper une radio
+// juste avant de rendre l'appareil.
+//
+// ⚠️ `enabled` absent vaut ACTIVÉ : les radios créées avant ce ticket n'ont pas
+// le champ, et les faire disparaître silencieusement serait pire que le manque.
 function sync_radios_to_data_json(): void {
     if (!file_exists(DATA_JSON)) return;
-    $radios = get_radios();
+    $radios = array_values(array_filter(get_radios(), function ($r) {
+        return ($r['enabled'] ?? true) !== false;
+    }));
     $data   = read_json(DATA_JSON);
     $data['radios'] = $radios;
     write_json_atomic(DATA_JSON, $data);
@@ -504,6 +516,24 @@ if (isset($_GET['action'])) {
     // ── Webradios
     if ($a === 'get_radios') { echo json_encode(get_radios()); exit; }
 
+    // TICKET-145 — activer/désactiver une webradio, comme un podcast.
+    // La propagation vers data.json est immédiate : le kiosque la voit en
+    // moins de 10 s via data_version (TICKET-114), sans rechargement.
+    if ($a === 'toggle_radio' && isset($_GET['id'], $_GET['enabled'])) {
+        $en = $_GET['enabled'] === '1';
+        $radios = get_radios();
+        $trouve = false;
+        foreach ($radios as &$r) {
+            if (($r['id'] ?? '') === $_GET['id']) { $r['enabled'] = $en; $trouve = true; break; }
+        }
+        unset($r);
+        if (!$trouve) { echo json_encode(['ok'=>false,'msg'=>'Radio inconnue : '.$_GET['id']]); exit; }
+        $w = save_radios_r($radios);
+        if ($w['ok']) sync_radios_to_data_json();
+        echo json_encode($w);
+        exit;
+    }
+
     if ($a === 'add_radio') {
         $name     = trim($_POST['name']  ?? '');
         $url      = trim($_POST['url']   ?? '');
@@ -523,7 +553,7 @@ if (isset($_GET['action'])) {
             $image   = $dl['path'];
             $img_msg = $dl['msg'];
         }
-        $radios[] = ['id'=>$id,'name'=>$name,'desc'=>$desc,'lang'=>$lang,'url'=>$url,'image'=>$image];
+        $radios[] = ['id'=>$id,'name'=>$name,'desc'=>$desc,'lang'=>$lang,'url'=>$url,'image'=>$image,'enabled'=>true];
         $w = save_radios_r($radios);
         if ($w['ok']) sync_radios_to_data_json();
         echo json_encode(['ok'=>$w['ok'],'id'=>$id,'msg'=>$w['ok']?$img_msg:$w['msg']]);
@@ -1741,6 +1771,9 @@ function renderPodcastCol(containerId, list) {
 function toggleEditPodcast(id) { document.getElementById('edit-pod-' + id)?.classList.toggle('open'); }
 
 async function togglePodcast(id, enabled) { await api({action:'toggle_podcast', id, enabled:enabled?'1':'0'}); }
+// TICKET-145 : idem pour les webradios. Le lecteur de l'enfant se met à jour
+// tout seul en moins de 10 s — inutile de recharger quoi que ce soit.
+async function toggleRadio(id, enabled) { await api({action:'toggle_radio', id, enabled:enabled?'1':'0'}); }
 
 async function setMaxEp(id, val) {
   await api({action:'edit_podcast', id}, {max_episodes: val});
@@ -1805,6 +1838,11 @@ function renderRadioCol(containerId, list) {
   const expert = currentMode === 'expert';
   document.getElementById(containerId).innerHTML = list.length ? list.map(r => `
     <div class="item-row" id="row-rad-${r.id}">
+      <label class="toggle">
+        <input type="checkbox" ${(r.enabled ?? true) !== false ? 'checked' : ''} ${expert?'':'disabled'}
+               onchange="toggleRadio('${r.id}',this.checked)">
+        <span class="tgl-sl"></span>
+      </label>
       <div class="item-info">
         <div class="item-name">${esc(r.name)}</div>
         <div class="item-meta">${esc(r.desc||'')}</div>

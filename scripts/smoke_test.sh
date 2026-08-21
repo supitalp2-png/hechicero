@@ -98,6 +98,43 @@ else
     php -l "$ROOT/web/lecteur/radio.php"
 fi
 
+# ── TICKET-145 — une webradio désactivée doit disparaître de l'écran enfant ─
+# Le masquage se joue dans `sync_radios_to_data_json()` et dans `writer.py`, pas
+# dans l'admin : les radios étaient recopiées telles quelles vers data.json.
+# Sans ces DEUX filtres, désactiver une radio ne cacherait rien — et l'ingestion
+# nocturne annulerait le choix du parent quelques heures plus tard.
+if grep -q "enabled'\] ?? true" "$ROOT/web/index.php" 2>/dev/null; then
+    pass "webradios : la propagation vers data.json filtre les désactivées (TICKET-145)"
+else
+    fail "web/index.php : sync_radios_to_data_json() ne filtre plus — une radio désactivée resterait visible (TICKET-145)"
+fi
+if grep -q 'enabled", True) is not False' "$ROOT/scripts/rss_ingest/writer.py" 2>/dev/null; then
+    pass "webradios : l'ingestion ne réinstalle pas une radio désactivée (TICKET-145)"
+else
+    fail "writer.py : l'ingestion nocturne réinstallera les radios désactivées (TICKET-145)"
+fi
+
+# Cohérence réelle entre la config et ce que voit l'enfant. C'est LE contrôle
+# qui compte : il regarde les DONNÉES servies, pas la forme du code.
+ecart=$(python3 -c "
+import json, sys
+racine = sys.argv[1]
+try:
+    cfg = json.load(open(racine + '/data/podcasts.json'))
+    data = json.load(open(racine + '/web/lecteur/data.json'))
+except Exception as e:
+    print('illisible: ' + str(e)); raise SystemExit(0)
+actives = {r['id'] for r in cfg.get('radios', []) if r.get('enabled', True) is not False}
+servies = {r['id'] for r in data.get('radios', [])}
+trop = servies - actives
+if trop: print('visibles a tort: ' + ', '.join(sorted(trop)))
+" "$ROOT")
+if [ -n "$ecart" ]; then
+    fail "webradio désactivée encore servie à l'enfant — $ecart (TICKET-145)"
+else
+    pass "webradios servies à l'enfant = webradios activées (TICKET-145)"
+fi
+
 # ── TICKET-129 — PHP en UTC, tout le reste en heure locale ─────────────────
 # Bug surveillé : sans `date.timezone`, PHP retombe sur UTC alors que Python et
 # le shell écrivent en heure locale. Deux heures d'écart entre journaux croisés,

@@ -12,6 +12,7 @@ plus bas.*
 
 | Ticket | Sujet | Où ça en est |
 |---|---|---|
+| **145** | Activer/désactiver les webradios depuis l'admin | ✅ **livré le 2026-08-21** — bascule comme les podcasts, effet immédiat sur l'écran enfant. **À essayer en réel** |
 | **144** | Décharge profonde après l'arrêt de l'OS : rien ne protège les cellules | 🔴 mis au jour par TICKET-128 — on se croyait protégé par une fonction qui ne coupait rien. Seule barrière : la protection intégrée des cellules |
 | **140** | Arrêt de charge nocturne, alimentation présente | 🔬 reproduit **3 fois** (54 %, 70 %, 96 %) ; temporisateur 6 h démenti — **cause inconnue**, désormais observable grâce au 141 |
 | **127** | Vrai gel du kiosque du 2026-08-17 | l'épisode du 19/08 n'en était **pas** un (c'était le 138). Le gel du 17/08 reste **non expliqué** ; battement de cœur en place pour le prochain |
@@ -55,6 +56,13 @@ collision TICKET-090 → TICKET-117 du 2026-08-04.
 ---
 
 # 🔥 Priorité haute
+
+- [x] TICKET-145 — feature/admin — Activer ou désactiver une webradio, comme un podcast (2026-08-21) — ✅ **LIVRÉ**
+      - **Demande de Thomas** : « j'ai ajouté France Inter parce que je bricole seul à la maison ; quand je vais rendre la radio à mon fils je vais désactiver la possibilité qu'il la lise ». Besoin réel : couper une radio **juste avant** de rendre l'appareil.
+      - 🔍 **Le point qui décide de tout** : les podcasts sont filtrés par `enabled` **à l'ingestion**, mais les radios étaient **recopiées telles quelles** vers `data.json`. Un simple drapeau en base n'aurait donc rien caché avant l'ingestion nocturne — c'est-à-dire trop tard pour l'usage visé.
+      - 🛠️ **Livré** : action `toggle_radio` ; bascule dans les cartes radio de l'admin ; `add_radio` crée la radio activée ; **filtre dans `sync_radios_to_data_json()`** (effet immédiat, le kiosque suit en moins de 10 s via `data_version`) **et dans `writer.py`** — sans ce second filtre, l'ingestion nocturne annulerait le choix du parent quelques heures plus tard, panne différée donc d'autant plus déroutante.
+      - ⚠️ **`enabled` absent vaut ACTIVÉE** : les cinq radios existantes n'ont pas le champ. Les faire disparaître silencieusement aurait été pire que le manque.
+      - ✅ **Test de garde** : les deux filtres, plus une **vérification de cohérence sur les données réelles** — l'ensemble des radios servies dans `data.json` doit être inclus dans celui des radios activées. C'est ce contrôle-là qui attraperait une régression, les deux autres ne regardant que le code.
 
 - [ ] TICKET-144 — batterie/matériel — Après l'arrêt de l'OS, rien ne protège les cellules (2026-08-21)
       - **Mis au jour par TICKET-128** : on se croyait protégé depuis le 2026-08-17 par une « coupure matérielle du HAT » qui, en réalité, arme un **démarrage** au rebranchement. Elle n'a jamais rien coupé.
