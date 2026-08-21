@@ -2041,6 +2041,12 @@ async function pollUiRequest() {
     if (d.ts && d.ts !== lastUiRequestTs) {
       lastUiRequestTs = d.ts;
       if (d.screen === 'favoris') openFavoris();
+      // TICKET-119 : l'écran technique est une PAGE, pas un écran du lecteur.
+      // On y navigue vraiment — la lecture continue, MPD étant côté serveur,
+      // et la page porte son propre minuteur de retour (screen_off_delay).
+      // Un écran de plus dans index.html aurait alourdi le fichier pour un
+      // outil que l'enfant ne verra jamais.
+      else if (d.screen === 'technique') { location.href = '/admin/technique.php'; }
       else if (d.screen === 'chambre') {
         // En sortie de veille, on veut MONTRER la Chambre (pas la refermer par
         // toggle si on y était déjà avant l'endormissement). Hors veille, vrai

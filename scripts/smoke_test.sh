@@ -98,6 +98,35 @@ else
     php -l "$ROOT/web/lecteur/radio.php"
 fi
 
+# ── TICKET-119 — écran technique caché ─────────────────────────────────────
+# Le gain casque est réglable depuis DEUX écrans (admin complète et écran
+# technique). ⚠️ Piège de la zone Z11 : deux IHM sur un même réglage divergent
+# dès la première évolution, sans que rien ne plante. La logique vit donc dans
+# `eq_gain.php`, partagé — aucune des deux pages ne doit la recopier.
+if [ -f "$ROOT/web/admin/eq_gain.php" ] && [ -f "$ROOT/web/admin/technique.php" ]; then
+    if grep -q "ecrire_gain_casque" "$ROOT/web/admin/technique.php" 2>/dev/null; then
+        pass "écran technique : gain casque via la bibliothèque partagée (TICKET-119)"
+    else
+        fail "technique.php n'utilise plus eq_gain.php — logique dupliquée, divergence garantie (zone Z11)"
+    fi
+    # L'invariant de sécurité auditive doit être PLAFONNÉ dans la bibliothèque,
+    # pas dans les pages : sinon un futur appelant l'oubliera.
+    if grep -q "GAIN_CASQUE_MAX" "$ROOT/web/admin/eq_gain.php" 2>/dev/null; then
+        pass "gain casque borné dans la bibliothèque partagée (sécurité auditive)"
+    else
+        fail "eq_gain.php : plafond du gain casque absent — contournement du garde-fou auditif"
+    fi
+    # La page doit revenir à la radio toute seule, sinon l'enfant retrouve un
+    # écran de réglages au lieu de ses podcasts (demande de Thomas).
+    if grep -q "screen_off_delay" "$ROOT/web/admin/technique.php" 2>/dev/null; then
+        pass "écran technique : retour automatique à la radio armé (TICKET-119)"
+    else
+        fail "technique.php : plus de retour automatique — l'appareil resterait bloqué sur l'admin"
+    fi
+else
+    warn "écran technique absent — TICKET-119 non livré"
+fi
+
 # ── TICKET-145 — une webradio désactivée doit disparaître de l'écran enfant ─
 # Le masquage se joue dans `sync_radios_to_data_json()` et dans `writer.py`, pas
 # dans l'admin : les radios étaient recopiées telles quelles vers data.json.
@@ -886,6 +915,26 @@ if [ -z "$derive" ]; then
     pass "unités installées identiques à celles du dépôt"
 else
     warn "dérive dépôt ↔ /etc/systemd/system :$derive — recopier puis daemon-reload"
+fi
+
+# ── Fichiers sudoers du projet : droits corrects ───────────────────────────
+# Bug surveillé (trouvé le 2026-08-21 en posant la règle du kiosque) :
+# `/etc/sudoers.d/hechicero-backup` était en mauvais mode. **Sudo ignore alors
+# le fichier SANS RIEN DIRE** — la sauvegarde durcie aurait perdu ses droits, et
+# on ne l'aurait découvert qu'au moment d'en avoir besoin. Panne latente typique
+# de la zone Z2 : rien ne casse aujourd'hui, tout casse le jour qui compte.
+mauvais=""
+for f in /etc/sudoers.d/hechicero-*; do
+    [ -e "$f" ] || continue
+    mode=$(stat -c '%a' "$f" 2>/dev/null)
+    [ "$mode" = "440" ] || mauvais="$mauvais $(basename "$f"):$mode"
+done
+if [ -n "$mauvais" ]; then
+    fail "règle(s) sudoers en mauvais mode (attendu 440) :$mauvais — sudo les IGNORE en silence"
+elif ! sudo -n true 2>/dev/null && ! visudo -c >/dev/null 2>&1; then
+    warn "droits sudoers non vérifiables sans privilège — relancer 'sudo visudo -c'"
+else
+    pass "règles sudoers du projet en mode 440 (prises en compte par sudo)"
 fi
 
 titre "7. Vie privée du dépôt public (zone Z10)"
