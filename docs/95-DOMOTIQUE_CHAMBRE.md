@@ -1,5 +1,7 @@
 # Écran « Chambre » — Contrôle domotique (Legrand/Netatmo via passerelle VM)
 
+> *Mis à jour le 2026-08-21.*
+
 > Brique optionnelle : pilotage de la lumière et du volet de la chambre depuis l'IHM enfant.
 > Statut au 2026-07-24 : **Phases 1 et 2 terminées et validées en réel** (sur les équipements
 > du bureau, en attendant la bascule sur la chambre). Reste Phase 3 (écran dans Hechicero) et
@@ -136,11 +138,26 @@ bureau via la passerelle — base de l'intégration Phase 3 dans `web/lecteur/in
   Auth + refresh + lecture + écriture validés en réel.
 - ✅ **Phase 2 — Service passerelle** : FastAPI, 2 endpoints, whitelist, refresh auto, cache,
   systemd, résilience reboot VM — validés sur les modules du bureau.
-- ⏳ **Phase 3 — Écran dans Hechicero** : intégrer dans `web/lecteur/index.html`, brancher GPIO23
-  (`scripts/buttons_daemon.py`, réutiliser le mécanisme `request_screen`/`get_ui_request` de
-  l'écran favoris), gérer l'état hors-ligne.
-- ⏳ **Phase 4 — Bascule chambre + validation** : passer `LAMPE_ID`/`VOLET_ID` sur la chambre
-  (config.env VM), restreindre le CORS à l'origine du Pi, tester un reboot Freebox, valider en réel.
+- ✅ **Phase 3 — Écran dans Hechicero** : écran `chambre` intégré à `web/lecteur/index.html`,
+  bouton GPIO23 câblé, via le canal générique `request_screen` / `get_ui_request`.
+- ✅ **Phase 4 — Bascule chambre + validation** : livré **et validé en production** le
+  2026-07-24 sur la lampe et le volet de la chambre. La position du volet a été confirmée
+  correcte par Thomas.
+
+> ⚠️ **Ces deux phases étaient encore marquées « à faire » jusqu'au 2026-08-21**, un mois
+> après leur validation. Un avancement figé fait douter de tout le document.
+
+### Deux points à ne pas perdre
+
+⚠️ **L'ouverture est GARDÉE par `/health`** : l'écran ne s'ouvre que si la passerelle
+répond. Sans cela, l'enfant se retrouverait devant un écran mort, sans comprendre pourquoi
+ses boutons ne font rien.
+
+⚠️ **La gestion de la lumière est DUPLIQUÉE** entre `web/admin/domotique.php` et
+`web/lecteur/index.html` — ampoule grise éteinte, jaune avec halo allumée, curseur qui
+règle l'intensité **et** allume, appui sur l'ampoule pour basculer. **Toute évolution doit
+être faite des deux côtés** : c'est la zone Z11 du registre de non-régression, et une
+divergence n'y provoque aucune erreur, seulement une incohérence silencieuse.
 
 ---
 

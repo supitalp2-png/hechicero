@@ -1,5 +1,7 @@
 # Backend RSS — Projet Hechicero
 
+> *Mis à jour le 2026-08-21.*
+
 Ce document décrit la brique backend responsable de l’ingestion des podcasts,
 du téléchargement des épisodes et de la génération des fichiers utilisés par le lecteur.
 
@@ -256,5 +258,10 @@ cat ~/hechicero/web/lecteur/data.json
 - `progress.py` écrit `/tmp/hechicero_progress.json` en temps réel
 - L'admin PHP lit ce fichier via `?action=get_progress` toutes les 2 secondes
 - Les radios sont gérées dans `data/podcasts.json` (clé `radios`) par l'admin PHP
-- `writer.py` lit les radios depuis `podcasts.json` et les injecte dans `data.json` à chaque ingest
+- `writer.py` lit les radios depuis `podcasts.json` et les injecte dans `data.json` à chaque ingest — **en écartant celles dont `enabled` vaut `false`** (TICKET-145, 2026-08-21)
+
+  ⚠️ **Ce filtre n'est pas décoratif.** Sans lui, l'ingestion nocturne **réinstallerait**
+  une radio que le parent vient de désactiver depuis l'admin, quelques heures plus tard et
+  sans rien signaler. Une panne différée est d'autant plus déroutante que rien ne la relie
+  à l'action qui l'a causée. `enabled` absent = activée, pour les radios antérieures.
 - La cover podcast est téléchargée en priorité depuis l'image de `<channel>` (fiable, indépendante de l'ordre des épisodes) ; repli sur l'image du premier épisode (`episodes[0].image_url`) seulement si le flux n'expose pas d'image de channel — corrigé TICKET-104 (2026-07-09), voir `parser.py` (`feed_cover_url`)

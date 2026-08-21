@@ -3,6 +3,8 @@
 Ce document décrit la brique “Lecteur embarqué”, l’interface principale destinée à l’enfant.
 Il reflète l’état actuel du développement et les choix techniques validés.
 
+> Dernière mise à jour : 2026-08-21
+
 ---
 
 ## 1. Objectif
@@ -38,7 +40,7 @@ Contenu :
 > `app.js` et `style.css` étaient du code mort (styles et logique intégrés dans `index.html`, TICKET-040 ✅) — supprimés (TICKET-117 ✅, ex-TICKET-090). Le `index.html.bak` qui traînait a été supprimé le 2026-08-04, et `*.bak` est désormais dans `.gitignore`.
 
 ### 3.2 Rôle des fichiers
-- **index.html** : contient toute la logique — chargement de `data.json`, rendu des 5 écrans, événements tactiles, commandes MPD
+- **index.html** : contient toute la logique — chargement de `data.json`, rendu des 8 écrans, événements tactiles, commandes MPD
 - **data.json** : généré automatiquement par le backend (`writer.py`), jamais modifié par le lecteur
 - **config.json** : configuration avancée lue au démarrage du lecteur (via `radio.php?action=parental_status`)
 
@@ -93,20 +95,48 @@ Règles :
 
 ---
 
-## 6. Navigation du Lecteur (5 écrans)
+## 6. Navigation du Lecteur (8 écrans)
+
+Les écrans sont déclarés dans `ALL_SCREENS` (`web/lecteur/index.html`) — **c'est la source
+de vérité**, ce tableau la reflète.
 
 ```
-Accueil (drapeaux FR / 🇨🇴)
-   └─→ Grille (podcasts + webradio — filtrés par langue)
-          ├─→ Catalogue webradio  →  Player radio (streaming live)
-          └─→ Liste épisodes      →  Player podcast (fichier local)
+home  (drapeaux FR / 🇨🇴)
+ ├─ podcasts ──────► chapters ──────► player          (fichier local)
+ ├─ radio-catalog ─────────────────► radio-player     (streaming live)
+ ├─ favoris ───────────────────────► player           (accès direct, GPIO16)
+ └─ chambre                                            (domotique, GPIO23)
 ```
 
-1. **Accueil** : deux drapeaux, sélection de la langue active
-2. **Grille** : tuile Webradio (toujours en tête) + jaquettes podcasts en grille 2 colonnes
-3. **Catalogue webradio** : liste des stations (image + nom + indicateur live animé)
-4. **Liste épisodes** : vignette + titre + durée par épisode, scroll tactile, clic = lecture directe
-5. **Player** : jaquette (gauche 45%) + titre + barre de progression + Play/Pause + ⏮⏭ (droite 55%) + volume
+| Écran | Contenu | Comment on y arrive |
+|---|---|---|
+| `home` | Deux drapeaux, choix de la langue | démarrage, retour |
+| `podcasts` | Tuile webradio en tête + jaquettes en grille 2 colonnes | depuis un drapeau |
+| `radio-catalog` | Stations : image, nom, indicateur live animé | tuile webradio |
+| `chapters` | Épisodes : vignette, titre, durée, scroll tactile | une jaquette |
+| `player` | Jaquette (45 %) + titre, progression, ⏯ ⏮⏭, volume (55 %) | un épisode |
+| `radio-player` | Idem, sans progression ni épisode suivant | une station |
+| `favoris` | Épisodes et radios marqués d'un cœur | maintien sur GPIO16 |
+| `chambre` | Lampe et volet de la chambre | GPIO23, ou l'écran |
+
+**Deux surfaces qui ne sont pas des écrans** :
+
+- **L'overlay de veille** (`#sleep-overlay`) se superpose à l'écran courant après
+  `screen_off_delay` d'inactivité, en même temps que l'extinction physique de la dalle.
+  ⚠️ Les deux étaient autrefois pilotés par **deux délais indépendants** — 60 s pour
+  l'overlay, 600 s pour la dalle — d'où 9 minutes de dalle allumée sur page noire, prises
+  pour une panne pendant des semaines. Une seule source de vérité désormais : l'overlay
+  dérive de `screen_off_delay`.
+- **L'écran technique** (`/admin/technique.php`) est une **page distincte**, pas un écran
+  du lecteur. Le kiosque y navigue vraiment — la lecture continue, MPD étant côté serveur.
+  Ouvert par un appui simultané de 3 s sur casque (GPIO25) **et** antenne (GPIO23).
+
+### Le canal `request_screen`
+
+Les boutons physiques ne parlent pas au navigateur : `buttons_daemon` (Python) écrit une
+demande dans `data/ui_request.json` via `radio.php?action=request_screen`, et la page la
+relève par `pollUiRequest()` toutes les secondes. **Générique** : ajouter un écran
+déclenché par un bouton ne demande aucun nouveau mécanisme.
 
 ---
 
@@ -154,7 +184,11 @@ Règles :
 - aucun texte cliquable non prévu  
 - aucun menu caché  
 - volume logiciel limité : 80% max sur les haut-parleurs ; 100% assumé côté casque (l'impédance du casque limite elle-même la puissance réelle, décision Thomas 2026-07-17 — voir `docs/15-INVARIANTS.md` §2.3)  
-- aucune possibilité de quitter Chromium  
+- aucune sortie du lecteur **au doigt**
+
+  ⚠️ *Amendé le 2026-08-21 : une sortie volontaire existe, par combinaison de boutons
+  physiques maintenue 3 s (TICKET-119). C'est un outil parent — voir `15-INVARIANTS.md`
+  §2.1 pour ce qui protège encore l'enfant.*
 - aucune commande système exposée  
 
 Objectif : un environnement **fermé**, **prévisible**, **sans risque**.
@@ -185,7 +219,7 @@ Le lecteur doit fonctionner **sans lag** sur un Raspberry Pi 5.
 
 ---
 
-## 12. État réel au 2026-08-04
+## 12. État réel au 2026-08-21
 
 ### Implémenté et validé
 - Son de démarrage (chime) : accord grave C2–G2–C3–G3–E4 via Web Audio API, sans fichier audio — `playStartupChime(volume)` (TICKET-023 ✅)
@@ -194,7 +228,7 @@ Le lecteur doit fonctionner **sans lag** sur un Raspberry Pi 5.
   - Config : `chime_enabled` / `chime_volume` dans `web/lecteur/config.json`
   - Déclenché au premier `touchstart` après le chargement (contourne la politique autoplay de Chromium)
 - Fix screensaver : remplacement de `pointermove` par `pointerdown/touchstart/click` — évite les events fantômes sur Pi
-- Navigation 5 écrans fonctionnelle bout en bout (TICKET-050 ✅)
+- Navigation fonctionnelle bout en bout — 5 écrans à l'origine (TICKET-050 ✅), **8 aujourd'hui** avec favoris et chambre
 - Filtre par langue via drapeaux FR/🇨🇴 (champ `langue` dans `data.json`)
 - Commandes MPD via `radio.php` (play, pause, playfile, volup, voldown, status, seekcur, seekid, get_output, set_output, next_episode, prev_episode, now_playing)
 - Polling MPD conditionnel (actif uniquement sur l'écran lecteur)
@@ -266,7 +300,7 @@ Le lecteur doit fonctionner **sans lag** sur un Raspberry Pi 5.
 
 ### Architecture technique
 - `index.html` : fichier unique (HTML + CSS + JS)
-- Viewport : 1024×600 px paysage (CUQI 7" IPS)
+- Viewport : 1024×600 px paysage (**JRP7003** 7" IPS — cf. `80-hardware.md`)
 - Dark mode, accent cyan `#00c8ff`, accent radio ambre `#c8a050`
 - Cover podcasts : `web/lecteur/images/{id}.jpg` (chemin relatif dans `data.json`)
 - Audio épisodes : chemin filesystem MPD (`/home/thomas/hechicero/podcasts/{id}/audio/*.mp3`)
@@ -274,14 +308,64 @@ Le lecteur doit fonctionner **sans lag** sur un Raspberry Pi 5.
 
 ### Non implémenté (tickets ouverts)
 - Série easter egg « Décisions Prises » (TICKET-058) — EP0 et EP1 écrits, production audio à faire
-- Gain casque : test réel en voiture (TICKET-116)
-- Test visuel de bout en bout du rafraîchissement de catalogue (TICKET-114)
 
-> Section revue le 2026-08-04. Trois entrées retirées, les tickets étant déjà `[x]` au backlog : TICKET-023 (chime livré), TICKET-004 (contenu ES livré) et TICKET-117 ex-090 (fichiers morts — `app.js`, `style.css`, `lecture.html` n'existent plus ; les `*.bak` restants ont été supprimés et sont désormais couverts par `.gitignore`).
+**C'est le seul reste côté lecteur.** Le gain casque (TICKET-116) a été validé en voiture le
+2026-08-17, et le rafraîchissement de catalogue (TICKET-114) est vérifié à chaque smoke test
+— §4, qui modifie `data.json` puis observe le rechargement effectif par le kiosque.
+
+> Section revue le 2026-08-21 ; l'historique de la revue du 2026-08-04 suit.
+> **Ajouts du 2026-08-21** : écran technique caché (TICKET-119), webradios activables une par une (TICKET-145), veille unifiée sur un seul délai (TICKET-138).
+>
+> Revue du 2026-08-04. Trois entrées retirées, les tickets étant déjà `[x]` au backlog : TICKET-023 (chime livré), TICKET-004 (contenu ES livré) et TICKET-117 ex-090 (fichiers morts — `app.js`, `style.css`, `lecture.html` n'existent plus ; les `*.bak` restants ont été supprimés et sont désormais couverts par `.gitignore`).
 
 ---
 
-## 13. Évolutions prévues
+## 13. Modifier le lecteur — à lire avant de toucher au fichier
+
+### ⚠️ Le code servi n'est pas le code qui s'exécute
+
+Le kiosque charge `index.html` **une fois** et le garde en mémoire. Éditer le fichier ne
+change rien à l'écran tant qu'on ne recharge pas la page :
+
+```bash
+sudo runuser -u thomas -- env WAYLAND_DISPLAY=wayland-0 \
+  XDG_RUNTIME_DIR=/run/user/1000 /usr/bin/wtype -k F5
+```
+
+**Sans ça, on teste l'ancienne version en croyant tester la nouvelle.** C'est arrivé le
+2026-08-21 : le daemon écrivait correctement la demande d'écran, le disque savait la
+traiter, et rien ne s'affichait. ⚠️ **Le smoke test ne peut pas voir ce cas** — il compare
+la réponse d'Apache au fichier du disque, pas ce que Chromium exécute.
+
+### ⚠️ Toute boucle périodique se vérifie contre le délai de veille
+
+Une boucle plus courte que `screen_off_delay` qui appellerait `resetSleepTimer()`
+empêcherait **définitivement** la veille de se déclencher. C'est arrivé : `checkParentalTime`
+tournait toutes les 30 s et réarmait le compte à rebours à chaque passage.
+
+Le délai est passé de 60 s à **600 s**, or toutes les boucles de l'IHM tournent entre
+100 ms et 60 s : **aucune n'est naturellement à l'abri**. Le garde `changed` de
+`applySleepConfig` — qui ne réarme que si la configuration a réellement changé — est
+désormais la seule protection. Deux tests du smoke test le verrouillent.
+
+### ⚠️ Ne jamais uniformiser les réponses de `radio.php` en JSON
+
+L'interface enfant lit `action=status` en **texte MPD brut** (`sendRadio('status')` puis
+`parseMpd()`). Passer tout en JSON casserait le lecteur. C'est aussi pourquoi `http_get()`
+côté boutons distingue « réponse non-JSON » (normal) et « échec de transport » (une vraie
+panne, qui doit alerter).
+
+### Ce qui rend ce fichier délicat
+
+`index.html` fait plus de 3 000 lignes : structure, style et logique dans un seul fichier.
+C'est **assumé** — pas de build, pas de dépendance, un `scp` suffit à déployer, et la page
+démarre instantanément sur un Pi. La contrepartie est qu'il faut chercher avant d'ajouter :
+beaucoup de mécanismes génériques existent déjà (`request_screen`, `pollCatalogVersion`,
+`data_version`) et n'attendent qu'à être réutilisés.
+
+---
+
+## 14. Évolutions prévues
 
 > Liste purgée le 2026-08-04 : elle annonçait encore comme « à venir » des choses livrées depuis longtemps.
 
@@ -292,7 +376,7 @@ Le lecteur doit fonctionner **sans lag** sur un Raspberry Pi 5.
 
 ---
 
-## 14. Référence UX
+## 15. Référence UX
 Les règles UX détaillées sont décrites dans :
 - `docs/25-UX_GUIDELINES.md`
 - dossier `UX Design/` (vision, personas, parcours, spécifications)

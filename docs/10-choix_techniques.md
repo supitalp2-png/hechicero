@@ -1,5 +1,7 @@
 # Choix Techniques — Projet Hechicero
 
+> *Mis à jour le 2026-08-21.*
+
 ## 1. Introduction
 Ce document décrit les choix techniques majeurs du projet Hechicero.  
 Il complète le manifeste (`00-MANIFESTE.md`) en expliquant **comment** les principes fondateurs se traduisent dans l’architecture réelle.
@@ -33,7 +35,9 @@ Justification :
 - intégration simple avec MPD
 
 ### 🔹 Écran tactile
-Modèle : **CUQI 7 pouces IPS HD 1024×600** (compatible Raspberry Pi 3/4/5)  
+Modèle : **JRP JRP7003** 7 pouces IPS 1024×600, tactile capacitif USB
+⚠️ *Corrigé le 2026-08-21 : ce document annonçait un « CUQI 7 pouces ». La référence
+réelle, relevée par `wlr-randr` et l'EDID, est **JRP7003** — voir `80-hardware.md`.*
 Rôle : interface enfant principale  
 Orientation : **paysage** (1024×600 px)  
 Décision :
@@ -204,12 +208,18 @@ Bouton-poussoir momentané 16mm chromé câblé sur les broches RUN du Pi 5, log
 ---
 
 ## 10. Invariants techniques
-Ces règles ne doivent **jamais** être violées :
-- le lecteur doit fonctionner hors réseau  
-- `data.json` doit toujours être valide  
-- écriture atomique obligatoire pour les fichiers critiques  
-- MPD doit démarrer automatiquement au boot  
-- aucune dépendance cloud  
+
+> La liste de référence est dans **`15-INVARIANTS.md`**, avec ses amendements datés.
+> La recopier intégralement ici la périmerait — c'est exactement ce qui est arrivé à ce
+> document sur la référence de l'écran.
+
+Le noyau, à garder en tête :
+
+- le lecteur fonctionne **hors réseau**, sans cloud
+- `data.json` doit toujours rester valide — **deux écrivains, clés disjointes**
+- écriture atomique obligatoire pour tout fichier critique
+- MPD démarre automatiquement au boot, **en pause** (`restore_paused`)
+- volume haut-parleurs plafonné à 80, gain casque à 6 dB — sécurité auditive
 
 ---
 

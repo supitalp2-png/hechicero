@@ -107,6 +107,28 @@ thomas ALL=(root) NOPASSWD: /usr/bin/python3 /home/thomas/hechicero/scripts/back
 `visudo` valide la syntaxe automatiquement avant d'enregistrer — ne pas
 éditer ce fichier avec un éditeur classique.
 
+⚠️ **Le MODE du fichier compte autant que sa syntaxe, et c'est le piège.** Un fichier
+sudoers dont les permissions ne sont pas `0440` est **ignoré en silence** par sudo : aucune
+erreur, aucun journal, la règle n'existe simplement plus.
+
+C'est arrivé sur ce fichier même, découvert par hasard le 2026-08-21 en posant une autre
+règle :
+
+```
+/etc/sudoers.d/hechicero-backup: bad permissions, should be mode 0440
+```
+
+**La sauvegarde durcie avait donc perdu ses droits depuis une date inconnue**, et on ne
+l'aurait constaté qu'au moment d'en avoir besoin — c'est-à-dire au pire moment.
+
+```bash
+sudo chmod 0440 /etc/sudoers.d/hechicero-backup
+sudo visudo -c        # doit dire "parsed OK" pour CHAQUE fichier
+```
+
+📌 Le smoke test §7 vérifie désormais le mode de **toutes** les règles `hechicero-*`.
+`visudo -c` reste le contrôle de référence : il liste tous les fichiers, un par un.
+
 ### 3.4 Test manuel (optionnel, une seule fois)
 
 Sert juste à vérifier que la mise en place fonctionne avant de faire confiance

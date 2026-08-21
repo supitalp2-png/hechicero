@@ -8,6 +8,8 @@ Il décrit :
 - les règles de sécurité
 - les commandes d’installation et de debug
 
+> *Mis à jour le 2026-08-21.*
+
 Objectif : garantir un système **robuste**, **prévisible**, **auto‑récupérant**.
 
 ---
@@ -108,7 +110,7 @@ Avantages vs tracking JS : fonctionne quelle que soit l'interface (PC, Pi, termi
 [Unit]
 Description=Hechicero Play Tracker (MPD idle)
 After=mpd.service
-Requires=mpd.service
+Wants=mpd.service
 
 [Service]
 Type=simple
@@ -274,84 +276,56 @@ journalctl --user -u hechicero-idle.service -f
 
 ---
 
-## 7. Service kiosque (optionnel)
-Ce service est utilisé uniquement si l’on souhaite relancer Chromium automatiquement.
+## 7. Service kiosque — IL N'Y EN A PAS, ET C'EST VOULU
 
-Fichier : `~/.config/systemd/user/hechicero-kiosk.service`
+> ⚠️ **Section corrigée le 2026-08-21.** Elle décrivait un `hechicero-kiosk.service` avec
+> `Restart=always` et le binaire `chromium-browser`. **Ce service n'existe pas**, il ne
+> doit pas exister, et le binaire porte un autre nom sous Wayland.
 
-```
-[Unit]
-Description=Hechicero Kiosk Mode
-After=graphical-session.target
+**Décision de Thomas** : un service qui relance Chromium en boucle **masque le problème qui
+l'a fait tomber**. Sur un appareil qu'un enfant utilise seul, on préfère constater une
+panne plutôt que la voir disparaître — un kiosque qui redémarre en silence toutes les deux
+secondes ne remonte jamais rien.
 
-[Service]
-ExecStart=/usr/bin/chromium-browser --kiosk --incognito http://localhost/lecteur/
-Restart=always
-RestartSec=2
+**Ce qui remplace la relance automatique :**
 
-[Install]
-WantedBy=default.target
-```
+| Besoin | Moyen |
+|---|---|
+| Relancer après un crash | `bash ~/hechicero/restart-kiosk.sh` (Wayland, rejoue la séquence audio) |
+| Détecter une page morte | `kiosk_freeze_watch.service` — sonde le battement de cœur, journalise un instantané après 60 s de silence |
+| Vérifier que la page vit | smoke test §5 : battement de moins de 30 s |
 
-### Installation
-```
-systemctl --user daemon-reload
-systemctl --user enable --now hechicero-kiosk.service
-```
+⚠️ **`kiosk_freeze_watch` observe, il ne répare pas.** C'est délibéré : son rôle est de
+produire une preuve datée au prochain gel, pas de masquer le symptôme. Il a d'ailleurs
+servi à **innocenter** une piste — l'épisode d'écran noir du 2026-08-19 n'était pas un gel
+du tout, mais un désaccord de délais de veille (TICKET-138).
 
-### Debug
-```
-journalctl --user -u hechicero-kiosk.service -f
-```
+📌 Conséquence assumée depuis TICKET-119 : le bouton « Quitter le kiosque » ferme réellement
+Chromium, et **seul un redémarrage ramène la radio** — il n'y a sous labwc ni barre des
+tâches ni lanceur.
 
 ---
 
-## 7bis. Service test bouton GPIO — button_toggle_test (TEMPORAIRE)
+## 7bis. `button_toggle_test.service` — SUPPRIMÉ
 
-Fichier : `/etc/systemd/system/button_toggle_test.service`
+> ⚠️ **Section réduite le 2026-08-21.** Elle contenait l'unité complète, prête à copier.
+> **Ce service n'existe plus** : `scripts/button_toggle_test.service` a été retiré du
+> dépôt, et il est remplacé par `buttons_daemon.service` (§7ter) qui gère les neuf boutons.
 
-⚠️ **Service de test/bring-up (TICKET-091/031), pas définitif.** Bascule HP/casque à
-chaque appui sur un bouton-poussoir câblé en GPIO17 (pull-up, appui = LOW) — ce
-comportement lui-même est définitif (bouton physique manuel, détection auto
-abandonnée), seul ce script/service précis est temporaire. À remplacer par
-`buttons_daemon.service` une fois le câblage des autres boutons terminé (§7ter).
-Tourne en `root` : accès GPIO.
+Deux raisons de ne pas en garder le contenu :
 
-```ini
-[Unit]
-Description=Hechicero Button Toggle Test (bring-up GPIO, TICKET-091/031)
-After=network.target mpd.service
-Requires=mpd.service
+1. **Conflit GPIO.** Deux processus qui lisent la même broche se disputent l'accès. Le
+   réactiver casserait les boutons physiques.
+2. **Son unité portait `Requires=mpd.service`** — la directive bannie du projet. `Requires=`
+   ne fait pas qu'ordonner le démarrage, il **propage l'arrêt** : redémarrer MPD éteignait
+   les boutons. Laisser un modèle copiable avec ce défaut, c'est inviter à le rejouer.
+   Voir §2 et `75-NON_REGRESSION.md` zone Z2.
 
-[Service]
-Type=simple
-User=root
-WorkingDirectory=/home/thomas/hechicero/scripts
-ExecStart=/usr/bin/python3 /home/thomas/hechicero/scripts/button_toggle_test.py --pin 17
-Restart=always
-RestartSec=5
+Si le service traîne encore sur une installation ancienne :
 
-[Install]
-WantedBy=multi-user.target
-```
-
-### Installation
-```bash
-sudo cp scripts/button_toggle_test.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable --now button_toggle_test
-```
-
-### Debug
-```bash
-systemctl status button_toggle_test
-journalctl -u button_toggle_test -f
-```
-
-### Désinstallation (une fois remplacé par le service définitif)
 ```bash
 sudo systemctl disable --now button_toggle_test
-sudo rm /etc/systemd/system/button_toggle_test.service
+sudo rm -f /etc/systemd/system/button_toggle_test.service
 sudo systemctl daemon-reload
 ```
 
@@ -611,7 +585,7 @@ connexion NetworkManager et reconnecte. Log dans `data/wifi_roam.log`.
 [Unit]
 Description=Hechicero Wifi Roam (bascule auto vers le signal le plus fort, hors DFS) - TICKET-110
 After=network.target NetworkManager.service
-Requires=NetworkManager.service
+Wants=NetworkManager.service
 
 [Service]
 Type=simple
@@ -666,7 +640,7 @@ une fois puis reste "actif" pour `systemctl status`, pas un daemon.
 [Unit]
 Description=Hechicero Audio EQ Apply (alsaequal, TICKET-030)
 After=mpd.service
-Requires=mpd.service
+Wants=mpd.service
 
 [Service]
 Type=oneshot
@@ -695,6 +669,123 @@ journalctl -u audio_eq_apply
 python3 ~/hechicero/scripts/audio_eq_apply.py --list-controls
 python3 ~/hechicero/scripts/audio_eq_apply.py --dry-run
 ```
+
+---
+
+## 7octies. Chien de garde MPD — mpd_watchdog (TICKET-122)
+
+> **Ajouté à la documentation le 2026-08-21.** Ce service tournait depuis le 2026-08-05
+> sans figurer ailleurs que dans le tableau du §1 — alors qu'il est le seul autorisé à
+> **tuer et relancer MPD**.
+
+Fichier : `scripts/mpd_watchdog.service` → `/etc/systemd/system/`
+
+### Le bug qu'il traite
+
+MPD se fige **sans crasher et sans rien journaliser**. `systemctl status` affiche
+`active (running)` pendant que plus rien ne joue. Quand un flux HTTP meurt sans `FIN` ni
+`RST` — un partage de connexion qui s'éloigne — la socket devient un trou noir : la lecture
+`io_uring` engagée dessus ne se termine jamais, le thread `io` reste parqué **en tenant le
+verrou du flux**, et tout le démon s'empile derrière. Constaté 24 h durant sans que rien
+ne le signale.
+
+### Réglages
+
+| Constante | Valeur | Pourquoi |
+|---|---|---|
+| `INTERVAL_S` | 30 s | entre deux sondes |
+| `PROBE_TIMEOUT_S` | 3 s | généreux — `radio.php` se contente de 1,5 s |
+| `ECHECS_AVANT_ACTION` | 3 | ~90 s de panne **confirmée** avant d'agir |
+| `OFFLINE_AVANT_STOP` | 2 | ~60 s sans route avant de couper un flux mort |
+| `MAX_RECUPS_PAR_HEURE` | 3 | au-delà, on journalise et **on n'insiste plus** |
+
+⚠️ **Le plafond horaire est délibéré.** Au-delà de trois récupérations dans l'heure, le
+problème n'est plus un blocage ponctuel. Boucler sur des redémarrages rendrait l'appareil
+inutilisable **et masquerait la vraie cause**.
+
+### Trois pièges verrouillés dans l'unité
+
+**Pas de `Requires=mpd.service`** — et c'est le seul service où l'absence est vitale : ce
+chien de garde doit survivre à un MPD arrêté ou en échec, c'est **précisément là qu'il
+sert**. `Wants=mpd.socket` suffit.
+
+**Il doit pouvoir piloter systemd.** `ProtectSystem=strict` laisse `/run/systemd/private`
+accessible, ce qui permet les `stop`/`start`/`reset-failed` sur `mpd`. ⚠️ Ne pas ajouter
+`PrivateDevices=` ni `ProtectKernelTunables=` sans revérifier ce chemin.
+
+**`data/` est le seul endroit inscriptible** (`ReadWritePaths`), pour le journal. Aucune
+écriture dans le dépôt — c'est le piège qui avait mis `buttons_daemon` à genoux, `lgpio`
+créant son tube dans `scripts/` devenu non inscriptible après le durcissement.
+
+### ⚠️ Ne JAMAIS utiliser `mpc` pour sonder
+
+Face à un MPD figé, `mpc` **n'échoue pas : il attend**. Un test qui passe par `mpc` se fige
+avec lui et ne rapporte jamais rien — c'est ce qui a permis au blocage de passer 24 h
+inaperçu. Le watchdog sonde `/run/mpd/socket` directement, sous délai de garde.
+
+### Vérifier
+
+```bash
+systemctl status mpd_watchdog
+python3 scripts/mpd_watchdog.py --probe     # sonde unique, sans effet de bord
+tail -f data/mpd_watchdog.log
+```
+
+📌 **La récupération elle-même n'a jamais été éprouvée en réel** : il faudrait qu'un flux
+meure vraiment. La logique de décision est couverte par `scripts/test_mpd_watchdog.py`
+(9 assertions), le passage à l'acte non. Ticket volontairement laissé ouvert.
+
+---
+
+## 7nonies. Guetteur de gel du kiosque — kiosk_freeze_watch (TICKET-127)
+
+> **Ajouté à la documentation le 2026-08-21.** Service actif depuis le 2026-08-17, absent
+> de ce document jusqu'ici.
+
+Fichier : `scripts/kiosk_freeze_watch.service` → `/etc/systemd/system/`
+
+### Le bug qu'il surveille
+
+**Écran noir sur dalle allumée** : la page cesse d'exécuter du JavaScript en laissant sa
+dernière image peinte. Rien ne plante, Chromium tourne toujours, et aucun journal ne le
+signale. Impossible à distinguer d'un écran éteint sans regarder de près.
+
+### Comment
+
+La page du lecteur écrit un battement dans `data/kiosk_heartbeat.json` toutes les 15 s.
+Ce service le sonde toutes les **20 s** ; au-delà de **60 s** de silence, il écrit un
+instantané complet dans `data/kiosk_freeze.log` : dernier battement connu, `vcgencmd`
+(throttling, tension, température), `wlr-randr`, processus Chromium, mémoire, `dmesg`,
+journaux, état de la socket MPD.
+
+⚠️ **Le battement ne touche JAMAIS au timer de veille.** Il tourne à 15 s, soit bien plus
+vite que le délai d'inactivité : s'il appelait `resetSleepTimer()`, l'écran ne s'endormirait
+plus jamais. C'est exactement le piège du TICKET-102, et un test du smoke test §3 vérifie le
+corps de la fonction pour l'empêcher de revenir.
+
+### ⚠️ Il observe, il ne répare pas
+
+C'est délibéré. Son rôle est de **produire une preuve datée** au prochain gel, pas de
+masquer le symptôme par un redémarrage — ce qui rejoindrait le refus de relance automatique
+du §7.
+
+📌 **Et il a déjà servi à innocenter une piste, ce qui vaut autant qu'un diagnostic.**
+L'épisode d'écran noir du 2026-08-19, cherché comme un gel, n'en était pas un : 2886
+battements ininterrompus prouvaient que la page vivait. La vraie cause était un désaccord
+entre deux délais de veille (TICKET-138). **Sans cette instrumentation, on cherchait encore
+une panne qui n'existait pas.**
+
+Le gel réel du 2026-08-17 reste, lui, inexpliqué. Le guetteur attend le prochain.
+
+### Vérifier
+
+```bash
+systemctl status kiosk_freeze_watch
+python3 -c "import json;print(json.load(open('data/kiosk_heartbeat.json')))"
+tail -40 data/kiosk_freeze.log
+```
+
+Le smoke test §5 vérifie que le battement date de moins de 30 s.
 
 ---
 

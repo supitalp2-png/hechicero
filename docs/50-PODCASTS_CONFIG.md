@@ -1,5 +1,7 @@
 # Configuration des Podcasts — Projet Hechicero
 
+> *Mis à jour le 2026-08-21.*
+
 Ce document décrit le format et les règles du fichier `podcasts.json`,
 utilisé par le backend pour déterminer quels podcasts ingérer.
 
@@ -54,7 +56,8 @@ Exemple minimal :
 ```
 
 > ⚠️ Les noms de champs exacts sont `label` (pas `name`) et `language` (pas `lang`) pour les podcasts.  
-> Pour les radios, les champs sont `name`, `lang`, `url`, `image`, `image_url`.
+> Pour les radios : `id`, `name`, `desc`, `lang`, `url`, `image`, `image_url` (optionnel),
+> et **`enabled`** depuis le 2026-08-21.
 
 ---
 
@@ -207,8 +210,32 @@ Valeurs recommandées : `fr`, `es`, `en`.
 }
 ```
 
-> La clé `radios` est gérée exclusivement par l'interface admin PHP.  
+> La clé `radios` est gérée exclusivement par l'interface admin PHP.
 > Ne pas la modifier manuellement sauf en cas de maintenance.
+
+### `enabled` sur les radios (TICKET-145, 2026-08-21)
+
+Comme pour les podcasts, une webradio peut être **désactivée** sans être supprimée —
+typiquement pour retirer une radio d'adulte avant de rendre l'appareil à l'enfant.
+
+⚠️ **Le masquage ne se joue PAS dans ce fichier**, et c'est le point à comprendre : les
+podcasts sont filtrés **à l'ingestion**, mais les radios étaient **recopiées telles quelles**
+vers `web/lecteur/data.json`. Un simple drapeau ici n'aurait donc rien caché avant
+l'ingestion nocturne — trop tard pour l'usage visé.
+
+Le filtre est posé à **deux endroits**, et les deux sont nécessaires :
+
+| Où | Rôle | Sans lui |
+|---|---|---|
+| `sync_radios_to_data_json()` (`web/index.php`) | effet immédiat, le kiosque suit en < 10 s via `data_version` | il faudrait attendre l'ingestion |
+| `scripts/rss_ingest/writer.py` | l'ingestion ne réinstalle pas la radio | la synchro de 3 h annulerait le choix du parent |
+
+⚠️ **`enabled` absent vaut ACTIVÉE.** Les radios créées avant ce ticket n'ont pas le champ ;
+les faire disparaître silencieusement serait pire que le manque.
+
+Le smoke test §2 vérifie la **cohérence réelle** : l'ensemble des radios servies dans
+`data.json` doit être inclus dans celui des radios activées. C'est ce contrôle-là qui
+attraperait une régression — les deux autres ne regardent que le code.
 
 ---
 

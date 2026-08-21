@@ -1,5 +1,7 @@
 # UX Guidelines — Projet Hechicero
 
+> *Mis à jour le 2026-08-21.*
+
 Ce document synthétise les règles UX essentielles du projet Hechicero.
 Il sert de pont entre la vision UX (dossier `UX Design/`) et les briques techniques.
 
@@ -25,7 +27,15 @@ Objectifs :
 ### 🔹 Autonomie
 - l’enfant doit pouvoir tout faire seul
 - aucune action dangereuse
-- aucune sortie possible du mode kiosque
+- rien d'atteignable au doigt qui sorte du lecteur
+
+> ⚠️ **Amendé le 2026-08-21.** La règle disait « aucune sortie possible du mode kiosque ».
+> Une sortie existe depuis TICKET-119 : un appui **simultané de 3 s** sur les boutons casque
+> et antenne ouvre un écran technique parent, qui permet de fermer Chromium.
+>
+> **L'invariant se déplace, il ne disparaît pas** : la combinaison est hors de portée d'un
+> usage accidentel, l'écran revient seul à la radio après le délai de veille, et il n'offre
+> aucun contournement du contrôle parental. Détail dans `15-INVARIANTS.md` §2.1.
 
 ### 🔹 Bilinguisme
 - choix de langue via deux drapeaux (🇫🇷 / 🇨🇴)
@@ -99,9 +109,15 @@ Objectifs :
 - aucune dépendance réseau
 
 ### 🔹 Sécurité enfant
-- aucune sortie du mode kiosque
+- aucune sortie du lecteur **au doigt** (voir l'amendement du §1)
 - aucun lien externe
-- volume logiciel limité (max 80 %)
+- volume haut-parleurs plafonné à **80 %** — invariant, valeur courante 66
+- gain casque borné à **6 dB**, dans la bibliothèque partagée `web/admin/eq_gain.php`
+
+⚠️ Le gain casque est un **troisième chemin vers le volume**, ajouté en 2026-08. Son
+plafond vit dans le code partagé et non dans les pages qui l'appellent : un futur appelant
+l'oublierait. Les haut-parleurs n'ont pas de gain et ne doivent jamais en avoir — ce serait
+rouvrir par la bande le plafond de 80.
 
 ---
 
@@ -114,7 +130,8 @@ Objectifs :
 ### 🔹 Pas de gestes complexes
 - pas de pinch-to-zoom
 - pas de scroll libre
-- pas de menus cachés
+- **aucun menu caché atteignable au doigt** — le seul écran caché du projet s'ouvre par une
+  combinaison de **boutons physiques** maintenue 3 s, jamais par un geste tactile
 
 ---
 
@@ -136,7 +153,7 @@ Ce fichier `UX_GUIDELINES.md` en est la synthèse opérationnelle.
 
 ## 8. Invariants UX
 - aucune lecture obligatoire pour l’enfant
-- aucune sortie du mode kiosque
+- **aucune sortie du lecteur au doigt** (amendé le 2026-08-21, voir §1)
 - aucune action dangereuse
 - aucune dépendance réseau
 - navigation par images uniquement

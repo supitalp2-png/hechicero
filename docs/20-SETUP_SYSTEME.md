@@ -3,6 +3,8 @@
 Ce document décrit l’installation complète du système Hechicero sur un Raspberry Pi 5, dans sa configuration actuelle.
 Il reflète les choix techniques décrits dans `10-CHOIX_TECHNIQUES.md`.
 
+> *Mis à jour le 2026-08-21.*
+
 ---
 
 ## 1. Pré-requis
@@ -52,11 +54,18 @@ Ajouter par exemple :
 display_lcd_rotate=2
 ```
 
-### 3.3 Désactiver l’écran de veille
-```
-sudo raspi-config
-```
-Menu → Display Options → Screen Blanking → Disable
+### 3.3 Écran de veille — ne pas le désactiver
+
+⚠️ **Corrigé le 2026-08-21.** Cette section disait de désactiver la veille via
+`raspi-config → Screen Blanking`. Deux raisons de ne pas le faire :
+
+1. **C'est une recette X11**, sans effet sous Wayland/labwc.
+2. **La veille est voulue** : l'appareil est sur batterie, et une dalle de 7 pouces
+   allumée en permanence coûte cher en autonomie.
+
+Elle est gérée par `hechicero-idle.service` (swayidle + `wlr-randr`), avec le délai
+`screen_off_delay` de `web/lecteur/config.json`. Voir `70-SERVICES_SYSTEMD.md` §6 et
+`60-KIOSK_MODE.md` §3.
 
 ---
 
@@ -69,7 +78,7 @@ sudo apt install -y \
     apache2 php \
     python3 python3-pip python3-requests python3-feedparser \
     python3-smbus i2c-tools \
-    jq git chromium-browser
+    jq git chromium          # ⚠️ le paquet s'appelle `chromium`, pas `chromium-browser`
 ```
 
 ### 4.2 Activer I2C (INA219)
@@ -434,33 +443,59 @@ Utilise :
 ---
 
 ## 10. Mode kiosque (Chromium)
-Créer le fichier autostart :
-```
-mkdir -p ~/.config/autostart
-nano ~/.config/autostart/hechicero.desktop
+
+> ⚠️ **Section réécrite le 2026-08-21.** Elle décrivait une configuration **X11/LXDE** —
+> `chromium-browser`, `xserver-command` dans `lightdm.conf` — alors que le Pi tourne sous
+> **Wayland avec labwc**. Rien de tout cela n'avait d'effet. Détail complet dans
+> `docs/60-KIOSK_MODE.md`, qui fait référence.
+
+Le démarrage passe par `~/kiosk.sh`, qui force la sortie audio sur les haut-parleurs
+**avant** de lancer Chromium, puis joue le chime une fois la page chargée :
+
+```bash
+chromium --ozone-platform=wayland --noerrdialogs --disable-infobars \
+         --kiosk http://localhost/lecteur &
 ```
 
-Contenu :
-```
-[Desktop Entry]
-Type=Application
-Name=Hechicero Lecteur
-Exec=chromium-browser --kiosk --incognito http://localhost/lecteur/
-```
+⚠️ Le binaire s'appelle **`chromium`**, pas `chromium-browser` — voir §2, le paquet apt
+porte le même nom.
 
-### Désactiver l’écran de veille (LXDE)
-```
-sudo sed -i 's/^#xserver-command=.*/xserver-command=X -s 0 -dpms/' /etc/lightdm/lightdm.conf
-```
+### L'écran de veille n'est PAS désactivé
 
-### Relance automatique de Chromium en cas de crash
-Option : créer un service systemd utilisateur (non obligatoire).
+C'est voulu : l'appareil est sur batterie. La veille est gérée par
+`hechicero-idle.service` (swayidle + `wlr-randr`), avec le délai `screen_off_delay` de
+`web/lecteur/config.json`. Voir `70-SERVICES_SYSTEMD.md` §6.
 
-### 10.4 Cohérence UX
-Le mode kiosque doit garantir :
-- aucune sortie possible
+Les recettes X11 (`xset`, `xserver-command`, raspi-config Screen Blanking) sont **sans
+effet** sous Wayland.
+
+### Pas de relance automatique de Chromium
+
+Il n'existe pas de `hechicero-kiosk.service`, et il ne doit pas en exister — **décision de
+Thomas** : un service qui relance en boucle masque le problème qui a fait tomber le
+kiosque. Reprise à la main par `bash ~/hechicero/restart-kiosk.sh`, ou redémarrage.
+
+### Cohérence UX
+
 - affichage immédiat du lecteur
-- respect des règles UX définies dans `25-UX_GUIDELINES.md`
+- aucun geste tactile ne quitte le lecteur
+- respect des règles définies dans `25-UX_GUIDELINES.md`
+
+⚠️ Depuis TICKET-119, **une sortie volontaire existe** : combinaison casque + antenne
+maintenue 3 secondes, puis bouton « Quitter le kiosque ». C'est un outil parent, hors de
+portée d'un usage accidentel. Elle demande la règle sudoers suivante :
+
+```bash
+echo 'www-data ALL=(root) NOPASSWD: /usr/bin/pkill -u thomas -x chromium' \
+  | sudo tee /etc/sudoers.d/hechicero-kiosque
+sudo chmod 0440 /etc/sudoers.d/hechicero-kiosque
+sudo visudo -c
+```
+
+⚠️ **Le mode `0440` n'est pas cosmétique** : un fichier sudoers mal permissionné est
+**ignoré en silence**. C'est ainsi que `hechicero-backup` avait perdu ses droits sans que
+rien ne le signale, découvert le 2026-08-21. Le smoke test §7 vérifie désormais le mode de
+toutes les règles `hechicero-*`.
 
 
 ---

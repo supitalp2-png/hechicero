@@ -1,5 +1,7 @@
 # Hardware — Projet Hechicero
 
+> *Mis à jour le 2026-08-21.*
+
 Ce document décrit l’ensemble du matériel utilisé dans le projet Hechicero,
 ainsi que les contraintes, câblages, comportements et invariants associés.
 
@@ -141,16 +143,42 @@ Les broches RUN sont situées sur un connecteur 2 broches dédié.
 - protection contre les coupures  
 
 ### 🔹 Limitations
-- ne déclenche pas RUN → pas de boot automatique  
-- nécessite un bouton externe  
+- ne déclenche pas RUN au premier démarrage → bouton externe nécessaire
+- **aucune coupure d'alimentation pilotable par logiciel** — voir ci-dessous
 
-### 🔹 Broches utiles
-- I2C (INA219)  
-- GPIO pass‑through  
+### 🔹 Broches et registres utiles
+
+| Adresse I2C | Rôle |
+|---|---|
+| `0x43` | INA219 — tension, courant, puissance |
+| `0x2d` | MCU du HAT — registre `0x01` |
+
+⚠️ **Écrire `0x55` dans `0x2d/0x01` arme le DÉMARRAGE à la remise sous tension, pas une
+coupure.** La documentation Waveshare titre cette section « Boot When Power Applied ». Le
+projet a cru pendant quatre jours qu'il s'agissait d'une coupure matérielle : l'erreur
+venait d'une déduction faite sur la **séquence d'appels** de la démo constructeur — qui
+écrit ce registre juste avant `poweroff` — au lieu de sa documentation (TICKET-128).
+
+**Effet réel, et il est utile** : après un arrêt propre, la radio **repart seule** dès que
+le chargeur est rebranché. `battery_watchdog` l'arme avant chaque arrêt critique.
 
 ### 🔹 Comportement en cas de batterie vide
-- coupe physiquement l’alimentation  
-- le Pi s’éteint brutalement si aucun shutdown anticipé  
+
+- La protection basse tension **intégrée aux cellules** coupe vers 3,15 V
+- Le Pi s'éteint brutalement si aucun arrêt propre n'a été anticipé
+
+🔴 **RIEN NE PROTÈGE LES CELLULES APRÈS L'ARRÊT DE L'OS** (TICKET-144). `shutdown -h now`
+arrête le système, mais le HAT continue de fournir du 5 V à un Pi « halted » : les cellules
+se vident **après** l'arrêt d'urgence, sans surveillance ni limite de temps.
+
+⚠️ Ce paragraphe affirmait « coupe physiquement l'alimentation ». C'est faux, et c'était
+la conséquence directe de l'erreur sur le registre `0x55`.
+
+**Risque assumé** (décision du 2026-08-21) : l'interrupteur `OFF/ON` du HAT n'est pas
+accessible dans le boîtier, et l'appareil n'est jamais rangé longtemps. Mais un appareil
+laissé éteint et débranché plusieurs semaines descendra jusqu'à la coupure constructeur, et
+**rien ne le signalera**. Si les cellules vieillissent anormalement vite, première piste à
+rouvrir.
 
 ### 🔹 Accumulateurs — remplacés le 2026-08-16 (TICKET-126)
 
@@ -396,6 +424,31 @@ un bouton.
 Pi 5 / puce RP1 — le premier appui est détecté, les suivants perdus. Anti-rebond
 à trois niveaux dans `buttons_daemon.py`.
 
+### 🔹 Combinaison — écran technique (TICKET-119, 2026-08-21)
+
+| Combinaison | Durée | Effet |
+|---|---|---|
+| **Source (25) + Antenne (23)** simultanés | **3 s** | ouvre l'écran technique caché |
+
+L'écran affiche le SSID et le signal Wi-Fi, les IP de chaque interface, l'état batterie, un
+curseur de gain casque, et permet de fermer le kiosque. Voir `30-LECTEUR.md` §6.
+
+⚠️ **Ces deux boutons agissent À L'APPUI, pas au relâchement** — c'est ce qui rend la
+combinaison délicate. Sans précaution, l'ouvrir aurait au passage **basculé la sortie audio
+et ouvert l'écran Chambre**.
+
+**Remède** : l'action individuelle de **ces deux broches seulement** est différée de
+`COMBO_GRACE_S` (300 ms). Passé ce délai, si l'autre bouton n'est pas enfoncé, l'action
+part normalement ; sinon elle est abandonnée au profit de la combinaison.
+
+📌 Les **sept autres boutons gardent leur réactivité immédiate**. Un différé global aurait
+rendu la radio molle pour un enfant — c'est le genre d'arbitrage où l'usage prime sur la
+simplicité du code.
+
+La décision vit dans la classe `EtatCombinaison`, **isolée du GPIO** : elle se teste en
+temps simulé, sans matériel ni attente de 3 secondes (`scripts/test_boutons.py`, 18
+assertions). Restée dans la boucle de polling, elle n'aurait jamais été testée.
+
 📌 **Depuis le 2026-08-17 (TICKET-123)** : tout front descendant, sur n'importe
 quelle broche, émet en plus une frappe clavier virtuelle (`wtype -k Shift_L`)
 pour signaler l'activité au compositeur. Sans ça `swayidle` ne voit jamais les
@@ -465,8 +518,10 @@ pour d'autres briques électroniques du projet) mais ne servent plus à cette fo
 **Solution retenue et définitive — bouton physique manuel :**
 La bascule HP/casque se fait par un bouton-poussoir dédié, appelé "source", situé à côté de la
 prise jack sur la tranche supérieure (voir tableau ci-dessous et `docs/90-BACKLOG.md` TICKET-091).
-Câblé sur GPIO17, géré par `handle_hp_casque` dans `scripts/buttons_daemon.py` — bring-up testé et
-validé le 2026-07-07. Ce n'est plus une étape transitoire en attendant une détection automatique :
+Câblé sur **GPIO25**, géré par `handle_hp_casque` dans `scripts/buttons_daemon.py` — bring-up
+validé le 2026-07-07. ⚠️ **Corrigé le 2026-08-21 : ce paragraphe indiquait GPIO17**, qui est
+en réalité le bouton « épisode précédent ». La source de vérité est le dict `HANDLERS` de
+`buttons_daemon.py`. Ce n'est plus une étape transitoire en attendant une détection automatique :
 c'est la solution finale du projet.
 
 Le code IHM déjà en place (bascule manuelle HP/casque dans `radio.php` : `get_output`/`set_output`,

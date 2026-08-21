@@ -1,5 +1,7 @@
 # Série Podcast — "Décisions Prises"
 
+> *Mis à jour le 2026-08-21 — contenu inchangé, TICKET-058 toujours ouvert (2 épisodes écrits, production audio à faire).*
+
 Série podcast générée par IA, intégrée dans Hechicero, en FR et en ES.
 
 ---

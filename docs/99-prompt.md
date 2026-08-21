@@ -1,5 +1,7 @@
 Tu es dans le contexte du projet **Hechicero**. Reprends à partir de ce prompt.
 
+> *Mis à jour le 2026-08-21.*
+
 # 1. Contexte général du projet
 
 Hechicero est une enceinte audio **DIY**, **locale**, **hors-cloud**, destinée aux enfants.  
@@ -98,22 +100,22 @@ Règles fondamentales :
 
 ---
 
-# 4. Méthode de travail — workflow IA agentique
+# 4. Méthode de travail
 
-Ce projet est développé en trio :
-- **Thomas** : vision, idées, tests sur le Pi réel, montée en compétence
-- **Claude** : coordinateur, architecte, rédacteur des briefs Copilot, garant de la doc
-- **Copilot Pro (VSCode)** : exécutant — il code à partir des briefs de Claude
+> ⚠️ **Réécrit le 2026-08-21.** Cette section décrivait un trio Thomas / Claude / Copilot
+> Pro, où Claude rédigeait des briefs que Copilot exécutait. **Ce n'est plus le
+> fonctionnement** : l'IA écrit le code directement.
 
-Boucle : Thomas (idée) → Claude (brief) → Copilot (code) → Thomas (test Pi) → Claude (vérif + doc)
+**Thomas** apporte les idées, les contraintes, les arbitrages — et **tous les tests sur le
+matériel réel**. C'est lui qui appuie sur les boutons, écoute le son, constate les pannes.
+Aucune livraison n'est déclarée saine sans son retour.
 
-Claude rédige les briefs Copilot, prêts à copier-coller. Claude ne code pas directement sauf corrections chirurgicales validées. Git est géré par Thomas avec guidance de Claude.
+**L'IA** analyse, écrit le code, les tests et la documentation.
 
-Le projet est aussi une démarche d'apprentissage pour Thomas : comprendre l'architecture, les décisions techniques, et l'IA comme accélérateur — pas comme substitut au jugement.
+Boucle : *idée → analyse → code → test sur le Pi → retour → itération*.
 
-La méthode est décrite dans ce fichier (section 4b) et dans `docs/00-manifeste.md`.
-
----
+Le projet est aussi une démarche d'apprentissage pour Thomas : comprendre l'architecture,
+les décisions techniques, et l'IA comme outil de travail.
 
 # 4b. Règles de travail avec Thomas
 
@@ -196,11 +198,30 @@ Objectif : **zéro surprise, zéro magie, zéro casse**.
 
 # 8. Invariants
 
-- le lecteur doit fonctionner hors réseau  
-- `data.json` doit toujours être valide  
-- MPD doit démarrer automatiquement  
-- aucune dépendance cloud  
-- robustesse avant fonctionnalités  
+> La liste complète et à jour est dans **`15-INVARIANTS.md`** — la recopier ici la
+> périmerait, comme ce fut le cas du §10. Voici seulement ce qui doit être présent à
+> l'esprit dès la première ligne de code.
+
+- le lecteur fonctionne **hors réseau**, sans cloud, sans compte
+- `data.json` doit toujours rester **valide** — deux écrivains, clés disjointes
+- MPD démarre automatiquement, en pause (`restore_paused`)
+- **volume haut-parleurs plafonné à 80**, gain casque à 6 dB — sécurité auditive
+- **aucun prénom réel** dans un fichier versionné : le dépôt est public
+- **robustesse avant fonctionnalités**
+
+⚠️ Et la règle qui porte tout le reste :
+
+> **Un bug corrigé sans test de garde n'est pas corrigé, il est en sursis.**
+> Le test doit être vérifié **en échec sur le code d'avant** — sinon il ne couvre rien.
+
+Trois corollaires, chacun payé par un bug réel :
+
+- **Vérifier un comportement, pas un texte.** Un garde qui cherche une chaîne casse au
+  premier remaniement et finit par échouer sur sa propre documentation.
+- **Valider dans l'unité de l'utilisateur.** 6 mV d'accord valent 1 point à 30 % de
+  batterie et 10 points à 80 %.
+- **Le code servi n'est pas celui qui s'exécute.** Recharger le kiosque, relancer le
+  service, avant de conclure d'un test.
 
 ---
 
@@ -210,80 +231,38 @@ Objectif : **zéro surprise, zéro magie, zéro casse**.
 
 ---
 
-# 10. État du projet au 2026-06-30 (session 12)
+# 10. Où trouver l'état réel du projet
 
-## Ce qui est fait et validé
-- 18+ podcasts FR + podcasts ES ingérés, pipeline RSS complet et robuste
-- 2 webradios (France Inter FR, Radio Nacional ES)
-- IHM enfant 5 écrans complète, screensaver 6 modes Great Vibes (retro/modern/classic × horloge)
-- Police Great Vibes : TTF 445KB local, `@font-face` TTF uniquement (woff2 était corrompu)
-- Plymouth boot screen : `hechicero-gold.html` → Chromium headless → PNG → Plymouth
-- Son de démarrage (chime) : joué après Chromium via `kiosk.sh` (Chromium en bg, sleep, chime)
-- Interface admin parent complète + Dashboard écoute (`web/dashboard.php`)
-- **Gestion alimentation batterie complète** (session 7/8/10) :
-  - `scripts/battery_tracker.py` + `battery_tracker.service` : collecte, cycles, estimations
-  - `scripts/battery_watchdog.py` + `battery_watchdog.service` : arrêt propre sur seuil critique (**actif**)
-  - `web/admin/battery_dashboard.php` : dashboard parent — courbes charge/décharge en temps relatif (superposition cycles)
-  - INA219 errno 121 : réinitialisation capteur en boucle (plus de crash service)
-  - Délai démarrage 30s pour éviter le faux positif “charging” au boot
-  - Alertes 30min/10min dans l'IHM enfant, popup branchement
-  - Logs debug supprimés de `battery_tracker.py` et `battery_watchdog.py`
-- **Tracking lecture event-driven** (session 9) :
-  - `scripts/play_tracker.py` + `play_tracker.service` : MPD `idle player mixer`, zéro poll
-  - Podcasts ET webradio trackés côté serveur (indépendant du client)
-  - `volume_pct` (moyenne MPD par session) enregistré → futur limiteur d'exposition sonore
-  - Réparation sessions interrompues via `/proc/uptime` au démarrage
-  - Bug radio corrigé : `openRadioPlayer` réinitialise `currentPodcast`/`currentIdx` pour stopper l'auto-next
-- **Extinction écran automatique** (session 10) :
-  - `scripts/idle_screen.sh` : wrapper swayidle qui relit `config.json` toutes les 30s
-  - `hechicero-idle.service` (user) : éteint l'écran après inactivité, rallumage au toucher
-  - `WAYLAND_DISPLAY=wayland-0` sur ce Pi
-  - Config depuis l'admin : `screen_off_enabled` + `screen_off_delay` (10/15/20/30 min)
-- Harmonisation UI 3 pages admin : CSS partagé `web/css/hechicero-admin.css`
-- Durées épisodes via ffprobe (TICKET-059 ✅, 365 épisodes corrigés)
-- Contrôle parental (TICKET-071 ✅) : grille horaire + verrou langue
-- Tracking SQLite (`data/tracking.db`, table `play_events`), dashboard analytics complet
-- **Session 11 — stabilisation tracking + nettoyage :**
-  - TICKET-086 ✅ : 54 lignes tracking JS supprimées de `index.html` — `play_tracker.py` seule source de vérité
-  - TICKET-088 ✅ : `play_tracker.py` — `listened_s` utilisait `elapsed=0` à l'arrêt → fix : fallback `ts_end - ts_start`
-  - TICKET-061 ✅ : Saison 2 Professeur Caillou déjà présente dans `data.json` (13 épisodes)
-  - `scripts/get_status.py` + `hechicero-monitor.service` supprimés définitivement
-- **Session 12 — hardware boîtier :**
-  - TICKET-038 ✅ : bouton RUN momentané 16mm chromé, câblé broches RUN Pi 5, installé dans trou ∅16mm tranche supérieure
-  - Boîtier Concert Boy 206 : gabarit papier façade validé 1:1 ✅
-  - Décisions hardware tranche supérieure documentées dans `docs/80-hardware.md` §12 (TICKET-091→095)
-  - Modélisation 3D Onshape démarrée (façade bois + découpes HP + écran)
+> ⚠️ **Section vidée le 2026-08-21, volontairement.** Elle contenait un instantané figé au
+> **2026-06-30** — près de deux mois de retard, et une liste de « tickets ouverts
+> prioritaires » dont la totalité était close depuis.
+>
+> **Un prompt de reprise qui recopie l'état du projet le périme mécaniquement.** Pire : il
+> le périme à l'endroit exact où une IA le lira en premier, et le croira.
 
-## Source de vérité — rappel critique
-- `data/podcasts.json` → config podcasts ET radios (écrit par l'admin PHP)
-- `web/lecteur/config.json` → config avancée : `chime_enabled`, `chime_volume`, `sleep_enabled`, `sleep_delay`, `sleep_mode`, `speakers_max`, `headphones_max`, `screen_off_enabled`, `screen_off_delay`
-- `data/config.json` → seuils batterie (lu par `battery_tracker.py` et `battery_watchdog.py`)
-- `data/battery_stats.json` → état courant batterie (lu par l'IHM enfant et le dashboard)
-- `data/battery_history.json` → cycles de décharge/recharge (lu par le dashboard alimentation)
-- `writer.py` → lit les radios depuis `podcasts.json`, génère `web/lecteur/data.json`
-- `web/` → seul répertoire servi par Apache (les chemins `/podcasts/` ne sont PAS accessibles HTTP)
-- `web/css/hechicero-admin.css` → CSS partagé des 3 pages admin
-- `data/tracking.db` → SQLite, table `play_events` (gitignorée)
+| Question | Où répondre |
+|---|---|
+| Qu'est-ce qui reste à faire ? | `90-BACKLOG.md` — l'état des lieux en tête |
+| Pourquoi cette décision ? | `91-ARCHIVE-TICKETS.md`, par numéro |
+| Quels pièges ne pas rejouer ? | **`75-NON_REGRESSION.md`** — à lire avant toute modification |
+| Quelles règles sont absolues ? | `15-INVARIANTS.md` |
+| Est-ce que ça marche encore ? | `./scripts/smoke_test.sh` |
 
-## Tickets ouverts prioritaires
-- TICKET-085 : ghost carte SD (avant toute intervention hardware risquée)
-- TICKET-031 : sortie casque — DAC USB UGREEN + jack XMSJSIY, bascule HP/casque par bouton physique GPIO17 ("source", définitif — détection automatique du branchement abandonnée, LM393 puis jack switché) (voir `docs/80-hardware.md` §12)
-- TICKET-058 : easter egg “Décisions Prises” (mécanisme 3 taps + création épisodes)
-- TICKET-087 : limiteur d'exposition sonore (`volume_pct` déjà enregistré, UI + config à faire)
-- TICKET-091 : choisir interface GPIO boutons (MCP23017 préféré)
-- TICKET-092 : trouver prise USB-A panel mount ∅16-19mm chromée
-- TICKET-093 : trouver LED témoin ∅5-6mm chromée panel mount
-- TICKET-094 : trancher format switch batterie (fente 25×8mm → rocker ou trou ∅16mm → toggle M16)
-- TICKET-095 : vérifier courant max USB-C XMSJSIY (≥3A requis)
-- TICKET-048 : script d'intégrité audio/images/data.json
+## Source de vérité des fichiers de données
 
-## Notes Coco (Copilot Pro)
-- PHP n'est pas installé sur Windows → pas de `php -l` en local, toujours valider sur le Pi
-- `battery_stats.json` et `battery_history.json` doivent être `rw-rw-r--` (664) — géré par `battery_common.py`
-- `chart.min.js` doit être téléchargé localement sur le Pi (zéro CDN)
-- Voir `prompts/coco-notes-generales.md` pour les règles Coco
+- `data/podcasts.json` → podcasts **et** radios (écrit par l'admin PHP)
+- `web/lecteur/config.json` → chime, veille, extinction écran, limites de volume
+- `data/config.json` → seuils et paramètres batterie
+- `data/audio_eq.json` → égaliseur 10 bandes ×2 profils, **et le gain casque**
+- `data/battery_stats.json` → état courant (`level`, et `level_table` pour la dérive)
+- `data/battery_history.json` → cycles, purgés au-delà de 30 jours
+- `web/lecteur/data.json` → catalogue servi à l'enfant. ⚠️ **Deux écrivains** : l'ingestion
+  pour `podcasts`, l'admin pour `radios` — clés disjointes
+- `web/` → seul répertoire servi par Apache ; `/podcasts/` n'est **pas** accessible en HTTP
+- `data/tracking.db` → SQLite, historique d'écoute (gitignorée)
 
----
+⚠️ **La source de vérité du mapping GPIO est `scripts/buttons_daemon.py`** (`PINS`,
+`HANDLERS`, `TAP_OR_HOLD`, `COMBO_PINS`), pas la documentation.
 
 # 11. Notes de session — leçons retenues
 
