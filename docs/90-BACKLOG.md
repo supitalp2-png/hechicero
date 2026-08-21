@@ -15,7 +15,7 @@ plus bas.*
 | **144** | Décharge profonde après l'arrêt de l'OS : rien ne protège les cellules | 🔴 mis au jour par TICKET-128 — on se croyait protégé par une fonction qui ne coupait rien. Seule barrière : la protection intégrée des cellules |
 | **140** | Arrêt de charge nocturne, alimentation présente | 🔬 reproduit **3 fois** (54 %, 70 %, 96 %) ; temporisateur 6 h démenti — **cause inconnue**, désormais observable grâce au 141 |
 | **127** | Vrai gel du kiosque du 2026-08-17 | l'épisode du 19/08 n'en était **pas** un (c'était le 138). Le gel du 17/08 reste **non expliqué** ; battement de cœur en place pour le prochain |
-| **122** | MPD se fige si le réseau disparaît en webradio | chien de garde installé, **jamais éprouvé en réel** |
+| **122** | MPD se fige si le réseau disparaît en webradio | logique de décision **couverte** (9 tests, 2026-08-21) ; la **récupération** — SIGKILL + redémarrage — reste non éprouvée |
 | **119** | Écran technique caché (combinaison de boutons) | cadré, **à ne pas implémenter pour l'instant** |
 | **111** | Ventilateur GPIO/PWM | à décider |
 | **058** | Série podcast « Décisions Prises » + easter egg | 2 épisodes écrits |

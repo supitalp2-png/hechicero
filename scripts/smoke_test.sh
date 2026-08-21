@@ -711,6 +711,23 @@ else
     fi
 fi
 
+# ── TICKET-122 — logique du chien de garde MPD ─────────────────────────────
+# Installé le 2026-08-05 et jamais éprouvé : il faudrait qu'un flux meure
+# vraiment pour le voir agir. Ces tests couvrent la LOGIQUE DE DÉCISION, sans
+# risque. ⚠️ Ils ne prouvent PAS la récupération (SIGKILL + redémarrage), qui
+# reste non éprouvée — le ticket reste ouvert pour cette raison.
+WD_TEST="$ROOT/scripts/test_mpd_watchdog.py"
+if [ -f "$WD_TEST" ]; then
+    if sortie_wd=$(timeout 15 python3 "$WD_TEST" 2>&1); then
+        pass "chien de garde MPD : $(echo "$sortie_wd" | grep -c '^  ok') test(s) de décision OK (TICKET-122)"
+    else
+        fail "chien de garde MPD : logique de décision cassée (TICKET-122)"
+        echo "$sortie_wd" | grep -A2 'ÉCHEC' | head -8 | sed 's/^/     /'
+    fi
+else
+    warn "test_mpd_watchdog.py absent — logique du chien de garde non couverte (TICKET-122)"
+fi
+
 # ── TICKET-132 — un avertissement permanent qui ne signale rien ────────────
 # Chaque appui play/pause produisait un WARNING alors que l'action marchait :
 # radio.php répond du HTML pour `pause`, et json.loads() échouait dessus. Un
