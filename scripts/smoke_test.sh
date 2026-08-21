@@ -700,12 +700,32 @@ else
     # La leçon de TICKET-142 : le verdict doit se prononcer EN POINTS, pas en mV.
     grep -q "DESACCORD_MAX_POINTS" "$RECAL" || manque="$manque verdict-en-points"
     # Et il ne doit plus dépendre d'un chemin absolu.
-    grep -q '"/home/thomas/hechicero' "$RECAL" && manque="$manque chemin-en-dur"
+    # Ancré hors commentaire (`^[^#]*`) : sans ça, une simple mention du vieux
+    # chemin dans la doc du script ferait échouer ce garde. Défaut trouvé par
+    # l'audit du 2026-08-21, AVANT qu'il ne morde.
+    grep -qE '^[^#]*"/home/thomas/hechicero' "$RECAL" && manque="$manque chemin-en-dur"
     if [ -n "$manque" ]; then
         fail "recalibrer_table_batterie.py : garde-fou(s) manquant(s) :$manque — l'outil peut à nouveau proposer une table absurde (TICKET-143)"
     else
         pass "outil de recalibration : cycles clos, départ plein, verdict en points (TICKET-143)"
     fi
+fi
+
+# ── TICKET-132 — un avertissement permanent qui ne signale rien ────────────
+# Chaque appui play/pause produisait un WARNING alors que l'action marchait :
+# radio.php répond du HTML pour `pause`, et json.loads() échouait dessus. Un
+# journal saturé de faux avertissements fait ignorer les vrais.
+# Test de COMPORTEMENT (urlopen remplacé), pas un grep — voir §5bis du registre.
+BTN_TEST="$ROOT/scripts/test_boutons.py"
+if [ -f "$BTN_TEST" ]; then
+    if sortie_btn=$(timeout 15 python3 "$BTN_TEST" 2>&1); then
+        pass "boutons : $(echo "$sortie_btn" | grep -c '^  ok') test(s) unitaire(s) OK (TICKET-132)"
+    else
+        fail "boutons : http_get() confond « pas du JSON » et « en panne » (TICKET-132)"
+        echo "$sortie_btn" | grep -A2 'ÉCHEC' | head -8 | sed 's/^/     /'
+    fi
+else
+    warn "test_boutons.py absent — bruit de journal des boutons non couvert (TICKET-132)"
 fi
 
 # ── TICKET-128 — ce registre arme un DÉMARRAGE, pas une coupure ────────────

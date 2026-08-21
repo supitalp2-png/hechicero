@@ -86,11 +86,42 @@ PINS = [17, 23, 27, 5, 6, 13, 16, 12, 25]
 
 
 def http_get(query: str) -> dict | None:
+    """Appelle radio.php et renvoie le JSON, ou None si la réponse n'en est pas.
+
+    ── TICKET-132 : ne pas confondre « pas du JSON » et « en panne » ──────────
+    Chaque appui sur play/pause produisait :
+
+        WARNING Appel radio.php échoué (action=pause) : Expecting value: line 1 column 1
+
+    **alors que l'action fonctionnait parfaitement.** `radio.php` ne renvoie du
+    JSON que pour certaines actions ; pour `pause` il exécute la commande MPD
+    puis retombe sur la vieille page HTML de débogage en bas du fichier. Le
+    `json.loads()` échouait sur du HTML, et l'exception était journalisée comme
+    une panne réseau.
+
+    ⚠️ Un avertissement permanent qui ne signale rien est exactement ce qui fait
+    ignorer les vrais : le journal de `buttons_daemon` en devenait illisible.
+
+    On distingue donc les deux cas — l'échec de transport reste un `warning`,
+    une réponse non-JSON descend en `debug`. ❌ **Ne PAS uniformiser les
+    réponses de `radio.php` en JSON** : l'IHM enfant lit `action=status` en
+    texte MPD brut (`sendRadio('status')` puis `parseMpd()`), ce changement
+    casserait le lecteur.
+    """
     try:
         with urllib.request.urlopen(f"{RADIO_BASE}?{query}", timeout=3) as r:
-            return json.loads(r.read().decode("utf-8"))
+            corps = r.read().decode("utf-8")
     except Exception as e:
+        # Vraie panne : réseau, serveur absent, HTTP en erreur, délai dépassé.
         LOGGER.warning("Appel radio.php échoué (%s) : %s", query, e)
+        return None
+    try:
+        return json.loads(corps)
+    except ValueError:
+        # Réponse reçue mais pas au format JSON : la commande a bien été
+        # exécutée, seul le format de retour diffère. Rien à signaler.
+        LOGGER.debug("radio.php (%s) a répondu autre chose que du JSON — normal "
+                     "pour cette action", query)
         return None
 
 

@@ -14,7 +14,6 @@ plus bas.*
 |---|---|---|
 | **144** | Décharge profonde après l'arrêt de l'OS : rien ne protège les cellules | 🔴 mis au jour par TICKET-128 — on se croyait protégé par une fonction qui ne coupait rien. Seule barrière : la protection intégrée des cellules |
 | **140** | Arrêt de charge nocturne, alimentation présente | 🔬 reproduit **3 fois** (54 %, 70 %, 96 %) ; temporisateur 6 h démenti — **cause inconnue**, désormais observable grâce au 141 |
-| **132** | `buttons_daemon` avertit à chaque play/pause (bruit de journal) | à faire, sans gravité |
 | **127** | Vrai gel du kiosque du 2026-08-17 | l'épisode du 19/08 n'en était **pas** un (c'était le 138). Le gel du 17/08 reste **non expliqué** ; battement de cœur en place pour le prochain |
 | **122** | MPD se fige si le réseau disparaît en webradio | chien de garde installé, **jamais éprouvé en réel** |
 | **119** | Écran technique caché (combinaison de boutons) | cadré, **à ne pas implémenter pour l'instant** |
@@ -35,7 +34,7 @@ dans les jours qui viennent :
 **Clos le 2026-08-17** : 112 · 116 · 123 · 124 · 125 · 131 · 079 · 079bis · 017 (supprimé)
 **Clos le 2026-08-18** : 134 (décharge profonde mesurée) · 136 (bandeau batterie figé 50 j)
 **Clos le 2026-08-19** : 141 (enregistreur aveugle aux plateaux)
-**Clos le 2026-08-21** : 137 · 139 · 142 (chaîne de mesure batterie) · 143 (outil de recalibration) · 128 (registre HAT : démarrage, pas coupure) · 138 (veille unique) · 129 (PHP en UTC, après 4 morsures) · 121 (arrêt critique prouvé 2× en réel) · 126 · 130 · 133
+**Clos le 2026-08-21** : 132 (bruit de journal) · 137 · 139 · 142 (chaîne de mesure batterie) · 143 (outil de recalibration) · 128 (registre HAT : démarrage, pas coupure) · 138 (veille unique) · 129 (PHP en UTC, après 4 morsures) · 121 (arrêt critique prouvé 2× en réel) · 126 · 130 · 133
 
 ⚠️ **Collision de numéro résolue le 2026-08-17** : `TICKET-123` désignait **deux**
 tickets différents — le bug d'écran (corrigé ce jour) et le registre de
@@ -119,14 +118,6 @@ collision TICKET-090 → TICKET-117 du 2026-08-04.
         - **Ligne du seuil d'arrêt** sur les courbes de décharge, lue depuis `config.json` (pas codée en dur) : la marge se juge d'un coup d'œil, ce qui servira quand le seuil sera réinterrogé.
         - Le graphe tension reste vide tant que les relevés ne se sont pas accumulés — la tension n'est enregistrée que depuis ce soir. Le panneau l'explique plutôt que d'afficher un cadre vide.
       - ⏳ **Reste** : les cycles de charge/décharge de Thomas alimenteront un modèle enfin correct. Le seuil de coupure sera réinterrogé à ce moment-là, pas avant.
-
-- [ ] TICKET-132 — hygiène — `buttons_daemon` journalise un avertissement à chaque appui play/pause (2026-08-17)
-      - **Constaté** en validant TICKET-123 : chaque appui sur GPIO12 produit `WARNING Appel radio.php échoué (action=pause) : Expecting value: line 1 column 1`.
-      - **L'action fonctionne pourtant parfaitement.** `radio.php` ne renvoie du JSON que pour certaines actions ; pour `pause` il exécute la commande MPD puis **retombe sur la vieille page HTML de débogage** en bas du fichier. `http_get()` tente un `json.loads()`, tombe sur du HTML, avertit, et renvoie `None`.
-      - ✅ **Pré-existant, pas une régression du 2026-08-17** : `git log -- web/lecteur/radio.php` montre que le chemin `pause` n'a pas été touché, et `curl action=status` renvoie du texte MPD brut (`volume: 38`), pas du JSON.
-      - ⚠️ **Pourquoi ça mérite un ticket malgré tout** : un avertissement permanent qui ne signale rien est exactement ce qui fait ignorer les vrais. Le journal de `buttons_daemon` devient illisible.
-      - **Correctif envisagé** : `http_get()` ne doit avertir que sur un **vrai échec réseau ou HTTP**, pas quand la réponse n'est simplement pas du JSON.
-      - ❌ **Ne PAS uniformiser les réponses de `radio.php` en JSON** : l'IHM enfant lit `action=status` en **texte MPD brut** (`sendRadio('status')` puis `parseMpd()`). Changer le format casserait le lecteur.
 
 - [~] TICKET-130 — bug/données — Neuf podcasts ont disparu de la config, en silence, pendant deux semaines (2026-08-17)
       - **Symptôme (Thomas)** : « mini vulgaire je suis certain de l'avoir ajouté, il a disparu de la liste ? ». Découvert par hasard, en intégrant `check_integrity.py` au smoke test — pas par un utilisateur, pas par une alerte.
@@ -281,6 +272,18 @@ collision TICKET-090 → TICKET-117 du 2026-08-04.
 ---
 
 # ✔️ Terminé
+
+- [x] TICKET-132 — hygiène — `buttons_daemon` journalise un avertissement à chaque appui play/pause (2026-08-17) — ✅ **CORRIGÉ le 2026-08-21**
+      - 🛠️ `http_get()` distingue enfin **échec de transport** (réseau, HTTP, délai → `warning` conservé) et **réponse non-JSON** (→ `debug`). La lecture du corps et son décodage sont désormais deux `try` séparés ; avant, une page HTML parfaitement valide était journalisée comme une panne.
+      - ⚠️ **La moitié à ne pas perdre** : supprimer simplement l'avertissement aurait rendu une vraie panne réseau **silencieuse**. On aurait remplacé un journal illisible par un journal muet — un test vérifie explicitement que l'alerte survit à une `OSError`.
+      - ✅ **Test de comportement** (`scripts/test_boutons.py`, 5 assertions) : `urlopen` est remplacé et on observe ce qui est journalisé. **Pas un `grep`** — trois gardes textuels s'étaient fait prendre le même jour à trouver leur propre documentation.
+      - **Constaté** en validant TICKET-123 : chaque appui sur GPIO12 produit `WARNING Appel radio.php échoué (action=pause) : Expecting value: line 1 column 1`.
+      - **L'action fonctionne pourtant parfaitement.** `radio.php` ne renvoie du JSON que pour certaines actions ; pour `pause` il exécute la commande MPD puis **retombe sur la vieille page HTML de débogage** en bas du fichier. `http_get()` tente un `json.loads()`, tombe sur du HTML, avertit, et renvoie `None`.
+      - ✅ **Pré-existant, pas une régression du 2026-08-17** : `git log -- web/lecteur/radio.php` montre que le chemin `pause` n'a pas été touché, et `curl action=status` renvoie du texte MPD brut (`volume: 38`), pas du JSON.
+      - ⚠️ **Pourquoi ça mérite un ticket malgré tout** : un avertissement permanent qui ne signale rien est exactement ce qui fait ignorer les vrais. Le journal de `buttons_daemon` devient illisible.
+      - **Correctif envisagé** : `http_get()` ne doit avertir que sur un **vrai échec réseau ou HTTP**, pas quand la réponse n'est simplement pas du JSON.
+      - ❌ **Ne PAS uniformiser les réponses de `radio.php` en JSON** : l'IHM enfant lit `action=status` en **texte MPD brut** (`sendRadio('status')` puis `parseMpd()`). Changer le format casserait le lecteur.
+
 
 - [x] TICKET-128 — batterie/matériel — « Coupure matérielle » du HAT : la fonction faisait l'INVERSE de ce qu'elle annonçait (2026-08-17) — ✅ **CORRIGÉ le 2026-08-21**
       - **Découvert** dans la démo du fabricant restée au bas de `scripts/INA219.py` (sous `if __name__=='__main__':`, donc du code mort — mais instructif) : le HAT UPS expose un **registre d'extinction**. Écrire `0x55` dans le registre `0x01` du périphérique I2C `0x2d` lui demande de couper sa sortie.
