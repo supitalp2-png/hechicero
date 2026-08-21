@@ -444,6 +444,32 @@ le **second élément** pilote `close_discharge()` / `close_charge()` / `new_cyc
 Ajouter la cadence plancher ou le courant à ce second élément fabriquerait **un faux cycle
 toutes les 5 minutes**. Il doit rester strictement `transition or state_changed`.
 
+**Quatrième piège — la table et sa compensation vont PAR PAIRE (2026-08-21, TICKET-137)** :
+`_LIPO_TABLE` contient désormais des tensions **à vide**, mesurées. L'INA219, lui, mesure
+sous charge. Retirer `tension_a_vide()` en gardant la table — ou régler
+`internal_resistance_ohm` à zéro — rend le niveau **plus faux qu'avec l'ancienne courbe
+générique**, et **rien ne plante**. À −2,2 A l'écart vaut 75 mV, soit environ 8 points :
+la jauge plongerait dès qu'un podcast démarre, alors que rien n'a été consommé.
+
+C'est le même schéma que le durcissement systemd de la zone Z2 : **deux éléments corrects
+séparément, faux une fois dissociés.** Deux tests du smoke test §5 les maintiennent liés.
+
+**Cinquième piège — le haut de la courbe n'est pas mesurable par la tension** : entre 75 et
+95 %, la table mesurée étale 20 points de pourcentage sur **40 mV** (contre 60 mV pour
+l'ancienne). C'est le plateau de la chimie Li-ion, pas un défaut. Conséquence pratique :
+la nouvelle table est **environ sept fois plus sensible au bruit** dans cette zone. Le
+lissage de TICKET-139 en est donc le **préalable**, pas un confort — livrer la table seule
+aurait aggravé le sautillement qu'on cherchait à corriger. Un espacement minimal de 5 mV
+entre paliers évite de créer une falaise plus fine que le bruit résiduel.
+
+⚠️ **Changement de sens silencieux, à ne pas oublier** : le seuil de coupure s'appelle
+toujours « 5 % » mais ne désigne plus la même tension — 3,458 V à vide au lieu de 3,350 V,
+soit **108 mV plus tôt** et ~14 min d'autonomie en moins. Décision de Thomas du
+2026-08-21 : garder 5 %, parce que ces 14 minutes se situent là où la tension s'effondre
+et où les cellules souffrent le plus. **Un seuil dont le nom ne change pas alors que sa
+signification physique change est un piège classique** : le vérifier après toute
+modification de la table.
+
 **Fichiers** : `scripts/battery_tracker.py`, `scripts/battery_watchdog.py`,
 `scripts/battery_common.py`, `data/tracking.db`
 
@@ -607,6 +633,9 @@ Par ordre d'urgence. C'est la liste de travail de ce document.
 | Z8 batterie — modèle d'autonomie | Les estimations reposent sur un seul cycle, lui-même faussé avant le correctif de TICKET-133. À réévaluer après plusieurs cycles complets — c'est aussi à ce moment-là que le seuil de coupure de 15 % pourra être réinterrogé. | TICKET-133 |
 | Z8 batterie — coupure HAT | Le registre `0x2d` est détecté et armé avant l'arrêt, mais **rien ne prouve que la coupure soit différée** et non immédiate. `--simulate-critical` s'arrête volontairement avant l'écriture I2C. | TICKET-128 |
 | ~~Z8 batterie — observabilité~~ | ✅ **couvert** depuis le 2026-08-19 : cadence plancher de 5 min, courant devenu critère d'enregistrement, purge à 30 j. `test_batterie.py` passe à 44 assertions ; les 4 clés **vérifiées en échec sur le code d'avant** (l'ancien retenait **0 point** sur un plateau de 30 min). | TICKET-141 |
+| ~~Z8 batterie — table de conversion~~ | ✅ **couvert** depuis le 2026-08-21 : table mesurée sur **deux décharges profondes indépendantes** (6,4 mV de désaccord médian), compensation d'affaissement (R = 34 mΩ), lissage par médiane sur rafale. **62 assertions** ; 4 des 5 clés **vérifiées en échec sur l'ancienne table**. Smoke test §5 : couplage table/compensation, résistance non nulle, rafale active. | TICKET-137 · TICKET-139 |
+| Z8 batterie — haut de courbe (75-95 %) | **Non résoluble par la tension** : 20 points sur 40 mV. Le lissage rend la jauge stable, pas juste. Seul un comptage coulométrique y répondrait — écarté le 2026-08-21 (mécanisme neuf, dérive à gérer). À rouvrir si l'imprécision gêne à l'usage. | TICKET-137 |
+| Z8 batterie — R mal contraint | R = 34 mΩ est le meilleur accord entre les deux cycles, mais le minimum est **plat entre 20 et 60 mΩ** : le courant de décharge varie trop peu (1540-2170 mA) pour donner du bras de levier. À réévaluer si un cycle à faible courant devient disponible. | TICKET-137 |
 | Z8 batterie — arrêt de charge nocturne | Le chargeur s'est arrêté de 00:16 à 07:09 le 2026-08-19 **alimentation présente**, à 61 %. Piste du temporisateur 6 h **démentie** (charge poursuivie jusqu'à 97 % le lendemain). Cause inconnue — **était indiagnosticable avant TICKET-141**, à reprendre sur les données du prochain épisode. | TICKET-140 |
 
 ---

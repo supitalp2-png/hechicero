@@ -19,7 +19,13 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from battery_common import detecter_charge          # noqa: E402
+from battery_common import (                        # noqa: E402
+    _LIPO_TABLE,
+    detecter_charge,
+    mediane,
+    percent_from_voltage,
+    tension_a_vide,
+)
 from battery_tracker import (                       # noqa: E402
     close_discharge,
     purge_history,
@@ -286,6 +292,71 @@ verifie("purge : la transition ancienne est préservée",
 # de carte SD qu'on cherche à éviter.
 verifie("purge idempotente : deuxième passage sans effet",
         purge_history(hist_vieux, maintenant=maintenant), 0)
+
+
+# ── 11. TICKET-139 — la médiane, et pourquoi ce n'est pas la moyenne ───────
+verifie("médiane, nombre impair d'échantillons", mediane([3.0, 1.0, 2.0]), 2.0)
+verifie("médiane, nombre pair", mediane([1.0, 2.0, 3.0, 4.0]), 2.5)
+# LE cas réel : une charge à ~900 mA avec un creux isolé à -210 mA. C'est ce
+# creux qui faisait annoncer « charge arrêtée » le 2026-08-19.
+rafale = [900.0, 880.0, -210.0, 910.0, 890.0]
+verifie("creux isolé de -210 mA écarté par la médiane", mediane(rafale), 890.0)
+verifie("la moyenne, elle, aurait été tirée vers le bas", round(sum(rafale) / len(rafale)), 674)
+
+# ── 12. TICKET-137 — compensation d'affaissement ──────────────────────────
+R = 0.034
+# En DÉCHARGE le courant est négatif : la cellule est plus pleine qu'elle n'en
+# a l'air. C'est le cas qui faisait plonger la jauge quand un podcast démarrait.
+verifie("décharge -2200 mA : +75 mV de correction",
+        round(tension_a_vide(3.328, -2200.0, R) - 3.328, 3), 0.075)
+# En CHARGE le courant est positif : la cellule est moins pleine qu'elle n'en a
+# l'air. Se tromper de signe doublerait l'erreur au lieu de l'annuler.
+verifie("charge +1100 mA : -37 mV de correction",
+        round(tension_a_vide(3.952, 1100.0, R) - 3.952, 3), -0.037)
+verifie("courant nul : aucune correction", tension_a_vide(3.800, 0.0, R), 3.800)
+verifie("résistance nulle : fonction neutre", tension_a_vide(3.800, -2200.0, 0.0), 3.800)
+
+# ── 13. TICKET-137 — la table mesurée ─────────────────────────────────────
+# Monotonie stricte : percent_from_voltage() interpole entre paliers successifs
+# et diviserait par zéro sur deux tensions égales.
+verifie("table strictement décroissante en tension",
+        all(_LIPO_TABLE[i][0] > _LIPO_TABLE[i + 1][0] for i in range(len(_LIPO_TABLE) - 1)),
+        True)
+verifie("table strictement décroissante en pourcentage",
+        all(_LIPO_TABLE[i][1] > _LIPO_TABLE[i + 1][1] for i in range(len(_LIPO_TABLE) - 1)),
+        True)
+# Aucun palier plus fin que le bruit résiduel après lissage (5 mV).
+# ⚠️ Celui-ci n'est PAS un test de régression : l'ancienne table le passait
+# aussi. C'est un invariant de structure, qui protège d'une FUTURE table
+# régénérée trop finement dans la zone plate — pas du bug de 2026-08-21.
+verifie("aucun palier sous 5 mV",
+        min(round(_LIPO_TABLE[i][0] - _LIPO_TABLE[i + 1][0], 4)
+            for i in range(len(_LIPO_TABLE) - 1)) >= 0.005,
+        True)
+
+# Le cycle du 2026-08-18 s'est arrêté à 3,328 V sous -2194 mA. Avec la
+# compensation, la table doit y voir un niveau quasi nul — c'était bien la fin
+# de la décharge. L'ancienne table y annonçait encore 4 %.
+v_coupure = tension_a_vide(3.328, -2194.0, R)
+verifie("à la coupure réelle du 18/08, le niveau est quasi nul",
+        percent_from_voltage(v_coupure) <= 2, True)
+
+# Le seuil de 5 % doit tomber sur la tension mesurée, pas sur celle de la vieille
+# courbe générique. C'est ce déplacement de 108 mV qui rend la coupure plus
+# prudente — décision de Thomas du 2026-08-21.
+verifie("seuil 5 % à la tension mesurée", percent_from_voltage(3.458), 5)
+verifie("pleine charge reconnue", percent_from_voltage(4.146), 100)
+verifie("au-dessus du plein, on plafonne à 100", percent_from_voltage(4.30), 100)
+verifie("sous le plancher, on tombe à 0", percent_from_voltage(3.10), 0)
+
+# ⚠️ Le piège que ce test surveille : appliquer la table à une tension BRUTE.
+# Elle donne des tensions À VIDE ; sans compensation, un podcast en cours ferait
+# perdre ~8 points instantanément alors que rien n'a été consommé.
+brut = 3.763 - 2.2 * R          # 40 % réels, vus sous -2,2 A
+verifie("sans compensation, la jauge perd des points à tort",
+        percent_from_voltage(brut) < 35, True)
+verifie("avec compensation, elle retombe sur 40 %",
+        percent_from_voltage(tension_a_vide(brut, -2200.0, R)), 40)
 
 
 print()

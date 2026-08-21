@@ -12,9 +12,9 @@
 |---|---|---|
 | **141** | L'enregistreur est aveugle pendant les plateaux et ignore le courant | ✅ **corrigé le 2026-08-19** : cadence plancher 5 min, courant comme critère, purge 30 j, 44 assertions. **Non testé en réel** |
 | **140** | Arrêt de charge nocturne à 61 % (00:16 → 07:09), alimentation présente | 🔬 établi ; ❌ piste du temporisateur 6 h **démentie** (charge jusqu'à 97 %) — **cause inconnue**, bloqué par le 141 |
-| **139** | « Charge arrêtée à 60 % » = signal non lissé, pas un plateau | 🔍 **cause trouvée le 2026-08-19** : état et niveau calculés sur un échantillon isolé d'un signal à ±1400 mA. Lissage à écrire |
+| **139** | « Charge arrêtée à 60 % » = signal non lissé, pas un plateau | ✅ **corrigé le 2026-08-21** : rafale de 5 lectures + médiane. **Non testé en réel** |
 | **138** | Deux minuteries de veille désaccordées (dalle allumée, page noire 9 min) | 🔍 **cause racine prouvée le 2026-08-19** ; correctif décidé, **pas encore écrit** |
-| **137** | Recalibrer la table tension→pourcentage sur les cellules réelles | 🔬 script d'analyse prêt ; **attendre 3-4 cycles** avant de remplacer la table |
+| **137** | Recalibrer la table tension→pourcentage sur les cellules réelles | ✅ **corrigé le 2026-08-21** : table mesurée sur 2 cycles (6,4 mV d'accord) + compensation R = 34 mΩ. **Non testé en réel** |
 | **134** | Test de décharge profonde | ✅ **fait le 2026-08-18** : 97 % → 5 % en 4 h 49, coupure propre à 4 %, **3,328 V sous −2,2 A**. Seuils abaissés à 5 % / 10 % sur cette preuve |
 | **133** | Détection charge/décharge + cycles faussés par l'arrêt | ✅ corrigé et testé ; reste à accumuler des cycles pour le modèle |
 | **132** | `buttons_daemon` avertit à chaque play/pause (bruit de journal) | à faire, sans gravité |
@@ -63,6 +63,19 @@ collision TICKET-090 → TICKET-117 du 2026-08-04.
 ---
 
 # 🔥 Priorité haute
+
+- [x] TICKET-137 + TICKET-139 — batterie/précision — Table mesurée, compensation d'affaissement et lissage (2026-08-21) — ✅ **CORRIGÉ**
+      - **Condition posée par Thomas remplie** : après plusieurs cycles, les courbes convergent. Deux décharges profondes indépendantes (cycles 12 du 18/08 et 18 du 19/08) ont délivré **8892 et 8896 mAh** — à 0,05 % près — et leurs courbes tension→charge s'accordent à **6,4 mV** après compensation (12,0 mV sans).
+      - 📉 **Ampleur du défaut corrigé** : l'ancienne table, courbe générique jamais recalée, **sur-évaluait de 4 à 8 points** sur presque toute la plage et annonçait encore **7 % à la coupure réelle**.
+      - 🛠️ **Livré ensemble, et c'est indispensable** :
+        - `tension_a_vide(V, I, R)` — la table donne des tensions **à vide**, l'INA219 mesure **sous charge**. À −2,2 A l'écart vaut 75 mV, soit ~8 points : c'est ce qui faisait plonger la jauge dès qu'un podcast démarrait.
+        - `_LIPO_TABLE` remplacée par la courbe mesurée.
+        - `mediane()` + rafale de 5 lectures dans `read_sensor_snapshot()`. **Médiane et non moyenne** : une seule valeur aberrante déplace une moyenne, il en faut la moitié pour déplacer une médiane. C'est le creux isolé à −210 mA qui faisait annoncer « charge arrêtée ».
+      - ⚠️ **Pourquoi le 139 devait précéder le 137** : la table mesurée étale **20 points de pourcentage sur 40 mV** entre 75 et 95 % (contre 60 mV avant) — le plateau de la chimie Li-ion. Elle est donc **~7× plus sensible au bruit**. Livrer la table sans le lissage aurait aggravé le sautillement qu'on cherchait à corriger.
+      - ⚠️ **Changement de sens silencieux du seuil** : « 5 % » désigne maintenant 3,458 V à vide au lieu de 3,350 V, soit **108 mV plus tôt** et ~14 min d'autonomie en moins. **Décision de Thomas : garder 5 %** — ces minutes sont dans la zone où la tension s'effondre et où les cellules souffrent.
+      - 🔍 **Défaut trouvé en chemin dans `recalibrer_table_batterie.py`** : il sélectionnait le cycle **en cours**, dont `level_end` est absent, donc profondeur calculée à 96 points au lieu de ~30 — il proposait une table absurde (85 points sur 80 mV). Sa sortie n'était pas exploitable ; l'analyse a été refaite par intégration du courant sur les cycles clos. Le script code aussi en dur `/home/thomas/hechicero` au lieu d'un chemin relatif. **Non corrigé — à reprendre.**
+      - 📌 **Limites assumées** : R = 34 mΩ est le meilleur accord entre cycles, mais le minimum est **plat de 20 à 60 mΩ** (le courant de décharge varie trop peu pour contraindre R). Et le haut de courbe reste imprécis — seul un comptage coulométrique y répondrait, écarté pour l'instant.
+      - ✅ **Tests** : `test_batterie.py` passe de 44 à **62 assertions**. **4 des 5 clés vérifiées en échec sur l'ancienne table** (la 5ᵉ est un invariant de structure, annoté comme tel). Smoke test §5 : couplage table/compensation, résistance non nulle, rafale active.
 
 - [ ] TICKET-139 — mesure/batterie — La charge plafonne vers 60 % : vraie asymptote ou charge annulée par la consommation ? (2026-08-19)
       - **Signalé par Thomas**, après la refonte du suivi (TICKET-133) : « le dashboard indique que la charge se stoppe mais que la batterie est à 60 % ».

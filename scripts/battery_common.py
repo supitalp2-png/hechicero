@@ -6,6 +6,7 @@ import socket
 import stat
 import subprocess
 import tempfile
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -31,6 +32,26 @@ DEFAULT_CONFIG = {
     "shutdown_threshold_percent": 8,
     "grace_seconds_before_shutdown": 60,
     "ina219_addr": 0x43,
+    # ── TICKET-139 — lisser avant de décider ────────────────────────────────
+    # Chaque lecture de l'INA219 était prise pour argent comptant, alors que le
+    # signal oscille de −210 à +1459 mA d'un relevé à l'autre. Conséquences
+    # mesurées le 2026-08-19 : un creux passager à −210 mA faisait annoncer
+    # « charge arrêtée », et 72 mV de variation de tension faisaient sauter le
+    # niveau de 61 à 70 % en quatre minutes.
+    # On prend donc plusieurs lectures rapprochées et on garde la MÉDIANE — pas
+    # la moyenne : une seule valeur aberrante suffit à déplacer une moyenne,
+    # alors qu'il en faut la moitié pour déplacer une médiane.
+    "sensor_burst_samples": 5,
+    "sensor_burst_interval_s": 0.2,
+    # ── TICKET-137 — résistance interne, pour la compensation d'affaissement ─
+    # Mesurée le 2026-08-21 en cherchant le R qui fait coïncider les courbes de
+    # deux décharges profondes indépendantes (cycles 12 et 18) : le désaccord
+    # médian tombe de 12,0 mV à 6,4 mV. ⚠️ Le minimum est PLAT entre 20 et
+    # 60 mΩ — le courant de décharge varie peu (1540-2170 mA), donc R n'est pas
+    # finement déterminé. À prendre comme un ordre de grandeur, pas comme une
+    # constante physique. À réévaluer si un cycle à faible courant devient
+    # disponible : c'est lui qui donnerait le bras de levier qui manque.
+    "internal_resistance_ohm": 0.034,
 }
 
 
@@ -97,17 +118,78 @@ def load_config() -> dict[str, Any]:
     return merged
 
 
-# Table de décharge LiPo 1S standard (courbe réelle, vs linéaire 3.0–4.2V)
-# La formule linéaire surestimait le niveau (~+20 pts autour de 3.7V).
-# Source : courbe typique LiPo polymère / Li-Ion 18650, 25°C, décharge lente.
+# ── TICKET-137 — table MESURÉE sur les cellules réelles (2026-08-21) ────────
+#
+# L'ancienne table était une courbe générique d'accumulateur à poche, héritée du
+# montage d'origine et jamais recalée. Les cellules sont deux EVE INR21700/58E
+# (Li-ion NMC, 5600 mAh chacune). Elle sur-évaluait le niveau de **4 à 8 points**
+# sur presque toute la plage — et annonçait encore 7 % à la coupure réelle.
+#
+# Établie par intégration du courant sur **deux décharges profondes
+# indépendantes** (cycles 12 du 2026-08-18 et 18 du 2026-08-19), qui ont délivré
+# 8892 et 8896 mAh — à 0,05 % près. Désaccord médian entre les deux courbes :
+# **6,4 mV** après compensation d'affaissement.
+#
+# ⚠️ CES TENSIONS SONT DES TENSIONS À VIDE. Elles ne doivent JAMAIS être
+# comparées à une lecture brute de l'INA219 : passer par `tension_a_vide()`.
+# Échanger la table sans la compensation rendrait le calcul plus faux qu'avant,
+# et c'est la raison pour laquelle les deux ont été livrées ensemble.
+#
+# ⚠️ ENTRE 75 ET 95 %, LA TENSION NE DISTINGUE PRESQUE RIEN : 20 points de
+# pourcentage étalés sur 40 mV, contre 60 mV dans l'ancienne table. C'est le
+# plateau de la chimie Li-ion, pas un défaut de mesure — mais cela rend le haut
+# de la jauge intrinsèquement imprécis, et **environ sept fois plus sensible au
+# bruit** que l'ancienne table. C'est pourquoi le lissage (TICKET-139) est un
+# PRÉALABLE et non un confort. Un espacement minimal de 5 mV est imposé entre
+# paliers pour ne pas créer de falaise plus fine que le bruit résiduel.
+# La vraie réponse à ce plateau serait un comptage coulométrique ; écarté pour
+# l'instant (mécanisme neuf, dérive à gérer).
 _LIPO_TABLE = [
-    (4.20, 100), (4.15, 95), (4.11, 90), (4.08, 85),
-    (4.02, 80),  (3.98, 75), (3.95, 70), (3.91, 65),
-    (3.87, 60),  (3.83, 55), (3.79, 50), (3.75, 45),
-    (3.71, 40),  (3.67, 35), (3.63, 30), (3.59, 25),
-    (3.55, 20),  (3.49, 15), (3.44, 10), (3.35,  5),
-    (3.00,   0),
+    (4.146, 100), (4.067, 95), (4.058, 90), (4.036, 85),
+    (4.031, 80),  (4.026, 75), (3.992, 70), (3.943, 65),
+    (3.901, 60),  (3.859, 55), (3.837, 50), (3.800, 45),
+    (3.763, 40),  (3.731, 35), (3.676, 30), (3.639, 25),
+    (3.586, 20),  (3.528, 15), (3.502, 10), (3.458,  5),
+    (3.392,   0),
 ]
+
+
+def mediane(valeurs: list[float]) -> float:
+    """Médiane d'une liste non vide.
+
+    TICKET-139. Médiane et pas moyenne : sur un signal qui comporte des valeurs
+    aberrantes isolées (un creux de courant à −210 mA au milieu d'une charge à
+    +900 mA), **une seule** valeur suffit à déplacer une moyenne, alors qu'il en
+    faut la moitié pour déplacer une médiane. C'est précisément ce genre de
+    creux isolé qui faisait annoncer « charge arrêtée ».
+    """
+    if not valeurs:
+        raise ValueError("mediane() sur une liste vide")
+    ordonnees = sorted(valeurs)
+    milieu = len(ordonnees) // 2
+    if len(ordonnees) % 2:
+        return ordonnees[milieu]
+    return (ordonnees[milieu - 1] + ordonnees[milieu]) / 2
+
+
+def tension_a_vide(voltage_v: float, current_ma: float, resistance_ohm: float) -> float:
+    """Tension de la cellule corrigée de sa chute ohmique interne.
+
+    TICKET-137. `_LIPO_TABLE` associe des pourcentages à des tensions **à
+    vide**. Or l'INA219 mesure la tension **sous charge**, plus basse de I·R.
+    Sans cette correction, le niveau affiché plonge dès qu'un podcast démarre :
+    à −2,2 A et R = 34 mΩ, l'affaissement vaut 75 mV, soit environ 8 points de
+    pourcentage — alors qu'aucune énergie n'a encore été consommée.
+
+    ⚠️ Le signe compte. En DÉCHARGE (courant négatif) la tension mesurée est
+    plus basse que la tension à vide : on ajoute I·R. En CHARGE (courant
+    positif) elle est plus HAUTE : on retranche. D'où `- current·R` dans les
+    deux cas, le signe du courant faisant le travail. Se tromper de signe
+    doublerait l'erreur au lieu de l'annuler.
+    """
+    if resistance_ohm <= 0:
+        return voltage_v
+    return voltage_v - (current_ma / 1000.0) * resistance_ohm
 
 
 def percent_from_voltage(voltage_v: float) -> int:
@@ -200,10 +282,30 @@ def read_sensor_snapshot(
     if sensor is None:
         raise RuntimeError("INA219 unavailable")
 
-    voltage_v = float(sensor.getBusVoltage_V())
-    current_ma = float(-sensor.getCurrent_mA())
-    power_w = float(sensor.getPower_W())
-    level = percent_from_voltage(voltage_v)
+    # TICKET-139 : rafale de lectures + médiane, au lieu d'un échantillon unique.
+    # Une lecture isolée d'un signal qui oscille de ±1400 mA ne décrit rien.
+    n = max(1, int(config.get("sensor_burst_samples", 5)))
+    pause = float(config.get("sensor_burst_interval_s", 0.2))
+    tensions: list[float] = []
+    courants: list[float] = []
+    puissances: list[float] = []
+    for i in range(n):
+        tensions.append(float(sensor.getBusVoltage_V()))
+        courants.append(float(-sensor.getCurrent_mA()))
+        puissances.append(float(sensor.getPower_W()))
+        if i < n - 1 and pause > 0:
+            time.sleep(pause)
+
+    voltage_v = mediane(tensions)
+    current_ma = mediane(courants)
+    power_w = mediane(puissances)
+
+    # TICKET-137 : la table donne des tensions À VIDE. Sous charge, la chute
+    # ohmique interne (V = V_oc − I·R) fait lire une tension plus basse que
+    # l'état réel de la cellule — d'où le niveau qui plonge dès qu'un podcast
+    # démarre alors que rien n'a été consommé. On corrige AVANT de convertir.
+    r_interne = float(config.get("internal_resistance_ohm", 0.0))
+    level = percent_from_voltage(tension_a_vide(voltage_v, current_ma, r_interne))
 
     # `charge_threshold_ma` (ancien seuil unique) n'est plus utilisé. Il reste
     # toléré dans config.json sans effet — voir DEFAULT_CONFIG et TICKET-133.

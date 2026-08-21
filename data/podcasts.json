@@ -306,6 +306,42 @@
             "language": "fr",
             "image": "images/unehistoireetoli.jpg",
             "max_episodes": 999
+        },
+        {
+            "id": "cuentosdelderechoydelreves",
+            "label": "CUENTOS DEL DERECHO Y DEL REVÉS",
+            "rss": "https://feeds.ivoox.com/feed_fg_f11307161_filtro_1.xml",
+            "enabled": true,
+            "language": "es",
+            "image": "images/cuentosdelderechoydelreves.jpg",
+            "max_episodes": 999
+        },
+        {
+            "id": "cuentosincreiblessonoro",
+            "label": "Cuentos Increíbles (Sonoro)",
+            "rss": "https://feeds.simplecast.com/u8akwBSW",
+            "enabled": true,
+            "language": "es",
+            "image": "images/cuentosincreiblessonoro.jpg",
+            "max_episodes": 999
+        },
+        {
+            "id": "idolos",
+            "label": "Ídolos",
+            "rss": "https://www.omnycontent.com/d/playlist/2446592a-b80e-4d28-a4fd-ae4c0140ac11/12f13044-b617-4043-a0e6-aea9010177ba/b3f74c3e-3d13-41d5-80fa-aea9010177df/podcast.rss",
+            "enabled": true,
+            "language": "es",
+            "image": "images/idolos.jpg",
+            "max_episodes": 999
+        },
+        {
+            "id": "eyjake",
+            "label": "¡Ey Jake!",
+            "rss": "https://fapi-top.prisasd.com/podcast/caracol/_ey_jake_o/itunestfp/podcast.xml",
+            "enabled": true,
+            "language": "es",
+            "image": "images/eyjake.jpg",
+            "max_episodes": 999
         }
     ],
     "radios": [
@@ -341,6 +377,14 @@
             "lang": "fr",
             "url": "https://stream.radiofrance.fr/franceinterlamusiqueinter/franceinterlamusiqueinter_hifi.m3u8",
             "image": "images/radio/lamusiquedefranceinter.jpg"
+        },
+        {
+            "id": "rardiofranceinter",
+            "name": "Rardio FranceInter",
+            "desc": "",
+            "lang": "fr",
+            "url": "https://stream.radiofrance.fr/franceinter/franceinter_hifi.m3u8",
+            "image": "images/radio/rardiofranceinter.jpg"
         }
     ]
 }

@@ -519,6 +519,44 @@ else
     warn "battery_tracker : l'historique semble réécrit inconditionnellement — usure inutile de la carte SD (TICKET-141)"
 fi
 
+# ── TICKET-137 — la table mesurée et sa compensation vont PAR PAIRE ─────────
+# Bug surveillé, et c'est le plus vicieux de la zone Z8 : `_LIPO_TABLE` contient
+# désormais des tensions À VIDE. Si quelqu'un retire la compensation d'affaissement
+# en gardant la table (ou règle la résistance à zéro), le niveau devient PLUS FAUX
+# qu'avec l'ancienne courbe générique — et rien ne plante. Un podcast en cours
+# ferait perdre 8 points instantanément.
+if grep -q "percent_from_voltage(tension_a_vide(" "$ROOT/scripts/battery_common.py" 2>/dev/null; then
+    pass "table batterie lue via la compensation d'affaissement (TICKET-137)"
+else
+    fail "battery_common : la table (tensions À VIDE) est lue sans tension_a_vide() — niveau plus faux qu'avant (TICKET-137)"
+fi
+
+# La résistance interne doit être non nulle dans la config EFFECTIVE (défauts
+# fusionnés compris) : à zéro, la compensation est neutre et le piège ci-dessus
+# se referme silencieusement.
+r_eff=$(cd "$ROOT/scripts" && timeout 10 python3 -c "
+from battery_common import load_config
+print(load_config().get('internal_resistance_ohm', 0))
+" 2>/dev/null)
+if [ -n "$r_eff" ] && python3 -c "import sys; sys.exit(0 if float('$r_eff') > 0 else 1)" 2>/dev/null; then
+    pass "résistance interne active — ${r_eff} Ω (compensation d'affaissement effective)"
+else
+    fail "résistance interne nulle ou absente (${r_eff:-?}) — la table en tensions à vide sera lue sur du brut (TICKET-137)"
+fi
+
+# ── TICKET-139 — lisser avant de décider ───────────────────────────────────
+# Bug surveillé : un creux isolé à −210 mA franchissait la bande morte et faisait
+# annoncer « charge arrêtée » ; 72 mV de tension faisaient sauter le niveau de 9
+# points en 4 min. La rafale + médiane absorbe ces valeurs aberrantes. Elle est
+# aussi le PRÉALABLE à la nouvelle table, qui étale 20 points sur 40 mV en haut
+# de courbe et amplifie donc le bruit d'environ sept fois.
+if grep -q "mediane(tensions)" "$ROOT/scripts/battery_common.py" 2>/dev/null \
+   && grep -qE "^ *\"sensor_burst_samples\": *[2-9]" "$ROOT/scripts/battery_common.py" 2>/dev/null; then
+    pass "lecture capteur lissée par médiane sur rafale (TICKET-139)"
+else
+    fail "battery_common : retour à l'échantillon unique — un creux isolé fera basculer l'état (TICKET-139)"
+fi
+
 # Coupure matérielle du HAT (TICKET-128). --check-hat ne fait qu'une DÉTECTION,
 # aucune écriture i2cset : lançable pendant que l'enfant écoute.
 if hat=$(timeout 10 python3 "$ROOT/scripts/battery_watchdog.py" --check-hat 2>&1 | head -1); then
