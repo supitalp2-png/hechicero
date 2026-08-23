@@ -13,7 +13,7 @@
 
 | # | Sujet | État |
 |---|---|---|
-| 140 | Arrêt de charge nocturne, alimentation présente | cause inconnue, 3 occurrences |
+| 140 | Arrêt de charge nocturne, alimentation présente | instrumenté 23/08, attend une nuit branché |
 | 122 | Récupération du chien de garde MPD | logique testée, action non éprouvée |
 | 058 | Série podcast « Décisions Prises » | 2 épisodes écrits |
 
@@ -111,7 +111,11 @@ journée. Autonomie mesurée : **4 h 15** de la pleine charge à l'arrêt.
       - ❌ **PRÉDICTION DÉMENTIE (2026-08-19)** : la charge a traversé 13:14 sans broncher et s'est poursuivie jusqu'à **15:17, à 97 % / 4,168 V**. **Il n'y a pas de temporisateur de 6 h**, et **la batterie atteint bien le plein** — contrairement à ce que je supposais le matin. La cause de l'arrêt nocturne à 61 % **redevient entièrement inconnue**.
       - 🔭 **Mais on sait désormais pourquoi on ne peut pas l'observer** : voir TICKET-141. Le courant n'étant pas un critère d'enregistrement, l'effondrement de +1111 à −60 mA n'a laissé que 3 points en 6 h 53. **Corriger l'enregistreur est un préalable** à tout diagnostic de ce ticket.
       - 🔁 **Observé en fin de journée — le HAT cycle en haut de charge** : `17:44 −411 mA` · `17:54 +156` · `17:59 +330` · `18:48 −395`. Une fois plein, le chargeur coupe et laisse le Pi puiser dans les cellules jusqu'au seuil de reprise, puis recharge. Sans danger, mais **consomme des cycles pour rien** et fausse le comptage.
-      - 🛠️ **À instrumenter ce soir** : journaliser la **température** (Pi et HAT si exposée) à chaque relevé. La plupart des chargeurs Li-ion inhibent la charge hors d'une fenêtre thermique, et le Pi 5 tourne à 67-68 °C sous le HAT. C'est le second candidat sérieux après le temporisateur.
+      - ✅ **Instrumenté le 2026-08-23.** Chaque point de données porte désormais deux mesures de plus :
+        - `temperature_c` — `/sys/class/thermal/thermal_zone0/temp`, un fichier et non un sous-processus, dans une boucle qui tourne toutes les minutes. ⚠️ **C'est la température du SoC, pas des cellules** : on n'en lira aucun seuil JEITA directement, seulement une **corrélation**. Si les arrêts nocturnes tombent sur les points les plus froids, la piste thermique tient ; s'ils y sont indifférents, elle est morte et on cherche ailleurs. C'est précisément l'arbitrage qu'on ne peut pas faire aujourd'hui.
+        - `throttled` — registre `vcgencmd get_throttled`, documenté par la fondation. Il tranche une question que la température ne tranche pas : **l'alimentation a-t-elle décroché ?** Un bit de sous-tension pendant un arrêt de charge signifierait que ce n'est pas le chargeur qui renonce mais l'amont qui ne suit plus — deux pannes opposées, aujourd'hui indiscernables. Registre documenté : on ne devine aucune sémantique, contrairement au registre `0x2d` du HAT (TICKET-128).
+      - Visible sur le tableau de bord, troisième cadre sous tension et courant — **même axe de temps**, c'est la superposition qui sert. Pas de double axe : le fichier documente pourquoi (le courant écrase tout).
+      - ⚠️ **Ce ticket reste ouvert.** On n'a rien corrigé, on s'est seulement donné les moyens de conclure. Il faut maintenant **une nuit branché** avec un épisode capturé.
       - 🔗 **À croiser avec TICKET-137** : `cycles_recorded: 2` et `model_confidence: "low"`. Cette journée de charge fournit un cycle de plus vers les 3-4 nécessaires à la recalibration de la table. Si le plateau est réel, il change aussi la capacité utile retenue pour le calcul d'autonomie (9 560 mAh envisagés).
 
 - [ ] TICKET-122 — bug/infra — MPD se fige indéfiniment quand le réseau disparaît pendant une webradio (2026-08-05)

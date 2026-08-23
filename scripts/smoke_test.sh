@@ -894,6 +894,37 @@ else
     warn "test_kiosk_freeze.py absent — faux positifs du guetteur non couverts (TICKET-147)"
 fi
 
+# ── TICKET-140 — ce qu'on enregistre n'arrive pas forcément au tableau de bord ─
+# Le tracker écrit un point de données ; battery_dashboard.php le recopie dans une
+# LISTE FIXE de clés avant de l'envoyer au navigateur. Une mesure ajoutée d'un côté
+# et pas de l'autre donne un graphe vide, sans erreur — le mécanisme des TICKET-138
+# et 146 (Z13 du registre), rencontré trois fois en une journée.
+# Ce contrôle ne peut pas trancher seul : certaines clés (mpd_mode, screen) ne sont
+# volontairement pas transmises. Il ÉNUMÈRE donc l'écart pour qu'un humain le voie,
+# au lieu d'inventer une règle qui échouerait à tort.
+ecart=$(python3 - "$ROOT" <<'PYEOF'
+import re, sys, pathlib
+root = pathlib.Path(sys.argv[1])
+py  = (root / "scripts/battery_tracker.py").read_text(encoding="utf-8", errors="ignore")
+php = (root / "web/admin/battery_dashboard.php").read_text(encoding="utf-8", errors="ignore")
+m = re.search(r"def append_datapoint\(.*?\n\s*\)\n", py, re.S)
+d = re.search(r"\$recentPoints\[\] = \[(.*?)\];", php, re.S)
+if not m or not d:
+    print("INTROUVABLE"); sys.exit(0)
+enregistrees = set(re.findall(r'"(\w+)":', m.group(0)))
+transmises   = set(re.findall(r"'(\w+)'\s*=>", d.group(1)))
+manquantes = sorted(enregistrees - transmises - {"t", "mpd_mode", "screen"})
+print(", ".join(manquantes) if manquantes else "")
+PYEOF
+)
+if [ "$ecart" = "INTROUVABLE" ]; then
+    warn "contrat tracker ↔ tableau de bord : blocs introuvables, contrôle inopérant"
+elif [ -n "$ecart" ]; then
+    warn "mesure(s) enregistrée(s) mais absente(s) du tableau de bord : $ecart (Z13)"
+else
+    pass "tableau de bord : toutes les mesures enregistrées lui parviennent (Z13)"
+fi
+
 # ── TICKET-138 (2e passe) — le contrat entre la page et son endpoint ─────────
 # La page lit sa config de veille dans la réponse de radio.php?action=parental_status,
 # qui recopie une LISTE FIXE de clés. En août on a corrigé applySleepConfig() pour

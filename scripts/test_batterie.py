@@ -506,6 +506,48 @@ verifie("chaîne complète : ancrage renvoyé au tracker",
         round(plein["coulomb_state"]["mah"]), 8894)
 
 
+# ── §17 — TICKET-140 : de quoi diagnostiquer un arrêt de charge nocturne ─────
+# Trois occurrences, cause inconnue, et les données enregistrées ne permettent
+# de trancher aucune des pistes : on ne sait dire ni s'il faisait froid (fenêtre
+# JEITA du chargeur) ni si l'alimentation avait décroché (sous-tension). Les
+# deux mesures doivent donc VOYAGER JUSQU'AU POINT ENREGISTRÉ — c'est là qu'on
+# les relira, pas dans le journal, qui aura défilé.
+import battery_tracker as _bt   # noqa: E402
+
+_cycle: dict = {}
+_bt.append_datapoint(_cycle, {
+    "timestamp": "2026-08-23T03:00:00", "level": 61, "charging": False,
+    "mpd_mode": "idle", "screen_on": False, "current_ma": -60.0, "voltage_v": 3.820,
+    "temperature_c": 31.4, "throttled": "0x50005",
+})
+_point = _cycle["datapoints"][0]
+verifie("140 : température enregistrée dans le point", _point.get("temperature_c"), 31.4)
+verifie("140 : registre throttled enregistré", _point.get("throttled"), "0x50005")
+
+# Et le relevé ne doit JAMAIS tomber parce qu'une mesure est indisponible : le
+# suivi de batterie porte l'arrêt propre avant décharge profonde. Une sonde qui
+# manque vaut infiniment mieux qu'un tracker mort.
+_cycle2: dict = {}
+_bt.append_datapoint(_cycle2, {
+    "timestamp": "2026-08-23T03:05:00", "level": 61, "charging": False,
+    "mpd_mode": "idle", "screen_on": False, "current_ma": -60.0, "voltage_v": 3.820,
+})
+verifie("140 : mesure absente → clé présente à None",
+        _cycle2["datapoints"][0].get("temperature_c", "CLÉ ABSENTE"), None)
+
+# Les deux lecteurs ne lèvent jamais, même hors Pi (aucun thermal_zone, aucun
+# vcgencmd) : ils renvoient None. C'est ce qui rend ce test exécutable partout.
+try:
+    _t = _bt.lire_temperature_c()
+    _g = _bt.lire_throttled()
+    verifie("140 : lecture température sans exception",
+            _t is None or isinstance(_t, float), True)
+    verifie("140 : lecture throttled sans exception",
+            _g is None or isinstance(_g, str), True)
+except Exception as _e:  # noqa: BLE001
+    verifie("140 : les sondes ne lèvent jamais", f"exception {_e!r}", "aucune exception")
+
+
 print()
 if echecs:
     print(f"⛔ {len(echecs)} test(s) en échec : {', '.join(echecs)}")

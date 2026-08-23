@@ -135,6 +135,13 @@ foreach (array_reverse($cycles) as $cycle) {
                 'charging' => $pt['charging'] ?? false,
                 'voltage_v' => $pt['voltage_v'] ?? null,
                 'current_ma' => $pt['current_ma'] ?? null,
+                // ⚠️ Cette liste de clés est FIXE. Une mesure enregistrée par le
+                // tracker mais absente ici n'arrive jamais au graphe, qui reste
+                // vide sans la moindre erreur. C'est le mécanisme exact des
+                // TICKET-138 et TICKET-146 (cf. Z13 du registre) — ne pas ajouter
+                // une mesure au tracker sans l'ajouter ici.
+                'temperature_c' => $pt['temperature_c'] ?? null,
+                'throttled' => $pt['throttled'] ?? null,
             ];
         }
     }
@@ -313,6 +320,20 @@ $currentPage = basename($_SERVER['PHP_SELF'] ?? 'battery_dashboard.php');
           <?php endif; ?>
           <div class="ha-chart" style="height:200px;">
             <canvas id="amp-chart"></canvas>
+          </div>
+          <?php // TICKET-140 : troisième cadre, même axe de temps que les deux
+                // autres. C'est la superposition visuelle qui sert : un arrêt de
+                // charge nocturne se lit en confrontant le courant qui tombe et
+                // la température au même instant. ?>
+          <div class="ha-chart" style="height:200px;">
+            <canvas id="temp-chart"></canvas>
+          </div>
+          <div class="ha-stat-note" style="margin:4px 0 12px;color:var(--muted);">
+            Température du SoC, pas des cellules — elle idle bien au-dessus de
+            l'ambiante. Elle sert à <em>corréler</em> : si les arrêts de charge
+            nocturnes tombent sur les points les plus froids, la fenêtre thermique
+            du chargeur est en cause ; s'ils y sont indifférents, la piste est morte
+            (TICKET-140).
           </div>
         <?php else: ?>
           <div class="ha-chart">
@@ -664,6 +685,10 @@ $currentPage = basename($_SERVER['PHP_SELF'] ?? 'battery_dashboard.php');
 
     grapheSerie('volt-chart', 'voltage_v', 'Tension (V)', '#f0be4f', 'Tension (V)', false);
     grapheSerie('amp-chart', 'current_ma', 'Courant (mA)', '#4a9eff', 'Courant (mA)', true);
+    // TICKET-140 : se remplit à partir des relevés du 2026-08-23. Le graphe ne
+    // s'affiche pas tant qu'il n'y a pas 2 points (garde de grapheSerie), donc
+    // aucun cadre vide pendant la période de collecte.
+    grapheSerie('temp-chart', 'temperature_c', 'Température SoC (°C)', '#fb7185', 'Température (°C)', false);
   </script>
 </body>
 </html>

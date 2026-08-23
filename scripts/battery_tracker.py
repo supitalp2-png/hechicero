@@ -20,6 +20,7 @@ from battery_common import (
     read_mpd_status,
     read_screen_on,
     read_sensor_snapshot,
+    run_command,
 )
 
 
@@ -143,6 +144,61 @@ def new_cycle(sample: dict[str, Any]) -> dict[str, Any]:
     return cycle
 
 
+def lire_temperature_c() -> float | None:
+    """
+    Température du SoC, en °C. `None` si illisible — jamais d'exception.
+
+    ── Pourquoi on enregistre ça (TICKET-140) ────────────────────────────────
+    Le chargeur du HAT s'arrête la nuit, alimentation présente, et repart à la
+    première sollicitation. Trois occurrences, cause inconnue. La fenêtre
+    thermique du chargeur (JEITA : pas de charge en dessous d'environ 0 °C ni
+    au-dessus de 45 °C côté cellule) est le seul suspect que rien n'a encore ni
+    confirmé ni écarté — et c'est aussi le seul qui expliquerait pourquoi ça
+    n'arrive que la nuit, quand la pièce refroidit et que le Pi, au repos,
+    chauffe moins son environnement.
+
+    ⚠️ Ce n'est PAS la température des cellules. C'est celle du SoC, qui idle
+    bien au-dessus de l'ambiante. On ne peut pas en lire un seuil JEITA
+    directement — seulement une CORRÉLATION : si les arrêts de charge tombent
+    systématiquement sur les points les plus froids de la nuit, la piste tient ;
+    s'ils sont indifférents à la température, elle est morte et on cherche
+    ailleurs. C'est exactement ce qu'on ne peut pas faire aujourd'hui.
+
+    On lit `/sys/class/thermal/thermal_zone0/temp` plutôt que `vcgencmd` : un
+    fichier, pas un sous-processus, dans une boucle qui tourne toutes les
+    minutes.
+    """
+    try:
+        brut = Path("/sys/class/thermal/thermal_zone0/temp").read_text(encoding="utf-8")
+        return round(int(brut.strip()) / 1000.0, 1)
+    except Exception:
+        return None
+
+
+def lire_throttled() -> str | None:
+    """
+    Registre `get_throttled` du firmware, en hexadécimal. `None` si indisponible.
+
+    Deuxième mesure pour le TICKET-140, et elle tranche une question que la
+    température ne tranche pas : **l'alimentation a-t-elle décroché ?** Les bits
+    0 à 3 décrivent l'état courant (0 = sous-tension, 1 = fréquence bridée,
+    2 = throttling, 3 = limite thermique douce), les bits 16 à 19 les mêmes
+    événements SURVENUS depuis le démarrage.
+
+    Si un arrêt de charge nocturne s'accompagne d'un bit de sous-tension, ce
+    n'est pas le chargeur qui renonce, c'est l'alimentation amont qui ne suit
+    plus — deux pannes opposées, indiscernables sur les seules données
+    actuelles. Registre documenté par la fondation Raspberry Pi ; on ne devine
+    aucune sémantique ici, contrairement à ce qui s'est passé avec le registre
+    0x2d du HAT (TICKET-128).
+    """
+    sortie = run_command(["vcgencmd", "get_throttled"], timeout=3.0)
+    if not sortie or "=" not in sortie:
+        return None
+    valeur = sortie.split("=", 1)[1].strip()
+    return valeur or None
+
+
 def append_datapoint(cycle: dict[str, Any], sample: dict[str, Any]) -> None:
     cycle.setdefault("datapoints", []).append(
         {
@@ -158,6 +214,12 @@ def append_datapoint(cycle: dict[str, Any], sample: dict[str, Any]) -> None:
             # marge réelle au moment d'une coupure. Deux octets de plus par
             # point, et on cesse de raisonner sur une valeur dérivée.
             "voltage_v": sample.get("voltage_v"),
+            # TICKET-140 : sans ces deux valeurs, un arrêt de charge nocturne
+            # reste indéchiffrable après coup — on ne sait dire ni s'il faisait
+            # froid, ni si l'alimentation avait décroché. Un `journalctl`
+            # consulté le lendemain ne le dit plus. Quelques octets par point.
+            "temperature_c": sample.get("temperature_c"),
+            "throttled": sample.get("throttled"),
         }
     )
 
@@ -508,6 +570,9 @@ def build_sample(sensor: Any, config: dict[str, Any], simulate: bool = False,
         "mpd_state": mpd["state"],
         "mpd_mode": mpd["mode"],
         "mpd_url": mpd["current"],
+        # TICKET-140 : voir le commentaire de lire_temperature_c().
+        "temperature_c": lire_temperature_c(),
+        "throttled": lire_throttled(),
     }
     return sample
 
