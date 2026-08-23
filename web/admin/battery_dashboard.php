@@ -52,6 +52,15 @@ $stats = read_json(BATTERY_STATS_JSON);
 $cycles = $history['cycles'] ?? [];
 
 // Filtre les cycles valides : décharge réelle ≥ 3% et durée ≥ 5 min
+//
+// ⚠️ `isset($c['discharge_end'])` exclut le cycle EN COURS, et c'est voulu ici :
+// les statistiques (ratios min/%, autonomie moyenne) n'ont de sens que sur des
+// cycles terminés. Mais cela rendait la décharge en cours **totalement
+// invisible** — alors que c'est le seul moment où l'on regarde vraiment ce
+// tableau de bord. Signalé par Thomas le 2026-08-21, à 13 % de batterie.
+//
+// Le cycle ouvert est donc repris à part, plus bas (`$courant`), et tracé comme
+// une courbe distincte. Il n'entre PAS dans les moyennes.
 function is_valid_cycle(array $c): bool {
     $consumed = ($c['level_start'] ?? 0) - ($c['level_end'] ?? 0);
     $duration = $c['duration_minutes'] ?? 0;
@@ -68,6 +77,29 @@ $perPage = 10;
 $pageCount = max(1, (int)ceil(max(1, $validCount) / $perPage));
 $page = min($page, $pageCount);
 $rows = array_slice($pagedCycles, ($page - 1) * $perPage, $perPage);
+
+// ── Décharge EN COURS (TICKET-146, 2026-08-21) ────────────────────────────
+// Le dernier cycle sans `discharge_end` est une décharge qui se déroule
+// maintenant. On l'expose séparément : ni dans les moyennes, ni dans le tableau
+// des cycles clos, mais bien visible en tête.
+$enCours = null;
+if ($cycles) {
+    $dernier = $cycles[count($cycles) - 1];
+    if (!isset($dernier['discharge_end']) && isset($dernier['discharge_start'])
+        && !($dernier['invalid'] ?? false)) {
+        $pts = cycle_points($dernier, false);
+        if ($pts) {
+            $debut = strtotime((string)$dernier['discharge_start']);
+            $enCours = [
+                'depuis'   => (string)$dernier['discharge_start'],
+                'minutes'  => $debut ? max(0, (int)round((time() - $debut) / 60)) : null,
+                'depart'   => (int)($dernier['level_start'] ?? 0),
+                'points'   => $pts,
+                'nb'       => count($pts),
+            ];
+        }
+    }
+}
 
 // Courbes de décharge / recharge — cycles valides uniquement
 $dischargeCurves = [];
@@ -198,6 +230,30 @@ $currentPage = basename($_SERVER['PHP_SELF'] ?? 'battery_dashboard.php');
         <div class="ha-stat-note"><?php echo $validCount; ?> cycles valides / <?php echo $totalCycles; ?> total</div>
       </div>
     </div>
+
+    <?php if ($enCours): ?>
+    <section class="ha-panel" style="margin-bottom:18px;border-color:rgba(210,162,76,.45);">
+      <h2>⚡ Décharge en cours</h2>
+      <div class="ha-stat-note" style="margin-bottom:10px;">
+        Depuis <?php echo htmlspecialchars(substr($enCours['depuis'], 11, 5)); ?>
+        <?php if ($enCours['minutes'] !== null): ?>
+          — <?php echo $enCours['minutes'] >= 60
+              ? intdiv($enCours['minutes'], 60) . ' h ' . str_pad((string)($enCours['minutes'] % 60), 2, '0', STR_PAD_LEFT)
+              : $enCours['minutes'] . ' min'; ?>
+        <?php endif; ?>
+        · départ <?php echo $enCours['depart']; ?> %
+        · <?php echo $enCours['nb']; ?> relevés
+        <?php if (($stats['current_level'] ?? 100) <= 15): ?>
+          · <strong style="color:#e05c5c;">niveau bas — arrêt automatique à <?php echo $seuilCoupure; ?> %</strong>
+        <?php endif; ?>
+      </div>
+      <div class="ha-chart"><canvas id="chart-en-cours"></canvas></div>
+      <div class="ha-stat-note" style="margin-top:8px;">
+        Ce cycle n'entre pas dans les moyennes : elles n'ont de sens qu'une fois la décharge
+        terminée. Il était jusqu'ici <strong>totalement invisible</strong> sur cette page.
+      </div>
+    </section>
+    <?php endif; ?>
 
     <div class="ha-grid ha-cols-2" style="margin-bottom:18px;">
       <section class="ha-panel">
@@ -541,6 +597,12 @@ $currentPage = basename($_SERVER['PHP_SELF'] ?? 'battery_dashboard.php');
     }
 
     createLineChart('current-cycle-chart', recentPoints.length ? [{ label: 'Niveau batterie 24h', points: recentPoints }] : [], ['#f0be4f']);
+
+    // TICKET-146 : la décharge EN COURS, tracée à part. Elle était invisible.
+    const enCoursPoints = <?php echo json_encode($enCours['points'] ?? [], JSON_UNESCAPED_UNICODE); ?>;
+    createLineChart('chart-en-cours',
+      enCoursPoints.length ? [{ label: 'Décharge en cours', points: enCoursPoints }] : [],
+      ['#e0a44f']);
     createRelativeChart('discharge-chart', dischargeCurves, ['#4a9eff', '#f0be4f', '#3dba6a', '#d97706', '#8b5cf6'], SEUIL_COUPURE);
     createRelativeChart('charge-chart', chargeCurves, ['#3dba6a', '#86efac', '#f0be4f', '#38bdf8', '#fb7185']);
 

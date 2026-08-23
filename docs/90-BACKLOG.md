@@ -7,12 +7,13 @@
 
 ## 📌 État des lieux
 
-*2026-08-21 — 3 ouverts, 137 clos*
+*2026-08-23 — 4 ouverts, 139 clos*
 
 ### À faire
 
 | # | Sujet | État |
 |---|---|---|
+| 147 | Le détecteur de gel se déclenche sur un saut d'horloge | 2 fausses alertes sur 2 |
 | 140 | Arrêt de charge nocturne, alimentation présente | cause inconnue, 3 occurrences |
 | 122 | Récupération du chien de garde MPD | logique testée, action non éprouvée |
 | 058 | Série podcast « Décisions Prises » | 2 épisodes écrits |
@@ -25,13 +26,62 @@
 |---|---|
 | 127 | Le prochain gel réel du kiosque — plus rien à coder |
 | 119 | Retour auto à la radio après 10 min |
-| 138 | Veille à 600 s, dalle et overlay ensemble |
-| 137 · 139 · 142 | Niveau cohérent sur un cycle ; `level_table` mesure la dérive |
+| 146 | Le graphique par langue après redressement de la base |
+| 138 | Plus d'écran noir sur dalle allumée après un `wtype -k F5` |
 | 141 | Cadence plancher, et purge au-delà de 30 jours |
+
+✅ **137 · 139 · 142 confirmés par l'usage (2026-08-23).** Deux décharges complètes
+sous le nouveau code : 24 à 34 min par tranche de 10 %, pour 27-28 min attendus d'une
+jauge linéaire. Le cycle du 2026-08-21 04:48, resté sur l'ancien code, montre à
+l'inverse 200 min bloquées entre 90 et 99 % — le défaut d'origine, dans la même
+journée. Autonomie mesurée : **4 h 15** de la pleine charge à l'arrêt.
 
 ---
 
 # 📋 Détail des tickets ouverts
+
+- [ ] TICKET-147 — instrumentation — Le détecteur de gel du kiosque compte un saut d'horloge comme un silence (2026-08-23)
+      - Les **deux seules** alertes depuis la mise en service tombent à moins de 15 s
+        d'une resynchronisation NTP :
+        ```
+        22/08 09:28:32  timesyncd: Initial clock synchronization
+        22/08 09:28:44  GEL DÉTECTÉ — battement silencieux depuis 77 s
+        23/08 11:39:23  timesyncd: Initial clock synchronization
+        23/08 11:39:35  GEL DÉTECTÉ — battement silencieux depuis 516 s
+        ```
+      - Au démarrage le Pi n'a pas de réseau : son horloge repart de la dernière date
+        connue, puis **bondit** quand le NTP répond. Le battement est horodaté en heure
+        murale ; après le bond, le dernier battement paraît vieux d'exactement la durée
+        du saut. La page n'a jamais cessé de tourner — « battement REVENU » arrive 21 s
+        plus tard dans les deux cas, avec un âge de 4 à 5 s.
+      - ⚠️ **Conséquence directe** : un vrai gel serait noyé dans ces fausses alertes,
+        et l'instrumentation du 127 ne vaut plus rien tant que ce n'est pas corrigé.
+      - **Correctif** : horodater le battement sur `CLOCK_MONOTONIC` (insensible aux
+        sauts), et non sur l'heure murale. À défaut, ignorer toute détection dont
+        l'écart correspond à un pas d'horloge observé dans le journal.
+      - **Garde à écrire** : simuler un saut d'horloge en avant et vérifier qu'aucun gel
+        n'est déclaré — comportement, pas texte.
+
+- [x] TICKET-138 — écran — L'overlay de veille partait à 60 s alors que la dalle s'éteignait à 600 s (2026-08-23, 2e passe)
+      - **Le correctif d'août était juste, et sans effet.** `applySleepConfig()` calculait
+        bien `screen_off_delay ?? sleep_delay ?? 600`, et `config.json` contenait bien
+        `screen_off_delay: 600`. Et la page journalisait `delay_ms=60000`.
+      - **Cause** : la page ne lit pas `config.json`. Elle reçoit sa configuration de
+        `radio.php?action=parental_status`, **qui recopie une liste fixe de clés** —
+        `screen_off_delay` n'en faisait pas partie. À l'exécution la clé valait
+        `undefined`, le repli `sleep_delay` (60 s) s'appliquait, et swayidle continuait
+        d'éteindre à 600 s. Traces DPMS à l'appui : dalle éteinte 607 s après le réveil.
+      - 🎯 **La leçon** : on a corrigé le consommateur sans jamais vérifier que le
+        producteur envoyait la donnée. Les deux fichiers étaient justes séparément ;
+        c'est le contrat entre eux qui était rompu. Un `??` sur une clé absente ne
+        proteste pas — il produit une valeur plausible et fausse. Même mécanisme
+        exactement que le TICKET-146 le même jour (Z13).
+      - **Correctif** : `screen_off_delay` ajouté à la charge utile de `parental_status`.
+      - **Garde** : le smoke test extrait les clés `cfg.X` réellement lues par
+        `applySleepConfig()` et vérifie que **chacune** est émise par l'endpoint.
+        Éprouvé dans les deux sens : il échoue si on retire la clé, et il échoue aussi
+        si la fonction ou le bloc devient introuvable.
+      - ⚠️ **Nécessite un `wtype -k F5`** pour que le kiosque recharge la page.
 
 - [ ] TICKET-140 — matériel/batterie — Le chargeur du HAT termine la charge à ~61 % et ne reprend qu'à la sollicitation (2026-08-19)
       - **Signalé par Thomas** : « je ne comprends pas l'arrêt de recharge entre minuit en gros et 7h30 ». Ses heures, lues sur le tableau de bord, sont exactes : **00:16 → 07:09**.

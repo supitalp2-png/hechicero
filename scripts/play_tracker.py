@@ -169,6 +169,23 @@ def heal_interrupted_sessions(conn: sqlite3.Connection) -> None:
 
 # ─── Identification des pistes ────────────────────────────────────────────────
 
+def lire_langue(entree: dict[str, Any]) -> str:
+    """
+    Langue déclarée d'un podcast ou d'une radio, quel que soit le nom du champ.
+
+    ⚠️ Le nom du champ diffère selon le type d'entrée dans podcasts.json :
+    les podcasts utilisent `language`, les radios `lang`. Ne lire que l'un des
+    deux fait retomber l'autre sur la valeur par défaut sans aucune erreur —
+    c'est le bug TICKET-146, qui a fait enregistrer *tous* les podcasts en
+    français pendant des mois, y compris les espagnols.
+    """
+    for cle in ("language", "langue", "lang"):
+        valeur = entree.get(cle)
+        if isinstance(valeur, str) and valeur.strip():
+            return valeur.strip().lower()
+    return "fr"
+
+
 def build_track_index() -> dict[str, Any]:
     """
     Construit deux index depuis podcasts.json :
@@ -181,7 +198,7 @@ def build_track_index() -> dict[str, Any]:
     for p in data.get("podcasts", []):
         pid = p.get("id", "")
         if pid:
-            pods[pid] = (p.get("langue") or p.get("lang") or "fr").lower()
+            pods[pid] = lire_langue(p)
 
     radios: dict[str, dict[str, str]] = {}
     for r in data.get("radios", []):
@@ -190,10 +207,33 @@ def build_track_index() -> dict[str, Any]:
             radios[url] = {
                 "id": r.get("id", "radio"),
                 "name": r.get("name", ""),
-                "langue": (r.get("langue") or r.get("lang") or "fr").lower(),
+                "langue": lire_langue(r),
             }
 
     return {"pods": pods, "radios": radios}
+
+
+_INDEX_CACHE: dict[str, Any] = {}
+_INDEX_MTIME: float | None = None
+
+
+def index_courant() -> dict[str, Any]:
+    """
+    Index des langues, rechargé dès que podcasts.json change.
+
+    Le service tourne des semaines sans redémarrer : un index construit une
+    seule fois au démarrage ignore tout podcast ajouté depuis, qui retombe
+    alors silencieusement sur la langue par défaut (TICKET-146).
+    """
+    global _INDEX_CACHE, _INDEX_MTIME
+    try:
+        mtime = PODCASTS_PATH.stat().st_mtime
+    except OSError:
+        mtime = None
+    if not _INDEX_CACHE or mtime != _INDEX_MTIME:
+        _INDEX_CACHE = build_track_index()
+        _INDEX_MTIME = mtime
+    return _INDEX_CACHE
 
 
 def identify(file_uri: str, duration_s: float, index: dict[str, Any]) -> dict[str, Any] | None:
@@ -385,7 +425,6 @@ class MpdClient:
 def run() -> None:
     conn = get_db()
     heal_interrupted_sessions(conn)
-    index = build_track_index()
 
     # État courant
     open_id: int | None = None    # id de la session play_events en cours
@@ -426,7 +465,7 @@ def run() -> None:
                 elapsed = float(status.get("elapsed", 0) or 0)
                 duration = float(status.get("duration", 0) or 0)
                 vol = parse_volume(status)
-                meta = identify(cur_file, duration, index)
+                meta = identify(cur_file, duration, index_courant())
                 if meta:
                     ts_start = int(time.time() - elapsed) if elapsed < 60 else int(time.time())
                     mode = mpd.get_output_mode()
@@ -483,7 +522,7 @@ def run() -> None:
                                 "Session scindée (bascule sortie %s→%s) id=%d listened=%.0fs",
                                 open_mode, new_mode, open_id, listened_leg,
                             )
-                            meta = identify(open_file or "", duration, index)
+                            meta = identify(open_file or "", duration, index_courant())
                             if meta:
                                 open_id = db_open_session(conn, meta, now, vol, new_mode)
                                 open_elapsed_offset = elapsed_raw
@@ -546,7 +585,7 @@ def run() -> None:
                 # Ouvrir une nouvelle session si on lit un nouveau fichier
                 # pause→play ne recrée pas de session (open_id reste valide)
                 if new_state == "play" and new_file and (file_changed or prev_state == "stop" or open_id is None):
-                    meta = identify(new_file, duration, index)
+                    meta = identify(new_file, duration, index_courant())
                     if meta:
                         ts_start = int(time.time() - elapsed) if elapsed < 30 else now
                         vol_samples = [vol] if vol is not None else []

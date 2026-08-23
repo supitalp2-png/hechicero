@@ -98,6 +98,20 @@ else
     php -l "$ROOT/web/lecteur/radio.php"
 fi
 
+# ── Anti-cache sur les pages d'administration (2026-08-21) ─────────────────
+# Même piège que le kiosque, un étage plus haut : un panneau ajouté au tableau
+# de bord batterie était bien servi par Apache — `curl` le voyait — mais le
+# navigateur affichait sa copie en cache. On vérifie l'en-tête RÉELLEMENT servi,
+# pas la présence du fichier de conf : c'est la seule preuve que la règle
+# s'applique (le `<IfModule>` échoue en silence si mod_headers manque).
+entete_admin=$(curl -sI "http://localhost/admin/battery_dashboard.php" 2>/dev/null | grep -i "^cache-control")
+if printf '%s' "$entete_admin" | grep -qi "no-store"; then
+    pass "pages admin non mises en cache par le navigateur"
+else
+    warn "pages admin sans en-tête no-store — une modification peut rester invisible derrière le cache du navigateur"
+    echo "     → sudo cp scripts/apache-hechicero-nocache.conf /etc/apache2/conf-available/ && sudo systemctl reload apache2"
+fi
+
 # ── TICKET-119 — écran technique caché ─────────────────────────────────────
 # Le gain casque est réglable depuis DEUX écrans (admin complète et écran
 # technique). ⚠️ Piège de la zone Z11 : deux IHM sur un même réglage divergent
@@ -837,6 +851,74 @@ if [ -f "$BTN_TEST" ]; then
     fi
 else
     warn "test_boutons.py absent — bruit de journal des boutons non couvert (TICKET-132)"
+fi
+
+# ── TICKET-146 — la langue d'un podcast, lue sous un nom de champ inexistant ──
+# Les podcasts déclarent `language`, les radios `lang`. play_tracker ne lisait que
+# `langue`/`lang` avec `or "fr"` en bout de chaîne : tous les podcasts espagnols ont
+# été comptés en français pendant des mois, sans la moindre erreur au journal. Seules
+# les radios remontaient de l'espagnol, ce qui donnait un graphique crédible mais
+# amputé de 9,6 h. Voir Z13 du registre.
+# Le test compare aussi le catalogue réel à la base : il échoue tant que l'historique
+# n'a pas été redressé (scripts/reparer_langues_tracking.py --appliquer).
+TRK_TEST="$ROOT/scripts/test_tracking.py"
+if [ -f "$TRK_TEST" ]; then
+    if sortie_trk=$(timeout 20 python3 "$TRK_TEST" 2>&1); then
+        pass "suivi d'écoute : langues cohérentes catalogue ↔ base (TICKET-146)"
+    else
+        fail "suivi d'écoute : langue incorrecte (TICKET-146)"
+        echo "$sortie_trk" | grep '❌' | head -6 | sed 's/^/     /'
+    fi
+else
+    warn "test_tracking.py absent — attribution des langues non couverte (TICKET-146)"
+fi
+
+# ── TICKET-138 (2e passe) — le contrat entre la page et son endpoint ─────────
+# La page lit sa config de veille dans la réponse de radio.php?action=parental_status,
+# qui recopie une LISTE FIXE de clés. En août on a corrigé applySleepConfig() pour
+# qu'il préfère `screen_off_delay`… sans jamais ajouter la clé à l'endpoint. Résultat :
+# `undefined` à l'exécution, repli silencieux sur `sleep_delay` (60 s) pendant que
+# swayidle éteignait à 600 s. Le correctif visait le consommateur, le producteur n'a
+# jamais suivi — et les deux fichiers avaient l'air justes séparément.
+# Ce contrôle vérifie le CONTRAT : toute clé `cfg.X` lue par applySleepConfig doit
+# être émise par l'endpoint. Il échoue si la fonction ou le bloc est introuvable,
+# pour ne pas devenir un garde qui ne peut plus échouer (cf. §5ter du registre).
+if manque=$(python3 - "$ROOT" <<'PYEOF'
+import re, sys, pathlib
+root = pathlib.Path(sys.argv[1])
+html = (root / "web/lecteur/index.html").read_text(encoding="utf-8", errors="ignore")
+php  = (root / "web/lecteur/radio.php").read_text(encoding="utf-8", errors="ignore")
+
+m = re.search(r"function applySleepConfig\s*\(\s*(\w+)\s*\)\s*\{", html)
+if not m:
+    print("INTROUVABLE: applySleepConfig()"); sys.exit(1)
+# corps de la fonction, par comptage d'accolades
+i = html.index("{", m.end() - 1); prof = 0
+for j in range(i, len(html)):
+    if html[j] == "{": prof += 1
+    elif html[j] == "}":
+        prof -= 1
+        if prof == 0: break
+corps = html[i:j]
+lues = set(re.findall(rf"\b{m.group(1)}\.(\w+)", corps))
+
+b = re.search(r"\$action === 'parental_status'\).*?\n    \}", php, re.S)
+if not b:
+    print("INTROUVABLE: bloc parental_status"); sys.exit(1)
+emises = set(re.findall(r"'(\w+)'\s*=>", b.group(0)))
+
+if not lues:
+    print("INTROUVABLE: aucune clé lue — la détection ne vaut plus rien"); sys.exit(1)
+absentes = sorted(lues - emises)
+if absentes:
+    print("clé(s) lue(s) mais jamais émise(s) : " + ", ".join(absentes)); sys.exit(1)
+print(f"{len(lues)} clé(s) de veille, toutes émises")
+PYEOF
+); then
+    pass "veille : contrat page ↔ parental_status respecté — $manque (TICKET-138)"
+else
+    fail "veille : $manque (TICKET-138)"
+    echo "     la page retombera en silence sur son repli pour ces clés" | sed 's/^/  /'
 fi
 
 # ── TICKET-128 — ce registre arme un DÉMARRAGE, pas une coupure ────────────

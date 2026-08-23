@@ -555,6 +555,71 @@ smoke test).
 
 ---
 
+### 🔴 Z13 — Un champ lu sous un nom qui n'existe pas, et un défaut qui vaut zéro
+
+**Le piège** : `podcasts.json` n'emploie pas le même nom de champ selon le type
+d'entrée. Les **podcasts** déclarent `language`, les **radios** déclarent `lang`. Le
+suivi d'écoute lisait `langue` puis `lang`, avec `or "fr"` en bout de chaîne. Pour les
+radios ça marchait ; pour les podcasts le champ était toujours absent, donc **tous les
+podcasts, y compris les espagnols, ont été enregistrés en français pendant des mois**.
+
+Deux mécanismes ont rendu ce bug invisible :
+
+1. **Le défaut avait l'air raisonnable.** `or "fr"` ne lève rien, ne journalise rien,
+   et produit une valeur plausible. Un défaut silencieux sur un champ toujours absent
+   n'est pas un repli, c'est une valeur en dur.
+2. **Une moitié du système marchait.** Les radios espagnoles remontaient bien, donc le
+   graphique « temps par langue » affichait de l'espagnol. Il en manquait simplement
+   9,6 h. Rien ne ressemble plus à un graphique juste qu'un graphique incomplet.
+
+**Corollaire** : l'index des langues était aussi construit **une seule fois au
+démarrage** du service. Un podcast ajouté ensuite restait inconnu jusqu'au prochain
+redémarrage — et retombait, là encore, sur le défaut.
+
+**Règle** : quand un défaut peut masquer une donnée manquante, il faut soit qu'il soit
+impossible (lever), soit qu'il soit visible (journaliser). Et un index construit au
+démarrage d'un service qui tourne des semaines doit se relire quand sa source change.
+
+**Fichiers** : `scripts/play_tracker.py` (`lire_langue`, `index_courant`),
+`data/podcasts.json`
+
+**Historique** : TICKET-146 (2026-08-23), signalé par Thomas — « le temps d'écoute en
+espagnol ne semble pas se cumuler dans le graphique ».
+
+**Test de garde** : `scripts/test_tracking.py`. Il vérifie un **comportement** — la
+langue effectivement retenue pour une entrée réalistes des deux formes — et compare en
+plus le catalogue réel à la base : si un podcast déclaré espagnol n'a que des
+événements français, le test échoue.
+
+**Réparation de l'historique** : `scripts/reparer_langues_tracking.py`
+(simulation par défaut, `--appliquer` pour écrire, sauvegarde automatique).
+
+#### La même erreur, le même jour, ailleurs — le contrat producteur / consommateur
+
+Le TICKET-138 s'est rejoué sur le même mécanisme quelques heures plus tard. On avait
+corrigé `applySleepConfig()` pour qu'il lise `screen_off_delay` plutôt que `sleep_delay`.
+Le code était juste. `config.json` contenait la bonne valeur. Et le symptôme persistait.
+
+La page ne lit pas `config.json` : elle reçoit sa configuration de
+`radio.php?action=parental_status`, **qui recopie une liste fixe de clés**. Personne
+n'y avait ajouté `screen_off_delay`. À l'exécution la clé valait `undefined`, le `??`
+faisait son office, et l'overlay repartait à 60 s pendant que la dalle attendait 600 s.
+
+**On avait corrigé le consommateur sans vérifier que le producteur envoyait la donnée.**
+Les deux fichiers, lus séparément, avaient l'air corrects.
+
+> **Règle** : quand une valeur traverse une frontière (endpoint, fichier, service), la
+> corriger d'un seul côté ne prouve rien. Vérifier que la donnée **arrive**, pas
+> seulement qu'elle est bien lue à l'arrivée. Le journal d'exécution tranche en une
+> ligne là où la relecture du code peut tromper pendant des jours.
+
+**Garde** : le smoke test extrait les clés `cfg.X` réellement lues par
+`applySleepConfig()` dans `index.html` et vérifie que chacune est émise par le bloc
+`parental_status` de `radio.php`. Il échoue si une clé manque, et aussi si la fonction
+ou le bloc devient introuvable — sans quoi il deviendrait un garde incapable d'échouer.
+
+---
+
 ### 🟡 Z10 — Dépôt public et vie privée
 
 **Le piège** : le dépôt est public. Un prénom réel qui part dans un commit **ne se

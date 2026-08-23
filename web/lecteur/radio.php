@@ -562,6 +562,15 @@ if (isset($_GET['action'])) {
             'sleep_enabled'    => (bool)($c['sleep_enabled'] ?? true),
             'sleep_delay'      => (int)($c['sleep_delay']    ?? 15),
             'sleep_mode'       => $c['sleep_mode']           ?? 'retro',
+            // TICKET-138, deuxième passe. L'overlay de veille DÉRIVE du délai
+            // d'extinction physique de la dalle — il ne doit jamais s'afficher avant
+            // que swayidle n'éteigne. Sans cette clé ici, `cfg.screen_off_delay` est
+            // `undefined` côté page, qui retombe sur `sleep_delay` (60 s) pendant que
+            // swayidle attend 600 s : la dalle reste allumée sur une page en veille,
+            // et l'enfant voit un écran noir.
+            // ⚠️ Cet endpoint recopie une LISTE FIXE de clés. Toute clé lue par
+            // applySleepConfig() doit y figurer, sinon le repli s'applique en silence.
+            'screen_off_delay' => (int)($c['screen_off_delay'] ?? 600),
             // son de démarrage
             'chime_enabled'    => (bool)($c['chime_enabled'] ?? true),
             'chime_volume'     => (int)($c['chime_volume']   ?? 15),
