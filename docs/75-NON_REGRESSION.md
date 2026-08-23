@@ -217,9 +217,31 @@ Deuxième piège, plus vicieux : un timer périodique peut **réarmer le timer d
 boucle**. `checkParentalTime` (30 s) était plus court que `sleep_delay` : l'écran ne
 s'éteignait jamais.
 
-**Fichiers** : `scripts/screen_dpms.sh`, `scripts/idle_screen.sh`, `web/lecteur/index.html`
+**Quatrième piège — l'instrumentation elle-même peut mentir (2026-08-23, TICKET-147)** :
+le guetteur de gel `kiosk_freeze_watch.py` datait l'âge du battement en comparant deux
+**heures murales**. Le Pi démarre sans réseau ; quand le NTP répond, l'horloge **bondit**,
+et le dernier battement — écrit avant le bond — paraît vieux d'exactement la taille du
+saut. Les **deux seules** alertes jamais émises étaient fausses, à moins de 15 s d'un
+`timesyncd: Initial clock synchronization`.
 
-**Historique** : TICKET-115 (écran noir) · TICKET-102 (veille jamais déclenchée)
+> Un guetteur qui crie au loup ne guette plus rien. Deux faux positifs sur deux, et toute
+> l'instrumentation du TICKET-127 ne valait plus rien — le vrai gel, quand il viendrait,
+> se serait perdu dans le bruit.
+
+**Règle** : une durée ne se mesure jamais sur l'heure murale d'un appareil qui peut la
+repositionner. Quand les deux horodatages viennent de processus différents (ici la page
+et le guetteur), `time.monotonic()` seul ne suffit pas — il faut surveiller la **dérive**
+entre horloge murale et horloge monotone, qui ne bouge que sur un pas d'horloge.
+
+Et le corollaire, qui vaut pour tout filtre anti-bruit : **vérifier que le détecteur
+détecte encore**. `test_kiosk_freeze.py` teste autant le vrai gel que les faux positifs.
+
+**Fichiers** : `scripts/screen_dpms.sh`, `scripts/idle_screen.sh`, `web/lecteur/index.html`,
+`scripts/kiosk_freeze_watch.py`
+
+**Historique** : TICKET-115 (écran noir) · TICKET-102 (veille jamais déclenchée) ·
+TICKET-138 (overlay à 60 s, dalle à 600 s — clé absente de l'endpoint, cf. Z13) ·
+TICKET-147 (faux gels sur saut d'horloge)
 
 **Test de garde** : smoke test §1 — md5 de conformité, présence des 4 actions
 (`off`/`on`/`rescue`/`status`), syntaxe bash, et vérification du no-op anti-clignotement

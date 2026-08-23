@@ -60,6 +60,36 @@ POLL_SECONDS = 20
 # réseau ou une seconde de charge CPU, assez court pour attraper l'état de la
 # machine pendant que la panne est encore fraîche.
 STALE_AFTER_S = 60
+
+# ── TICKET-147 — un saut d'horloge n'est pas un gel ──────────────────────────
+# Les DEUX seules alertes émises par ce guetteur depuis sa mise en service
+# étaient fausses, et pour la même raison :
+#
+#   22/08 09:28:32  timesyncd: Initial clock synchronization
+#   22/08 09:28:44  GEL DÉTECTÉ — battement silencieux depuis 77 s
+#   23/08 11:39:23  timesyncd: Initial clock synchronization
+#   23/08 11:39:35  GEL DÉTECTÉ — battement silencieux depuis 516 s
+#
+# Le Pi démarre sans réseau : son horloge repart de la dernière date connue,
+# puis **bondit** quand le NTP répond. `age` compare deux heures murales — le
+# dernier battement, écrit avant le bond, et `time.time()` d'après. L'écart
+# mesuré n'est pas un silence, c'est la taille du saut. Dans les deux cas la
+# page n'avait jamais cessé de tourner : « battement REVENU » arrive 21 s plus
+# tard avec un âge de 4 à 5 s.
+#
+# ⚠️ Ce n'est pas un détail cosmétique. Un guetteur qui crie au loup rend
+# invisible le vrai gel qu'il est censé attraper — toute l'instrumentation du
+# TICKET-127 ne valait plus rien.
+#
+# Deux protections, indépendantes :
+#   1. On surveille la dérive entre l'horloge murale et l'horloge monotone.
+#      Elle est constante sauf quand le système REPOSITIONNE l'heure. Un écart
+#      brusque = un pas d'horloge, et l'évaluation du tour est jetée.
+#   2. Un silence doit être confirmé sur deux tours consécutifs. Un vrai gel
+#      dure ; un artefact ne survit pas au tour suivant. Coût : 20 s de retard
+#      sur l'instantané, ce qui ne change rien à sa valeur médico-légale.
+SAUT_HORLOGE_S = 2.0
+CONFIRMATIONS = 2
 # Garde-fou de taille : ce journal est en append. Un instantané fait ~3 ko ;
 # à 400 ko on a de la place pour une centaine d'épisodes, largement de quoi
 # comprendre. Au-delà on repart à zéro plutôt que de remplir la carte SD —
@@ -81,6 +111,79 @@ def run(cmd: list[str], timeout: int = CMD_TIMEOUT) -> str:
         return f"(délai de garde dépassé après {timeout}s)"
     except Exception as e:  # noqa: BLE001
         return f"(erreur : {e})"
+
+
+def derive_horloge() -> float:
+    """
+    Écart entre l'horloge murale et l'horloge monotone.
+
+    Cette valeur ne bouge pas tant que personne ne repositionne l'heure. Elle
+    saute exactement de la taille du pas quand NTP corrige l'horloge — c'est le
+    seul signal fiable pour distinguer « le temps a passé » de « l'heure a
+    changé ». `time.monotonic()` seul ne suffirait pas : le battement est
+    horodaté par le navigateur, dans un autre processus.
+    """
+    return time.time() - time.monotonic()
+
+
+class DetecteurGel:
+    """
+    Décide si un silence du battement est un vrai gel (TICKET-147).
+
+    Sépare la décision de tout le reste — fichiers, commandes, journaux — pour
+    qu'elle soit vérifiable sans Pi, sans Chromium et sans attendre une panne.
+
+    `evaluer()` renvoie :
+      'saut_horloge' — l'heure a été repositionnée, ce tour ne compte pas
+      'suspect'      — silence constaté, pas encore confirmé
+      'alerte'       — silence confirmé : prendre l'instantané (une seule fois)
+      'retour'       — le battement est revenu après une alerte
+      'ok'           — rien à signaler
+    """
+
+    def __init__(self, seuil_s: float = STALE_AFTER_S,
+                 saut_max_s: float = SAUT_HORLOGE_S,
+                 confirmations: int = CONFIRMATIONS) -> None:
+        self.seuil_s = seuil_s
+        self.saut_max_s = saut_max_s
+        self.confirmations = max(1, confirmations)
+        self._derive: float | None = None
+        self._consecutifs = 0
+        self._signale = False
+        self.dernier_saut_s = 0.0
+
+    def evaluer(self, age_s: float, derive_s: float) -> str:
+        saut = None if self._derive is None else derive_s - self._derive
+        self._derive = derive_s
+
+        if saut is not None and abs(saut) > self.saut_max_s:
+            # L'heure vient d'être repositionnée : `age_s` est faux de la taille
+            # du pas. On repart de zéro plutôt que de conclure sur une mesure
+            # qu'on sait corrompue.
+            self.dernier_saut_s = saut
+            self._consecutifs = 0
+            return "saut_horloge"
+
+        if age_s < 0:
+            # Battement daté dans le futur — horloge partie en arrière, ou page
+            # et système désaccordés. Jamais un gel.
+            self._consecutifs = 0
+            return "saut_horloge"
+
+        if age_s > self.seuil_s:
+            self._consecutifs += 1
+            if self._signale:
+                return "ok"
+            if self._consecutifs >= self.confirmations:
+                self._signale = True
+                return "alerte"
+            return "suspect"
+
+        self._consecutifs = 0
+        if self._signale:
+            self._signale = False
+            return "retour"
+        return "ok"
 
 
 def read_heartbeat() -> dict | None:
@@ -228,7 +331,7 @@ def main() -> int:
         f"{POLL_SECONDS}s, alerte au-delà de {STALE_AFTER_S}s de silence",
         flush=True,
     )
-    reported = False   # un seul instantané par épisode de gel
+    detecteur = DetecteurGel()
     while True:
         beat = read_heartbeat()
         if beat is None or not beat.get("ts"):
@@ -238,22 +341,32 @@ def main() -> int:
             continue
 
         age = time.time() - (beat["ts"] / 1000.0)
-        if age > STALE_AFTER_S:
-            if not reported:
-                print(f"battement silencieux depuis {age:.0f}s — instantané", flush=True)
-                append_log(snapshot(f"battement silencieux depuis {age:.0f}s", beat, age))
-                reported = True
-        else:
-            if reported:
-                print(f"battement revenu (âge {age:.0f}s) — guetteur réarmé", flush=True)
-                append_log(
-                    f"[{datetime.now():%Y-%m-%d %H:%M:%S}] battement REVENU "
-                    f"(âge {age:.0f}s, écran={beat.get('screen')}, "
-                    f"overlay={beat.get('overlay')}, âge page={beat.get('page_age_s')}s)\n"
-                    f"  → si âge de la page < durée du gel, la page a été rechargée "
-                    f"(hard reset) ; sinon elle est repartie seule.\n\n"
-                )
-            reported = False
+        verdict = detecteur.evaluer(age, derive_horloge())
+
+        if verdict == "saut_horloge":
+            # On garde la trace : c'est ce qui a produit deux fausses alertes
+            # avant le TICKET-147, et il faut pouvoir le reconnaître si ça
+            # recommence. Une ligne, pas un instantané de 3 ko.
+            saut = detecteur.dernier_saut_s
+            print(f"saut d'horloge de {saut:+.0f}s — évaluation ignorée", flush=True)
+            append_log(
+                f"[{datetime.now():%Y-%m-%d %H:%M:%S}] saut d'horloge {saut:+.0f}s "
+                f"(âge apparent {age:.0f}s) — PAS un gel, évaluation ignorée\n"
+            )
+        elif verdict == "suspect":
+            print(f"silence de {age:.0f}s — attente de confirmation", flush=True)
+        elif verdict == "alerte":
+            print(f"battement silencieux depuis {age:.0f}s — instantané", flush=True)
+            append_log(snapshot(f"battement silencieux depuis {age:.0f}s", beat, age))
+        elif verdict == "retour":
+            print(f"battement revenu (âge {age:.0f}s) — guetteur réarmé", flush=True)
+            append_log(
+                f"[{datetime.now():%Y-%m-%d %H:%M:%S}] battement REVENU "
+                f"(âge {age:.0f}s, écran={beat.get('screen')}, "
+                f"overlay={beat.get('overlay')}, âge page={beat.get('page_age_s')}s)\n"
+                f"  → si âge de la page < durée du gel, la page a été rechargée "
+                f"(hard reset) ; sinon elle est repartie seule.\n\n"
+            )
         time.sleep(POLL_SECONDS)
 
 

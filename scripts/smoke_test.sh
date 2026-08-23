@@ -873,6 +873,27 @@ else
     warn "test_tracking.py absent — attribution des langues non couverte (TICKET-146)"
 fi
 
+# ── TICKET-147 — un guetteur qui crie au loup ne guette plus rien ────────────
+# Les deux seules alertes de kiosk_freeze_watch depuis sa mise en service étaient
+# fausses : elles suivaient une resynchronisation NTP de moins de 15 s. Le Pi démarre
+# sans réseau, son horloge bondit quand le NTP répond, et le dernier battement — écrit
+# avant le bond — paraît vieux d'exactement le saut. La page n'avait jamais cessé de
+# tourner. Tant que ce bruit existait, l'instrumentation du TICKET-127 ne valait rien.
+# Tests de DÉCISION (séquences d'âges et de dérives), sans Pi ni Chromium. Ils
+# vérifient aussi qu'un VRAI gel reste détecté : à filtrer le bruit on finit par
+# rendre un détecteur aveugle.
+FRZ_TEST="$ROOT/scripts/test_kiosk_freeze.py"
+if [ -f "$FRZ_TEST" ]; then
+    if sortie_frz=$(timeout 15 python3 "$FRZ_TEST" 2>&1); then
+        pass "guetteur de gel : $(echo "$sortie_frz" | grep -oE '^[0-9]+ test' | grep -oE '[0-9]+') décision(s) OK (TICKET-147)"
+    else
+        fail "guetteur de gel : décision incorrecte (TICKET-147)"
+        echo "$sortie_frz" | grep '❌' | head -6 | sed 's/^/     /'
+    fi
+else
+    warn "test_kiosk_freeze.py absent — faux positifs du guetteur non couverts (TICKET-147)"
+fi
+
 # ── TICKET-138 (2e passe) — le contrat entre la page et son endpoint ─────────
 # La page lit sa config de veille dans la réponse de radio.php?action=parental_status,
 # qui recopie une LISTE FIXE de clés. En août on a corrigé applySleepConfig() pour

@@ -7,13 +7,12 @@
 
 ## 📌 État des lieux
 
-*2026-08-23 — 4 ouverts, 139 clos*
+*2026-08-23 — 3 ouverts, 140 clos*
 
 ### À faire
 
 | # | Sujet | État |
 |---|---|---|
-| 147 | Le détecteur de gel se déclenche sur un saut d'horloge | 2 fausses alertes sur 2 |
 | 140 | Arrêt de charge nocturne, alimentation présente | cause inconnue, 3 occurrences |
 | 122 | Récupération du chien de garde MPD | logique testée, action non éprouvée |
 | 058 | Série podcast « Décisions Prises » | 2 épisodes écrits |
@@ -40,8 +39,8 @@ journée. Autonomie mesurée : **4 h 15** de la pleine charge à l'arrêt.
 
 # 📋 Détail des tickets ouverts
 
-- [ ] TICKET-147 — instrumentation — Le détecteur de gel du kiosque compte un saut d'horloge comme un silence (2026-08-23)
-      - Les **deux seules** alertes depuis la mise en service tombent à moins de 15 s
+- [x] TICKET-147 — instrumentation — Le guetteur de gel comptait un saut d'horloge comme un silence (2026-08-23)
+      - Les **deux seules** alertes depuis la mise en service tombaient à moins de 15 s
         d'une resynchronisation NTP :
         ```
         22/08 09:28:32  timesyncd: Initial clock synchronization
@@ -49,18 +48,28 @@ journée. Autonomie mesurée : **4 h 15** de la pleine charge à l'arrêt.
         23/08 11:39:23  timesyncd: Initial clock synchronization
         23/08 11:39:35  GEL DÉTECTÉ — battement silencieux depuis 516 s
         ```
-      - Au démarrage le Pi n'a pas de réseau : son horloge repart de la dernière date
-        connue, puis **bondit** quand le NTP répond. Le battement est horodaté en heure
-        murale ; après le bond, le dernier battement paraît vieux d'exactement la durée
-        du saut. La page n'a jamais cessé de tourner — « battement REVENU » arrive 21 s
-        plus tard dans les deux cas, avec un âge de 4 à 5 s.
-      - ⚠️ **Conséquence directe** : un vrai gel serait noyé dans ces fausses alertes,
-        et l'instrumentation du 127 ne vaut plus rien tant que ce n'est pas corrigé.
-      - **Correctif** : horodater le battement sur `CLOCK_MONOTONIC` (insensible aux
-        sauts), et non sur l'heure murale. À défaut, ignorer toute détection dont
-        l'écart correspond à un pas d'horloge observé dans le journal.
-      - **Garde à écrire** : simuler un saut d'horloge en avant et vérifier qu'aucun gel
-        n'est déclaré — comportement, pas texte.
+      - Le Pi démarre sans réseau : son horloge repart de la dernière date connue, puis
+        **bondit** quand le NTP répond. `age` comparait deux heures murales — le dernier
+        battement, écrit avant le bond, et `time.time()` d'après. L'écart mesuré n'était
+        pas un silence, c'était la taille du saut. La page n'avait jamais cessé de
+        tourner : « battement REVENU » arrive 21 s plus tard, avec un âge de 4 à 5 s.
+      - ⚠️ **Ce n'était pas cosmétique** : 2 alertes sur 2 étaient fausses. Un guetteur
+        qui crie au loup rend invisible le gel qu'il est censé attraper — toute
+        l'instrumentation du 127 ne valait plus rien.
+      - **Correctif**, deux protections indépendantes :
+        1. surveiller la dérive entre horloge murale et horloge monotone. Elle est
+           constante sauf quand le système repositionne l'heure ; un écart brusque
+           (> 2 s) fait jeter l'évaluation du tour. `time.monotonic()` seul ne suffisait
+           pas : le battement est horodaté par le navigateur, dans un autre processus.
+        2. exiger deux tours consécutifs de silence. Un vrai gel dure, un artefact non.
+           Coût : 20 s de retard sur l'instantané, sans effet sur sa valeur.
+      - La décision est sortie dans une classe `DetecteurGel`, testable sans Pi, sans
+        Chromium et sans attendre une panne.
+      - **Garde** : `scripts/test_kiosk_freeze.py`, 16 décisions. Il rejoue les deux
+        fausses alertes avec leurs vrais chiffres, **et** vérifie qu'un vrai gel reste
+        détecté — à force de filtrer le bruit on rend un détecteur aveugle. Éprouvé sur
+        l'ancienne logique (`saut_max_s=inf, confirmations=1`) : elle produit bien les
+        deux fausses alertes, la nouvelle les filtre, et les deux attrapent le vrai gel.
 
 - [x] TICKET-138 — écran — L'overlay de veille partait à 60 s alors que la dalle s'éteignait à 600 s (2026-08-23, 2e passe)
       - **Le correctif d'août était juste, et sans effet.** `applySleepConfig()` calculait
