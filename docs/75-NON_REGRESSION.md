@@ -217,6 +217,33 @@ Deuxième piège, plus vicieux : un timer périodique peut **réarmer le timer d
 boucle**. `checkParentalTime` (30 s) était plus court que `sleep_delay` : l'écran ne
 s'éteignait jamais.
 
+**Cinquième piège, et il annule une partie des quatre autres (2026-08-25, TICKET-149)** :
+l'écran noir récurrent **n'a jamais été un problème logiciel**. Diagnostic pris à chaud,
+appareil en panne : la page battait depuis 14 s, `grim` capturait le lecteur complet et
+animé, `wlr-randr` annonçait `Enabled: yes`, et le noyau confirmait crtc-2 `active=1` en
+1024x600 avec `tmds_char_rate=50250000` et un plan parfaitement dimensionné. Aucune erreur
+DRM depuis le démarrage. **Le Pi émettait un signal vidéo valide sur une dalle noire mais
+rétroéclairée.** Débrancher le câble HDMI a tout rétabli en une seconde.
+
+`wlr-randr --off` coupe l'horloge TMDS. Le récepteur de la JRP7003 perd le verrouillage,
+se fige, et **ne se re-verrouille pas** au retour du signal. Seul un cycle physique de HPD
+et du +5 V le réinitialise.
+
+> **La règle qui manquait** : un battement de cœur prouve que le JavaScript **s'exécute**.
+> Il ne prouve pas que la page **s'affiche**. Ce sont deux étages différents, et pendant
+> des mois toute l'instrumentation a mesuré le premier pour diagnostiquer une panne du
+> second.
+
+**Méthode à réutiliser telle quelle** — descendre les étages un par un, chacun avec sa
+propre preuve, sans jamais déduire l'étage suivant du précédent :
+`page (battement)` → `Chromium (grim)` → `compositeur (wlr-randr)` → `noyau (/sys/class/drm)`
+→ `matériel (état DRM : CRTC actif ? plan dimensionné ? tmds_char_rate ?)` → `dalle (l'œil)`.
+Le premier étage qui ment est la cause. Ici les six premiers disaient vrai.
+
+⚠️ **Conséquence sur les tickets antérieurs** : le rebond de mode du TICKET-115
+« fonctionnait » sans rien réparer, et ni swayidle (TICKET-123) ni le gel du kiosque
+(TICKET-127) n'ont jamais été en cause sur ce symptôme.
+
 **Quatrième piège — l'instrumentation elle-même peut mentir (2026-08-23, TICKET-147)** :
 le guetteur de gel `kiosk_freeze_watch.py` datait l'âge du battement en comparant deux
 **heures murales**. Le Pi démarre sans réseau ; quand le NTP répond, l'horloge **bondit**,

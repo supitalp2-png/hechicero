@@ -175,6 +175,35 @@ def lire_temperature_c() -> float | None:
         return None
 
 
+def lire_charge_cpu() -> float | None:
+    """
+    Charge moyenne du CPU sur 1 minute. `None` si illisible.
+
+    ── Pourquoi (TICKET-148, suggéré par Thomas) ─────────────────────────────
+    La température seule ne dit pas d'où vient la chaleur. Sans la charge en
+    regard, un pic nocturne à 85 °C reste indéchiffrable : le SoC qui travaille,
+    ou le HAT qui charge à 1,2 A juste au-dessus ?
+
+    Le suspect nommé est l'**ingestion RSS de 03:00** (cron de `thomas`, cf.
+    `docs/40-BACKEND_RSS.md` §9) : téléchargements et réécriture du catalogue,
+    la seule tâche lourde de la journée, et la seule qui tourne quand personne
+    ne regarde. Si 80 °C est le régime au repos, c'est à 03:00 qu'on touchera le
+    maximum — précisément le moment jamais mesuré.
+
+    ⚠️ Sur un Pi 5 (4 cœurs), une charge de 4,0 vaut saturation. Ne pas lire
+    cette valeur comme un pourcentage.
+
+    Note : l'ingestion de 03:00 **n'explique pas** l'arrêt de charge du
+    TICKET-140, survenu à 00:16 avec déjà +1 mA à 02:37 — la charge avait cessé
+    2 h 44 avant que l'ingestion ne démarre. Les deux sujets se mesurent
+    ensemble, ils ne se confondent pas.
+    """
+    try:
+        return round(float(Path("/proc/loadavg").read_text(encoding="utf-8").split()[0]), 2)
+    except Exception:
+        return None
+
+
 def lire_throttled() -> str | None:
     """
     Registre `get_throttled` du firmware, en hexadécimal. `None` si indisponible.
@@ -220,6 +249,9 @@ def append_datapoint(cycle: dict[str, Any], sample: dict[str, Any]) -> None:
             # consulté le lendemain ne le dit plus. Quelques octets par point.
             "temperature_c": sample.get("temperature_c"),
             "throttled": sample.get("throttled"),
+            # TICKET-148 : la température sans la charge CPU en regard ne dit pas
+            # d'où vient la chaleur. Les deux se lisent ensemble ou pas du tout.
+            "cpu_load": sample.get("cpu_load"),
         }
     )
 
@@ -573,6 +605,7 @@ def build_sample(sensor: Any, config: dict[str, Any], simulate: bool = False,
         # TICKET-140 : voir le commentaire de lire_temperature_c().
         "temperature_c": lire_temperature_c(),
         "throttled": lire_throttled(),
+        "cpu_load": lire_charge_cpu(),
     }
     return sample
 

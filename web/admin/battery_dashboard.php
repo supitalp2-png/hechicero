@@ -142,6 +142,7 @@ foreach (array_reverse($cycles) as $cycle) {
                 // une mesure au tracker sans l'ajouter ici.
                 'temperature_c' => $pt['temperature_c'] ?? null,
                 'throttled' => $pt['throttled'] ?? null,
+                'cpu_load' => $pt['cpu_load'] ?? null,
             ];
         }
     }
@@ -328,12 +329,21 @@ $currentPage = basename($_SERVER['PHP_SELF'] ?? 'battery_dashboard.php');
           <div class="ha-chart" style="height:200px;">
             <canvas id="temp-chart"></canvas>
           </div>
+          <div class="ha-chart" style="height:200px;">
+            <canvas id="cpu-chart"></canvas>
+          </div>
           <div class="ha-stat-note" style="margin:4px 0 12px;color:var(--muted);">
             Température du SoC, pas des cellules — elle idle bien au-dessus de
             l'ambiante. Elle sert à <em>corréler</em> : si les arrêts de charge
             nocturnes tombent sur les points les plus froids, la fenêtre thermique
             du chargeur est en cause ; s'ils y sont indifférents, la piste est morte
-            (TICKET-140).
+            (TICKET-140).<br>
+            La charge CPU juste en dessous dit <em>d'où vient</em> la chaleur : un
+            pic thermique sans charge accuse le HAT qui charge à 1,2 A, un pic avec
+            charge accuse le SoC. Le rendez-vous à surveiller est
+            <strong>03:00</strong>, l'ingestion RSS — la seule tâche lourde de la
+            journée, et la seule qui tourne quand personne ne regarde. Sur 4 cœurs,
+            une charge de 4,0 vaut saturation (TICKET-148).
           </div>
         <?php else: ?>
           <div class="ha-chart">
@@ -689,6 +699,10 @@ $currentPage = basename($_SERVER['PHP_SELF'] ?? 'battery_dashboard.php');
     // s'affiche pas tant qu'il n'y a pas 2 points (garde de grapheSerie), donc
     // aucun cadre vide pendant la période de collecte.
     grapheSerie('temp-chart', 'temperature_c', 'Température SoC (°C)', '#fb7185', 'Température (°C)', false);
+    // TICKET-148 : la charge CPU juste sous la température, même axe de temps.
+    // C'est la confrontation des deux qui dit d'où vient la chaleur — un pic
+    // thermique sans charge accuse le HAT, avec charge accuse le SoC.
+    grapheSerie('cpu-chart', 'cpu_load', 'Charge CPU (1 min)', '#a78bfa', 'Charge (4 = saturé)', false);
   </script>
 </body>
 </html>

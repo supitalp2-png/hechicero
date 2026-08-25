@@ -7,12 +7,14 @@
 
 ## 📌 État des lieux
 
-*2026-08-23 — 3 ouverts, 140 clos*
+*2026-08-25 — 5 ouverts, 140 clos*
 
 ### À faire
 
 | # | Sujet | État |
 |---|---|---|
+| 149 | Écran noir : la dalle ne re-verrouille pas le HDMI | **cause trouvée 25/08**, correctif à choisir |
+| 148 | Le Pi tient 80 °C en régime permanent dans le boîtier | mesuré, cause non cherchée |
 | 140 | Arrêt de charge nocturne, alimentation présente | instrumenté 23/08, attend une nuit branché |
 | 122 | Récupération du chien de garde MPD | logique testée, action non éprouvée |
 | 058 | Série podcast « Décisions Prises » | 2 épisodes écrits |
@@ -91,6 +93,112 @@ journée. Autonomie mesurée : **4 h 15** de la pleine charge à l'arrêt.
         Éprouvé dans les deux sens : il échoue si on retire la clé, et il échoue aussi
         si la fonction ou le bloc devient introuvable.
       - ⚠️ **Nécessite un `wtype -k F5`** pour que le kiosque recharge la page.
+
+- [ ] TICKET-149 — matériel/écran — L'écran noir vient de la dalle, pas du logiciel (2026-08-25)
+      - **Le bug le plus ancien du projet, cherché au mauvais étage pendant des mois.**
+        Symptôme : dalle rétroéclairée, image noire, rien ne la rétablit.
+      - 🔬 **Diagnostic pris à chaud, appareil en panne** (25/08 20:05-20:08) :
+        | Étage | État constaté | Verdict |
+        |---|---|---|
+        | Page web | battement de 14 s, `screen=player`, `overlay=False` | ✅ vivante |
+        | Chromium | capture `grim` : le lecteur, complet et **animé** (confirmé en VNC) | ✅ peint |
+        | Compositeur | `wlr-randr` : `Enabled: yes`, 1024x600 préféré | ✅ sain |
+        | Noyau — connecteur | `connected` · `enabled` · `dpms=On` | ✅ sain |
+        | Noyau — CRTC | crtc-2 `enable=1 active=1`, mode 1024x600@60, `tmds_char_rate=50250000` | ✅ émet |
+        | Noyau — plan | plane-2 fb=682, `crtc-pos=1024x600+0+0`, `src-pos=1024x600` | ✅ concordant |
+        | Journal | **aucune erreur DRM ni HDMI depuis le démarrage** | ✅ |
+        | Dalle physique | **noire, mais rétroéclairée** | ❌ |
+      - ✅ **Preuve décisive** : débrancher puis rebrancher le câble HDMI rétablit l'image
+        immédiatement. Un rebond de mode logiciel, lui, ne la rétablit pas — celui de
+        20:01:44 avait déjà eu lieu, l'écran est resté noir 7 minutes de plus.
+      - 🎯 **Cause** : `wlr-randr --off` désactive le CRTC, donc **coupe l'horloge TMDS**.
+        Le récepteur HDMI de la JRP7003 perd le verrouillage et se fige — rétroéclairage
+        allumé, image noire, sans même afficher « No Signal ». Le retour du signal ne le
+        réveille pas. Seule une déconnexion physique bascule **HPD et le +5 V**, ce qui
+        remet le récepteur à zéro. Aucune commande du Pi ne peut simuler ça.
+      - 📌 **Ce que ça invalide** : le rebond de mode du TICKET-115 « marchait » sans rien
+        réparer ; swayidle (TICKET-123) et le gel du kiosque (TICKET-127) n'ont jamais été
+        en cause sur ce symptôme. Toutes les corrections logicielles portaient sur des
+        étages sains. **Le battement de cœur prouve que le JS s'exécute — il ne prouve
+        pas que la page s'affiche.** C'est la distinction qui manquait, et c'est elle qui
+        a fait perdre le plus de temps.
+      - 🔧 **Correctifs candidats, aucun choisi** :
+        1. **Ne plus jamais couper la sortie.** Garder le CRTC actif et n'afficher qu'une
+           image noire (l'overlay de veille existe déjà). La dalle ne perd jamais le
+           signal, donc ne se fige jamais. Coût : le rétroéclairage reste allumé — à
+           chiffrer en heures d'autonomie perdues, et à juger aussi sur la lueur dans une
+           chambre d'enfant la nuit.
+        2. **Réveil périodique du lien** : réactiver brièvement la sortie toutes les N
+           minutes pour empêcher la dalle de décrocher. Suppose que la panne dépend de la
+           durée d'extinction — non vérifié. Et un flash bref dans une chambre sombre est
+           probablement pire que le mal.
+        3. **Couper le +5 V du HDMI par voie matérielle** (transistor sur la broche 18)
+           pour simuler la déconnexion. C'est le correctif qui traite la vraie cause, mais
+           il demande du fer à souder et un GPIO de plus.
+      - 📏 **Coût de l'option 1, mesuré le 2026-08-25** (INA219, MPD à l'arrêt, sur batterie) :
+        | État | Courant | Autonomie sur 8894 mAh |
+        |---|---|---|
+        | Écran allumé | −2505 mA | 3 h 33 |
+        | Écran éteint | −1841 mA | 4 h 50 |
+
+        L'écran coûte **664 mA**, soit 26 % de la consommation totale : ne plus jamais le
+        couper retirerait **1 h 17 d'autonomie**. Cher pour un contournement.
+      - ⏱️ **La panne dépend de la durée sans signal.** 60 s d'extinction : l'image revient
+        seule. 1 h 48 (18:13:35 → 20:01:44) : elle ne revient pas. Le seuil est entre les
+        deux, **pas encore encadré**. À faire : une extinction de 15 min, puis 45 selon le
+        résultat.
+      - ❌ **Piste éliminée le 2026-08-25 — délier/relier le pilote HDMI.** C'était le
+        candidat le plus prometteur : un équivalent logiciel du débranchement, gratuit en
+        autonomie et sans clignotement. **Impossible à chaud** : `unbind` de `vc4_hdmi`
+        retire son périphérique DRM à labwc, qui meurt sur `Segmentation fault` en
+        emportant la session. Reste théoriquement jouable en arrêtant proprement le
+        compositeur d'abord — mais une récupération qui redémarre toute l'interface n'a
+        plus grand intérêt face à un simple redémarrage.
+        ⚠️ Ces commandes ne doivent **jamais** être lancées sur un écran qui fonctionne.
+      - 🔭 **Prochain pas** : encadrer le seuil de durée. S'il est confortablement au-delà
+        des extinctions d'usage courant, la panne ne concerne que les longues absences, et
+        la réponse peut être bien plus légère que les trois options ci-dessus.
+
+- [ ] TICKET-148 — matériel/thermique — Le Pi tient 80 °C en régime permanent dans le boîtier (2026-08-23)
+      - **Découvert par accident**, en instrumentant le TICKET-140 : la première mesure de
+        température jamais prise sur cet appareil sort à **80,4 °C**.
+      - ✅ **Ce n'est pas un pic de mesure.** Deux relevés identiques à 6 min d'intervalle
+        (12:11 et 12:17), longtemps après le smoke test qui aurait pu charger le CPU.
+        C'est le régime permanent, appareil au repos, MPD à l'arrêt.
+      - `throttled = 0x80000` → **bit 19 : la limite thermique douce a été franchie depuis
+        le démarrage**. Les bits d'état courant sont à zéro, donc rien d'actif à l'instant
+        de la mesure. Le throttling matériel intervient à 85 °C : il reste ~5 °C de marge.
+      - **Contexte** : Pi 5 sous un HAT UPS, dans une carcasse de Grundig fermée, façades
+        bois et tissu. Aucune ventilation prévue. La surprise n'est pas la valeur, c'est
+        qu'on ne l'ait jamais mesurée en un an.
+      - ❓ **Rien n'est établi au-delà de la mesure.** Ce ticket n'existe que pour ne pas
+        perdre le constat. Ce qu'il faudrait avant de décider quoi que ce soit :
+        - la température sur un cycle de 24 h (elle arrive toute seule, le tracker
+          l'enregistre depuis aujourd'hui) — connaître le minimum nocturne et le maximum
+          en lecture, pas un point isolé ;
+        - de quoi vient la chaleur : le SoC seul, ou le HAT qui charge à 1,2 A juste
+          au-dessus.
+      - 🛠️ **Charge CPU enregistrée aussi (suggestion de Thomas, 2026-08-23)** : la
+        température seule ne dit pas *d'où* vient la chaleur. Un pic thermique **sans**
+        charge accuse le HAT, **avec** charge accuse le SoC. `cpu_load` (moyenne 1 min de
+        `/proc/loadavg`) est enregistrée à chaque point et tracée sous la température,
+        même axe de temps. Sur 4 cœurs, 4,0 vaut saturation.
+      - 🕒 **Le rendez-vous à surveiller est 03:00** — l'ingestion RSS (cron de `thomas`,
+        `docs/40-BACKEND_RSS.md` §9). Téléchargements et réécriture du catalogue : la
+        seule tâche lourde de la journée, et la seule qui tourne quand personne ne
+        regarde. Si 80 °C est le régime **au repos**, c'est là qu'on touchera le maximum,
+        et c'est précisément le moment jamais mesuré.
+      - 🔧 **Piste de correction envisagée** : un ventilateur dans le boîtier. À ne
+        décider qu'après la courbe de 24 h — on ne perce pas une carcasse de Grundig sur
+        un point de mesure.
+      - ⚠️ **Ne pas relier ce ticket au 140 par réflexe.** J'avais d'abord écarté la
+        piste thermique pour le 140 en disant qu'elle expliquerait mal un arrêt nocturne,
+        « appareil au repos ». **Thomas a fait remarquer que la nuit n'est pas au repos :
+        l'ingestion tourne.** L'objection était donc mal fondée. Mais la vérification la
+        remplace par un fait : l'ingestion démarre à **03:00**, l'effondrement de charge
+        a eu lieu à **00:16**, avec déjà +1 mA à 02:37. La charge avait cessé 2 h 44
+        avant que l'ingestion ne commence — **elle n'explique pas cet épisode-là**.
+        Les deux tickets se mesurent ensemble ; ils ne se confondent pas.
 
 - [ ] TICKET-140 — matériel/batterie — Le chargeur du HAT termine la charge à ~61 % et ne reprend qu'à la sollicitation (2026-08-19)
       - **Signalé par Thomas** : « je ne comprends pas l'arrêt de recharge entre minuit en gros et 7h30 ». Ses heures, lues sur le tableau de bord, sont exactes : **00:16 → 07:09**.
