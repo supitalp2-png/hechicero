@@ -22,7 +22,7 @@ ACCESS_LOG="/var/log/apache2/access.log"
 # script, sinon le test passe en avertissement et on finit par l'ignorer.
 # 2026-08-04 933e04d7… — réécriture TICKET-115bis (off/on/rescue/status)
 # 2026-08-05 270794ad… — TICKET-123, journalisation de l'appelant
-SCREEN_MD5_ATTENDU="270794add9264a94d72422b66fc4631e"
+SCREEN_MD5_ATTENDU="4c2e62766d65cc0aca5a4d4893359b72"   # 2026-08-26 : durée d'extinction + température au réveil (TICKET-149), grep -a
 
 export WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-0}"
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
@@ -372,16 +372,34 @@ else
     pass "battement sans effet sur le timer de veille (zone Z4 préservée)"
 fi
 
-# ── TICKET-138 — UNE SEULE veille, pas deux minuteries désaccordées ────────
-# Bug surveillé : l'overlay JS lisait `sleep_delay` (60 s) pendant que swayidle
-# éteignait la dalle sur `screen_off_delay` (600 s). Entre les deux, 540 s de
-# DALLE ALLUMÉE SUR PAGE NOIRE — signalé plusieurs fois comme une panne, cherché
-# comme un gel du kiosque, introuvable parce que rien n'était cassé : c'est le
-# DÉSACCORD des deux réglages qui produisait le symptôme.
-if grep -q "Number(cfg.screen_off_delay ?? cfg.sleep_delay" "$IDX"; then
-    pass "veille unique : l'overlay dérive du délai d'extinction physique (TICKET-138)"
+# ── TICKET-138, 3e passe — l'overlay doit précéder l'extinction ────────────
+# Deux erreurs successives sur ce point, dans les deux sens :
+#   · à l'origine, overlay à 60 s et dalle éteinte à 600 s ;
+#   · puis j'ai fait dériver l'overlay de screen_off_delay, croyant expliquer
+#     les « écrans noirs sur dalle allumée ». C'était faux — le TICKET-149 a
+#     montré que ces écrans noirs venaient du récepteur HDMI de la dalle. Et
+#     les deux délais devenus égaux, l'overlay s'affichait À LA SECONDE où la
+#     dalle s'éteignait : l'écran de veille était devenu invisible.
+#
+# L'invariant à tenir n'est aucun des deux nombres, c'est leur ORDRE :
+# **l'overlay doit apparaître strictement avant l'extinction physique**, sinon
+# il ne peut par construction jamais être vu.
+#
+# ⚠️ On vérifie ce que la page a RÉELLEMENT calculé, pas ce que le source dit.
+# Un grep sur l'expression aurait laissé passer les deux régressions, puisque
+# chacune était une expression parfaitement valide.
+delai_ov=$(grep -a "apply_sleep_config" "$ROOT/data/sleep_debug.log" 2>/dev/null \
+           | tail -1 | grep -oE 'delay_ms=[0-9]+' | cut -d= -f2)
+delai_off=$(python3 -c "
+import json
+print(int(json.load(open('$ROOT/web/lecteur/config.json')).get('screen_off_delay', 600)) * 1000)
+" 2>/dev/null)
+if [ -z "$delai_ov" ] || [ -z "$delai_off" ]; then
+    warn "veille : délai de l'overlay illisible — contrôle inopérant (TICKET-138)"
+elif [ "$delai_ov" -ge "$delai_off" ]; then
+    fail "veille : overlay à ${delai_ov}ms mais dalle éteinte à ${delai_off}ms — l'écran de veille ne sera JAMAIS vu (TICKET-138)"
 else
-    fail "l'overlay de veille ne dérive plus de screen_off_delay — retour à deux minuteries désaccordées (TICKET-138)"
+    pass "veille : overlay à $((delai_ov/1000))s, dalle éteinte à $((delai_off/1000))s — visible $(( (delai_off-delai_ov)/1000 ))s (TICKET-138)"
 fi
 
 # ⚠️ CE GARDE DEVIENT CRITIQUE AVEC TICKET-138. Toutes les boucles périodiques

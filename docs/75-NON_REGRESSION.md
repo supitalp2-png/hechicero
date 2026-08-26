@@ -298,6 +298,34 @@ Le premier étage qui ment est la cause. Ici les six premiers disaient vrai.
 « fonctionnait » sans rien réparer, et ni swayidle (TICKET-123) ni le gel du kiosque
 (TICKET-127) n'ont jamais été en cause sur ce symptôme.
 
+**Sixième piège — corriger un symptôme dont on n'a pas la cause (2026-08-26, TICKET-138)** :
+j'ai attribué les « écrans noirs sur dalle allumée » au désaccord entre l'overlay de
+veille (60 s) et l'extinction physique (600 s), et j'ai aligné les deux. Le TICKET-149 a
+établi ensuite que ces écrans noirs venaient du **récepteur HDMI de la dalle**. Le
+correctif ne réparait donc rien — et il a cassé une fonctionnalité voulue : les deux
+délais devenus égaux, l'écran de veille rétro s'affichait à la seconde où la dalle
+s'éteignait, donc n'était plus jamais visible.
+
+> **Deux règles, apprises au prix de trois passes sur le même ticket.**
+> 1. Un correctif fondé sur une cause supposée doit être **réexaminé** quand la vraie
+>    cause est trouvée ailleurs. Il ne devient pas inoffensif parce qu'il est en place.
+> 2. Quand deux minuteries doivent s'enchaîner, l'invariant à tenir n'est aucune des deux
+>    valeurs, c'est leur **ordre**. On le borne dans le code
+>    (`min(sleep_delay, screen_off_delay − 30)`) plutôt que d'espérer que deux réglages
+>    libres restent cohérents après un passage dans l'admin.
+
+**Et le garde valait aussi peu que le correctif** : il cherchait l'expression
+`Number(cfg.screen_off_delay ?? cfg.sleep_delay` dans le source. Il aurait laissé passer
+**les deux** régressions, chacune étant une expression parfaitement valide. Le garde
+actuel lit ce que la page a *réellement calculé* — `delay_ms` dans `sleep_debug.log` — et
+le compare au délai d'extinction. Encore un cas de « vérifier un comportement, pas un
+texte ».
+
+⚠️ **Corollaire opérationnel** : `grep` sur les journaux du projet doit porter `-a`. Ils
+finissent par contenir des octets NUL, et grep bascule alors en mode binaire — il répond
+« binary file matches » au lieu de la ligne. `duree_extinction()` en est mort en silence
+le 2026-08-26, ce qui aurait vidé le rapport du TICKET-149 sans le moindre message.
+
 **Quatrième piège — l'instrumentation elle-même peut mentir (2026-08-23, TICKET-147)** :
 le guetteur de gel `kiosk_freeze_watch.py` datait l'âge du battement en comparant deux
 **heures murales**. Le Pi démarre sans réseau ; quand le NTP répond, l'horloge **bondit**,

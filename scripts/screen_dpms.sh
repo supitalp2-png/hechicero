@@ -102,8 +102,14 @@ log_dpms() {
 # de plus est un fichier de plus à perdre.
 duree_extinction() {
     local depuis maintenant
+    # ⚠️ `grep -a` obligatoire. Ce journal finit par contenir des octets NUL —
+    # même mal que `sleep_debug.log` en son temps — et grep bascule alors en
+    # mode binaire : il répond « binary file matches » au lieu de la ligne.
+    # Le champ `extinction=` restait donc vide à jamais, et comme le rapport
+    # filtre justement sur lui, il n'aurait plus jamais compté un seul réveil.
+    # Un silence parfaitement crédible, et faux (constaté le 2026-08-26).
     depuis=$(tac "$LOGFILE" 2>/dev/null \
-        | grep -m1 -E '\] off ' \
+        | grep -a -m1 -E '\] off ' \
         | cut -d'[' -f1)
     [ -z "$depuis" ] && { echo "inconnue"; return; }
     depuis=$(date -d "$depuis" +%s 2>/dev/null) || { echo "inconnue"; return; }

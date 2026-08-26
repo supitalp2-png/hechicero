@@ -93,6 +93,36 @@ journée. Autonomie mesurée : **4 h 15** de la pleine charge à l'arrêt.
         Éprouvé dans les deux sens : il échoue si on retire la clé, et il échoue aussi
         si la fonction ou le bloc devient introuvable.
       - ⚠️ **Nécessite un `wtype -k F5`** pour que le kiosque recharge la page.
+      - ❌ **TROISIÈME PASSE (2026-08-26) — ce correctif était une erreur, et il en a
+        causé une vraie.** Signalé par Thomas : « l'écran s'est éteint mais on n'est pas
+        passé par l'écran de veille ». Trace sans appel :
+        ```
+        09:50:15  activate_sleep already_active=false      ← l'overlay s'affiche
+        09:50:15  [sh<-swayidle] off — extinction demandée  ← la dalle s'éteint
+        ```
+        Les deux délais devenus égaux, l'overlay apparaissait **à la seconde** où la
+        dalle s'éteignait : l'écran de veille rétro était devenu **invisible**.
+      - 🎯 **Ce que j'avais mal compris.** J'attribuais les « écrans noirs sur dalle
+        allumée » au désaccord 60 s / 600 s. Le TICKET-149 a établi depuis que ces écrans
+        noirs venaient du **récepteur HDMI de la dalle**. J'ai donc corrigé un problème
+        qui n'existait pas, en cassant une fonctionnalité voulue. L'écran de veille rétro
+        n'est pas un effet de bord : c'est ce qu'on regarde avant que la dalle s'éteigne.
+      - ✅ **Correctif retenu** : l'overlay repart de `sleep_delay`, **borné** pour tenir
+        l'invariant qui compte — *l'overlay doit apparaître strictement avant
+        l'extinction physique*, sinon il ne peut jamais être vu.
+        `overlay = min(sleep_delay, max(5, screen_off_delay − 30))`. Deux réglages laissés
+        libres dans l'admin se désaccorderont ; on les borne plutôt que d'espérer.
+      - **Garde refait** : l'ancien cherchait l'expression dans le source — il aurait
+        laissé passer **les deux** régressions, chacune étant une expression valide. Le
+        nouveau lit ce que la page a *réellement calculé* (`delay_ms` dans
+        `sleep_debug.log`) et le compare à `screen_off_delay`. Il échoue tant que la page
+        n'a pas été rechargée, ce qui est le comportement voulu.
+      - 🐛 **Trouvé au passage** : `duree_extinction()` dans `screen_dpms.sh` utilisait
+        `grep` sans `-a`. Le journal contient des octets NUL, grep basculait en mode
+        binaire et renvoyait « binary file matches » au lieu de la ligne. Le champ
+        `extinction=` restait donc **toujours** vide — et comme le rapport du TICKET-149
+        filtre justement sur lui, il n'aurait plus jamais compté un seul réveil. Un
+        silence parfaitement crédible, et faux.
 
 - [ ] TICKET-149 — matériel/écran — L'écran noir vient de la dalle, pas du logiciel (2026-08-25)
       - **Le bug le plus ancien du projet, cherché au mauvais étage pendant des mois.**
