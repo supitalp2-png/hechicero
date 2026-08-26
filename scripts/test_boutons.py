@@ -129,6 +129,57 @@ verifie("les deux broches visées sont l'antenne et le casque",
         sorted(bd.COMBO_PINS), [23, 25])
 
 
+# ── TICKET-149 — combinaison volume+ (GPIO5) / volume− (GPIO13) ────────────
+# Signale un écran noir, puis REDÉMARRE l'appareil. Le redémarrage change la
+# nature du risque : un déclenchement accidentel ne gêne pas, il coupe l'enfant
+# en pleine histoire. D'où une durée plus longue, et des gardes plus stricts.
+print()
+
+verifie("la combinaison de signalement vise volume+ et volume−",
+        sorted(bd.COMBO_INCIDENT_PINS), [5, 13])
+
+# ⚠️ Le garde le plus important du lot. Ces deux broches sont des boutons À
+# RÉPÉTITION : sans inhibition, cinq secondes d'appui simultané enchaîneraient
+# une cinquantaine de pas de volume. La boucle s'appuie sur le verdict
+# 'en_cours' pour sauter la répétition — si la classe cessait de le renvoyer
+# pendant tout l'appui, le volume repartirait en rafale sans que rien d'autre
+# ne casse.
+verifie("les broches de signalement sont bien des boutons à répétition",
+        sorted(set(bd.COMBO_INCIDENT_PINS) & set(bd.REPEAT_PINS)), [5, 13])
+
+c = bd.EtatCombinaison(bd.COMBO_INCIDENT_HOLD_S)
+c.evaluer(True, True, 0.0)
+verdicts_pendant = [c.evaluer(True, True, t / 10) for t in range(1, 49)]
+verifie("'en_cours' renvoyé sans interruption avant le seuil (inhibe la rafale)",
+        set(verdicts_pendant), {"en_cours"})
+
+# Le seuil : 5 s, pas 3 — un enfant tient trois secondes sans le vouloir.
+verifie("seuil de maintien à 5 s", bd.COMBO_INCIDENT_HOLD_S, 5.0)
+verifie("le signalement tient plus longtemps que l'écran technique",
+        bd.COMBO_INCIDENT_HOLD_S > bd.COMBO_HOLD_S, True)
+
+c = bd.EtatCombinaison(bd.COMBO_INCIDENT_HOLD_S)
+c.evaluer(True, True, 500.0)
+verifie("à 3 s : ne déclenche PAS (durée de l'autre combinaison)",
+        c.evaluer(True, True, 503.0), "en_cours")
+verifie("à 4,99 s : toujours rien", c.evaluer(True, True, 504.99), "en_cours")
+verifie("à 5,00 s : déclenche", c.evaluer(True, True, 505.0), "declencher")
+verifie("maintenu au-delà : un seul redémarrage",
+        c.evaluer(True, True, 512.0), "en_cours")
+
+# Volume+ seul, maintenu longtemps : usage parfaitement normal, ne doit RIEN
+# déclencher. Un faux positif ici redémarrerait la radio quand l'enfant monte
+# simplement le son.
+c = bd.EtatCombinaison(bd.COMBO_INCIDENT_HOLD_S)
+verifie("volume+ seul maintenu 10 s : aucun déclenchement",
+        {c.evaluer(True, False, t) for t in range(0, 11)}, {"attente"})
+
+# Les deux combinaisons sont indépendantes : aucune broche commune, sinon un
+# appui destiné à l'une pourrait armer l'autre.
+verifie("aucune broche partagée entre les deux combinaisons",
+        set(bd.COMBO_PINS) & set(bd.COMBO_INCIDENT_PINS), set())
+
+
 print()
 if echecs:
     print(f"⛔ {len(echecs)} test(s) en échec : {', '.join(echecs)}")

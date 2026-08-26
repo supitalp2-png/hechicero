@@ -91,9 +91,29 @@ procédure de récupération en §6.4.1) · reprise auto au boot (`restore_pause
 **Test de garde** : smoke test §5 — sonde `/run/mpd/socket` via `mpd_watchdog.py --probe`
 sous `timeout 10`, + vérification que `mpd_watchdog` tourne.
 
+**Troisième piège — croire MPD mort alors qu'il va bien (2026-08-26, TICKET-149)** :
+`clic_confirmation.py` attendait la sous-chaîne `OK\n` dans le tampon de la socket. Or la
+bannière d'accueil vaut `OK MPD 0.24.0\n`, qui ne la contient pas. Le client attendait
+donc une réponse **déjà reçue**, jusqu'au délai de garde, et rapportait « socket
+injoignable » sur un MPD en pleine forme.
+
+> Le protocole MPD est délimité **par des lignes**. Une réponse se termine par une ligne
+> valant exactement `OK`, ou commençant par `ACK `. On lit avec `makefile()` et
+> `readline()` — jamais en cherchant un motif dans un tampon d'octets.
+
+⚠️ **Un faux négatif sur la santé de MPD est aussi grave qu'un faux positif.** C'est le
+symptôme exact du TICKET-122 : recopié dans un chien de garde, ce défaut déclencherait un
+SIGKILL sur un démon sain, en boucle.
+
+Et la vraie leçon est ailleurs : **`mpd_watchdog.py` lisait déjà correctement**, trois
+fichiers plus loin, avec échéance et lecture ligne à ligne. Le tort a été d'écrire une
+version naïve plutôt que de réutiliser une implémentation éprouvée. Avant d'ouvrir une
+socket MPD, regarder ce qui existe.
+
 **Règles à ne jamais enfreindre** :
 - Jamais de `mpc` dans un script de test ou de surveillance.
 - Toute sonde MPD porte un délai de garde.
+- Lecture **ligne à ligne**, bannière comprise ; jamais de recherche de sous-chaîne.
 - Ordre impératif de récupération : `stop mpd.service` → `reset-failed` → `start mpd.socket`.
 
 ---
@@ -188,6 +208,40 @@ directives. Trois défauts réels (le `sudo`, le dépaquetage, `Requires=Network
   Si le privilège est nécessaire, c'est `User=root` ou `runuser`.
 - Validation d'un durcissement = **supprimer le fichier de travail, redémarrer, vérifier
   qu'il se recrée**. Pas « le service est vert ».
+
+---
+
+### 🟠 Z3bis — Combinaisons de boutons : l'effet de bord est la règle, pas l'exception
+
+**Le piège** : sur cet appareil, chaque bouton agit **à l'appui**. Toute combinaison
+déclenche donc les actions individuelles de ses membres avant d'être reconnue comme
+combinaison. Deux remèdes existent, et **ils ne sont pas interchangeables** :
+
+| Combinaison | Broches | Nature des boutons | Remède |
+|---|---|---|---|
+| Écran technique (119) | 23 · 25 | action unique | action **différée** de 300 ms |
+| Signalement écran noir (149) | 5 · 13 | **à répétition** | **répétition inhibée**, premier appui conservé |
+
+Différer le volume aurait rendu la radio molle — Thomas l'a explicitement refusé pour les
+sept boutons hors combinaison 119. Inversement, se contenter d'inhiber la répétition sur
+23/25 ne servirait à rien, ils ne répètent pas. **Le remède dépend du type de bouton, et
+recopier l'un sur l'autre casse quelque chose dans les deux sens.**
+
+**Deuxième règle** : une combinaison dont l'effet est irréversible pour l'utilisateur —
+ici un redémarrage — doit tenir **plus longtemps** qu'une combinaison anodine. 3 s pour
+ouvrir un écran, 5 s pour redémarrer. Un enfant de 7 ans tient deux boutons trois
+secondes par jeu.
+
+**Fichiers** : `scripts/buttons_daemon.py` (`EtatCombinaison`, `COMBO_PINS`,
+`COMBO_INCIDENT_PINS`)
+
+**Historique** : TICKET-119 · TICKET-149
+
+**Test de garde** : `scripts/test_boutons.py` — vérifie que chaque combinaison déclenche
+à **sa** durée et une seule fois, qu'aucune broche n'est partagée entre les deux, que les
+broches de signalement sont bien des broches à répétition, et que le verdict `en_cours`
+est renvoyé **sans interruption** pendant tout l'appui (c'est lui qui inhibe la rafale de
+volume : s'il se coupait, rien d'autre ne casserait et le défaut passerait inaperçu).
 
 ---
 

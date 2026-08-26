@@ -444,6 +444,42 @@ COMBO_HOLD_S = 3.0        # durée d'appui simultané avant déclenchement
 COMBO_GRACE_S = 0.3       # fenêtre pour reconnaître un appui « simultané »
 
 
+# ── TICKET-149 — combinaison volume + / volume − : signaler un écran noir ────
+#
+# Demande de Thomas (2026-08-25) : « à la prochaine panne je veux appuyer sur
+# deux boutons, que ça capture tout, et qu'un son me le confirme ».
+#
+# Le contexte impose la forme. Quand la dalle est noire, l'appareil ne peut plus
+# rien montrer, et sortir un PC pour lancer une commande en SSH contredit l'idée
+# même d'une radio autonome. Le signalement doit donc tenir entièrement dans
+# l'objet : deux boutons, un son, rien d'autre.
+#
+# ⚠️ CES DEUX BROCHES SONT DIFFÉRENTES DE CELLES DE LA COMBINAISON 119. GPIO5 et
+# GPIO13 sont des boutons À RÉPÉTITION : maintenus, ils enchaînent les pas de
+# volume toutes les 200 ms. Trois secondes d'appui simultané, c'est trente pas.
+#
+# Le remède du TICKET-119 — différer l'action de 300 ms — est ici À PROSCRIRE :
+# Thomas a explicitement demandé que les autres boutons gardent leur réactivité
+# immédiate, « un différé global aurait rendu la radio molle pour un enfant ».
+# Le volume est justement le bouton où la latence se sent le plus.
+#
+# Remède retenu : on n'inhibe QUE LA RÉPÉTITION, jamais le premier appui. Les
+# deux boutons ne pouvant pas être enfoncés à la microseconde près, il passe au
+# plus un pas de volume de chaque côté — et vol+ suivi de vol− s'annulent. Zéro
+# latence ajoutée, effet de bord borné à un pas.
+COMBO_INCIDENT_PINS = (5, 13)   # volume + et volume −
+
+# 5 s, et pas les 3 s de la combinaison 119. Celle-ci REDÉMARRE l'appareil : un
+# enfant de 7 ans est parfaitement capable de tenir deux boutons trois secondes
+# par jeu, et la radio s'éteindrait en pleine histoire. Cinq secondes restent
+# confortables pour un geste délibéré, et deviennent improbables par accident.
+COMBO_INCIDENT_HOLD_S = 5.0
+
+# Chemin du dépôt. WorkingDirectory vaut /run/hechicero-buttons (tube lgpio),
+# donc aucun chemin relatif n'est utilisable ici.
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
 class EtatCombinaison:
     """Décision de la combinaison, isolée du GPIO pour être testable.
 
@@ -452,9 +488,13 @@ class EtatCombinaison:
     qui exigerait deux vraies broches n'aurait jamais été écrit.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, hold_s: float = COMBO_HOLD_S) -> None:
         self.depuis: float | None = None      # début de l'appui simultané
         self.declenchee = False               # déjà tirée pour cet appui
+        # TICKET-149 : la durée est paramétrable depuis qu'il existe une
+        # seconde combinaison. Celle de l'écran noir tient 5 s parce qu'elle
+        # redémarre l'appareil — voir COMBO_INCIDENT_HOLD_S.
+        self.hold_s = hold_s
 
     def evaluer(self, a_bas: bool, b_bas: bool, maintenant: float) -> str:
         """Renvoie 'declencher', 'en_cours', 'attente' ou 'relachee'.
@@ -468,7 +508,7 @@ class EtatCombinaison:
             if self.depuis is None:
                 self.depuis = maintenant
                 return "en_cours"
-            if not self.declenchee and maintenant - self.depuis >= COMBO_HOLD_S:
+            if not self.declenchee and maintenant - self.depuis >= self.hold_s:
                 self.declenchee = True
                 return "declencher"
             return "en_cours"
@@ -485,6 +525,76 @@ class EtatCombinaison:
         on ne sait pas encore si c'est une combinaison ou deux appuis distincts.
         """
         return self.depuis is not None and maintenant - self.depuis >= 0
+
+
+def handle_signaler_incident() -> None:
+    """
+    Écran noir : accuser réception, capturer, puis redémarrer (TICKET-149).
+
+    ── Pourquoi cette routine existe ─────────────────────────────────────────
+    La panne est invisible depuis le Pi : tous les indicateurs sont au vert
+    pendant qu'elle dure. **Seul un humain qui regarde la dalle peut la
+    signaler.** Et comme l'écran est noir, ni le constat ni sa confirmation ne
+    peuvent passer par l'écran. Sortir un PC pour lancer une commande en SSH
+    contredirait l'idée même d'une radio autonome — d'où deux boutons, un son,
+    et l'appareil qui se remet en marche seul.
+
+    ── L'ordre des trois actions n'est pas négociable ────────────────────────
+    1. **Le son d'abord.** C'est le seul retour possible sur un écran noir, et
+       il doit venir tout de suite : sans lui, Thomas appuierait à nouveau,
+       croyant à un raté, et produirait des constats en double.
+    2. **Le constat ensuite**, écrit et refermé sur le disque. Un redémarrage
+       qui précéderait l'écriture perdrait exactement ce qu'on cherche à
+       recueillir depuis des mois.
+    3. **Le redémarrage en dernier.** C'est la récupération que le petit
+       applique déjà de lui-même (coupure de courant) ; l'automatiser lui rend
+       sa radio sans qu'il ait à attendre un adulte, et évite les extinctions
+       brutales qui corrompent la carte SD.
+
+    Tourne dans un thread détaché : la capture interroge `wlr-randr`, le noyau
+    et le journal. La boucle des boutons ne doit jamais attendre.
+    """
+    LOGGER.warning("Combinaison volume+ / volume− maintenue %.0f s — "
+                   "signalement écran noir puis redémarrage", COMBO_INCIDENT_HOLD_S)
+
+    def lancer(script: str, *args: str, delai: int) -> tuple[bool, str]:
+        try:
+            r = subprocess.run(
+                ["/usr/bin/python3", os.path.join(PROJECT_ROOT, "scripts", script), *args],
+                capture_output=True, text=True, timeout=delai,
+            )
+            return r.returncode == 0, (r.stdout or r.stderr or "").strip()
+        except Exception as e:  # noqa: BLE001
+            return False, str(e)
+
+    # 1. Accusé de réception sonore
+    ok, detail = lancer("clic_confirmation.py", delai=20)
+    LOGGER.info("Accusé sonore : %s (%s)", "émis" if ok else "MUET", detail[:80])
+
+    # 2. Constat
+    ok, detail = lancer(
+        "ecran_noir.py", "signaler",
+        "--note", "signalé au bouton (volume +/−) — écran noir constaté, "
+                  "redémarrage automatique déclenché dans la foulée",
+        delai=40,
+    )
+    LOGGER.info("Constat écran noir : %s", "enregistré" if ok else f"ÉCHEC — {detail[:120]}")
+
+    if not ok:
+        # On redémarre quand même : rendre la radio à l'enfant prime sur le
+        # recueil de données. Mais on le journalise fort, sinon une série de
+        # constats manquants passerait inaperçue au moment de l'analyse.
+        LOGGER.error("Constat non enregistré — redémarrage tout de même, "
+                     "cette occurrence sera absente du rapport")
+
+    # 3. Redémarrage propre. `systemctl reboot` et jamais un `sudo` : le service
+    # tourne en User=root avec NoNewPrivileges=true, qui casse sudo en silence
+    # (leçon TICKET-121, zone Z2).
+    LOGGER.warning("Redémarrage demandé (TICKET-149)")
+    try:
+        subprocess.run(["/usr/bin/systemctl", "reboot"], timeout=15)
+    except Exception as e:  # noqa: BLE001
+        LOGGER.error("Redémarrage impossible : %s", e)
 
 
 def handle_ecran_technique() -> None:
@@ -544,6 +654,9 @@ def main() -> int:
     )
 
     combo = EtatCombinaison()
+    # TICKET-149 : seconde combinaison, volume+ / volume−, 5 s → signalement
+    # d'écran noir puis redémarrage. Même classe de décision, autre durée.
+    combo_incident = EtatCombinaison(COMBO_INCIDENT_HOLD_S)
     # Actions différées des deux boutons de la combinaison : {broche: instant}
     differes: dict[int, float] = {}
 
@@ -557,6 +670,21 @@ def main() -> int:
             a_bas = GPIO.input(COMBO_PINS[0]) == GPIO.LOW
             b_bas = GPIO.input(COMBO_PINS[1]) == GPIO.LOW
             verdict = combo.evaluer(a_bas, b_bas, maintenant)
+
+            # ── TICKET-149 — combinaison volume+ / volume− ─────────────────
+            # Évaluée au même tour, sur le même instant. `incident_en_cours`
+            # sert plus bas à inhiber la RÉPÉTITION du volume : sans lui, cinq
+            # secondes d'appui simultané enchaîneraient cinquante pas de volume.
+            # Le premier appui de chaque bouton, lui, passe normalement — c'est
+            # ce qui évite d'ajouter la moindre latence au volume, et vol+ suivi
+            # de vol− s'annulent.
+            inc_a = GPIO.input(COMBO_INCIDENT_PINS[0]) == GPIO.LOW
+            inc_b = GPIO.input(COMBO_INCIDENT_PINS[1]) == GPIO.LOW
+            verdict_incident = combo_incident.evaluer(inc_a, inc_b, maintenant)
+            incident_en_cours = verdict_incident == "en_cours"
+            if verdict_incident == "declencher":
+                threading.Thread(target=handle_signaler_incident, daemon=True).start()
+
             if verdict == "declencher":
                 differes.clear()          # la combinaison l'emporte sur les actions retenues
                 threading.Thread(target=handle_ecran_technique, daemon=True).start()
@@ -613,6 +741,14 @@ def main() -> int:
                             else:
                                 LOGGER.debug("GPIO%s : front ignoré (rebond court, non confirmé)", pin)
                         elif now - st.last_repeat >= REPEAT_INTERVAL_S:
+                            # TICKET-149 : pendant la combinaison de signalement,
+                            # on saute la répétition. On n'annule PAS le premier
+                            # appui (aucune latence ajoutée sur le volume), on
+                            # empêche seulement les cinquante pas qu'entraîneraient
+                            # cinq secondes d'appui simultané.
+                            if incident_en_cours and pin in COMBO_INCIDENT_PINS:
+                                st.last_repeat = now   # sans quoi la rafale repart au relâchement
+                                continue
                             st.last_repeat = now
                             LOGGER.debug("Répétition (maintien) sur GPIO%s", pin)
                             HANDLERS.get(pin, handle_unassigned)(pin)

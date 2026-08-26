@@ -13,7 +13,7 @@
 
 | # | Sujet | État |
 |---|---|---|
-| 149 | Écran noir : la dalle ne re-verrouille pas le HDMI | **cause trouvée 25/08**, correctif à choisir |
+| 149 | Écran noir : la dalle ne re-verrouille pas le HDMI | cause trouvée, signalement au bouton opérationnel |
 | 148 | Le Pi tient 80 °C en régime permanent dans le boîtier | mesuré, cause non cherchée |
 | 140 | Arrêt de charge nocturne, alimentation présente | instrumenté 23/08, attend une nuit branché |
 | 122 | Récupération du chien de garde MPD | logique testée, action non éprouvée |
@@ -155,9 +155,96 @@ journée. Autonomie mesurée : **4 h 15** de la pleine charge à l'arrêt.
         compositeur d'abord — mais une récupération qui redémarre toute l'interface n'a
         plus grand intérêt face à un simple redémarrage.
         ⚠️ Ces commandes ne doivent **jamais** être lancées sur un écran qui fonctionne.
-      - 🔭 **Prochain pas** : encadrer le seuil de durée. S'il est confortablement au-delà
-        des extinctions d'usage courant, la panne ne concerne que les longues absences, et
-        la réponse peut être bien plus légère que les trois options ci-dessus.
+      - ❌ **L'hypothèse du seuil de durée est morte (2026-08-25, au soir).** Je l'avais
+        avancée sur deux points — 60 s récupère, 1 h 48 non. Le journal, une fois
+        dépouillé, la dément : **84 réveils sans incident, de 0 à 43 h**, dont un à
+        13,90 h et un à 9,76 h, contre l'unique panne à 1,80 h. Les deux populations se
+        recouvrent entièrement. **Le phénomène est intermittent.**
+      - 🛠️ **Diagnostic mis en place (2026-08-25)** — parce qu'aucun correctif ne se
+        choisit sur un phénomène qu'on ne sait pas compter, et qu'on n'avait *aucun*
+        décompte :
+        - `screen_dpms.sh` journalise à chaque réveil la **durée d'extinction** qui
+          vient de s'écouler et la **température** du SoC. Sans fichier d'état : la
+          durée est relue dans le journal lui-même (un service durci ne peut pas écrire
+          n'importe où, zone Z2).
+        - `scripts/ecran_noir.py signaler` capture tout l'état pendant la panne — étage
+          par étage, de la page au registre DRM — **à lancer avant de débrancher**, le
+          débranchement détruisant les preuves. La panne étant invisible depuis le Pi,
+          seul un humain qui regarde la dalle peut la déclarer.
+        - `scripts/ecran_noir.py rapport` croise les pannes avec les réveils réussis et
+          dit si les deux populations se séparent. Il **recalcule** les expositions
+          depuis le journal historique au lieu de n'utiliser que le champ neuf, ce qui
+          le rend exploitable immédiatement : c'est ainsi qu'on a démenti le seuil dès
+          le premier lancement.
+        - Garde : `scripts/test_ecran_noir.py`, 17 décisions. Défaut trouvé et corrigé
+          au passage — l'appariement panne ↔ réveil se faisait à la minute, si bien que
+          le réveil fautif du 25/08 (20:01:44, constat à 20:05) était compté **parmi les
+          réussites**. Un échec compté comme succès rapproche les deux populations et
+          pousse à conclure « la durée n'explique rien » même si elle expliquait tout.
+      - 🔘 **Signalement au bouton, sans PC (2026-08-25, demande de Thomas)** :
+        « je ne vais pas sortir mon PC à chaque panne, cela va à l'encontre de mon besoin
+        d'avoir une radio autonome ». **Volume + et volume − maintenus 5 s** déclenchent,
+        dans cet ordre :
+        1. **un son** — seul retour possible sur un écran noir. Sans lui Thomas
+           appuierait à nouveau, croyant à un raté, et produirait des constats en double ;
+        2. **le constat**, écrit et refermé sur le disque ;
+        3. **un redémarrage propre** — la récupération que le petit applique déjà de
+           lui-même en coupant le courant. L'automatiser lui rend sa radio sans attendre
+           un adulte, et évite les extinctions brutales qui abîment la carte SD.
+      - ⚠️ **Trois pièges traités dans cette mécanique** :
+        - **GPIO5 et GPIO13 sont des boutons à répétition.** Cinq secondes d'appui
+          simultané, ce sont cinquante pas de volume. Le remède du TICKET-119 — différer
+          l'action de 300 ms — est ici proscrit : Thomas a demandé que les autres boutons
+          gardent leur réactivité immédiate, et le volume est celui où la latence se sent
+          le plus. On n'inhibe donc **que la répétition**, jamais le premier appui ;
+          vol+ et vol− s'annulent à un pas près, et aucune latence n'est ajoutée.
+        - **5 s et non 3.** Cette combinaison redémarre l'appareil : un enfant de 7 ans
+          tient deux boutons trois secondes par jeu, et la radio s'éteindrait en pleine
+          histoire.
+        - **Le service tourne en `User=root` avec `NoNewPrivileges=true`**, qui casse
+          `sudo` en silence (TICKET-121). D'où `systemctl reboot` sans `sudo`, et une
+          lecture directe de `/sys/kernel/debug` avant tout repli sur `sudo`.
+      - 🔔 **Le son ne coupe pas l'écoute pour rien** : `clic_confirmation.py` tente
+        d'abord `aplay`, sans aucun effet de bord. Si le périphérique est occupé il passe
+        par MPD — ce qui interrompt la lecture une seconde — mais rétablit piste,
+        position, volume et état, et **ne vide jamais la file**. Jamais `mpc` : sur un MPD
+        figé il n'échoue pas, il attend, et le daemon des boutons resterait bloqué
+        (zone Z1). Et jamais un fichier de `/tmp` comme le fait `play_chime.py` : le
+        service porte `PrivateTmp=true`, MPD ne le verrait pas.
+      - ✅ **Éprouvé en conditions réelles le 2026-08-26.** Écran figé, appui long sur les
+        deux boutons, constat écrit, radio redémarrée. Thomas : « c'est parfait ».
+      - 🔬 **Hypothèse de Thomas (2026-08-26)** : « ça se passe quand on appuie sur les
+        boutons et pas quand on appuie sur l'écran ». Testable sans rien ajouter — les
+        deux chemins de réveil sont déjà distingués dans le journal depuis le TICKET-123 :
+        swayidle observe les entrées Wayland (**tactile**), mais ne voit jamais le GPIO,
+        lu par un processus Python (**bouton**). L'appelant tranche.
+        Le rapport ventile donc désormais les réveils par chemin. État actuel :
+        79 tactiles, 5 boutons, 4 manuels — **sans incident**. Le chemin des pannes n'est
+        enregistré que depuis aujourd'hui, donc rien à conclure avant plusieurs occurrences.
+        Si l'hypothèse tient, elle désignerait un coupable très différent d'un aléa du
+        récepteur : le réveil par bouton ne réarme pas swayidle (TICKET-123), la séquence
+        de rallumage n'y est pas la même.
+      - 🌡️ **Les deux pannes datées sont à 80,4 et 85,3 °C.** À ne PAS surinterpréter :
+        toutes les températures jamais relevées sur cet appareil tournent autour de 80 °C
+        (TICKET-148). Ce ne sera discriminant que lorsqu'on aura la température des
+        réveils **réussis**, enregistrée depuis aujourd'hui.
+      - 🐛 **Deux défauts trouvés au premier usage réel** :
+        - `aplay` sans `-D` joue sur `pcm.!default`, qui pointe sur le **DAC casque** —
+          Thomas écoutait sur les haut-parleurs et n'a rien entendu, pendant que le script
+          se déclarait satisfait. **Juger un son sur un code de retour ne prouve rien** :
+          ALSA rend 0 dès qu'il a écrit les échantillons quelque part, pas quand quelqu'un
+          les a entendus. On vise maintenant explicitement la sortie active (`eqhp` ou
+          `eqcasque`, selon `data/audio_output_state.json`).
+        - Deux constats à 43 s d'écart pour un seul incident — sur un écran noir on doute
+          d'avoir bien appuyé, et on recommence. Le rapport dédoublonne désormais sur un
+          critère de fond : **une extinction ne peut échouer qu'une fois**, donc deux
+          constats rattachés au même réveil décrivent le même incident. Sans ça on
+          comparerait 6 « pannes » à 84 réveils sains alors qu'il y en a 3.
+      - 🔭 **Prochain pas** : accumuler les constats. Ne rien conclure sous 5 pannes —
+        on s'est déjà trompé deux fois sur ce projet en tranchant sur un ou deux points.
+        Le redémarrage étant désormais automatique, on ne saura plus si `rescue` ou
+        `echo detect` auraient suffi ; c'est un renoncement assumé, l'usage passant avant
+        la curiosité. À tester à part, un jour de patience.
 
 - [ ] TICKET-148 — matériel/thermique — Le Pi tient 80 °C en régime permanent dans le boîtier (2026-08-23)
       - **Découvert par accident**, en instrumentant le TICKET-140 : la première mesure de

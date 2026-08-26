@@ -85,6 +85,38 @@ log_dpms() {
     echo "$(date '+%Y-%m-%d %H:%M:%S') [$APPELANT] $*" >> "$LOGFILE" 2>/dev/null
 }
 
+# ── TICKET-149 — l'EXPOSITION, la mesure qui manquait ─────────────────────────
+# On sait depuis le 2026-08-25 que la panne est dans la dalle : son récepteur
+# HDMI décroche quand le signal est coupé et ne se re-verrouille pas au retour.
+# Ce qu'on ignore, c'est ce qui déclenche le décrochage. La première suspecte
+# était la durée sans signal — 60 s récupère, 1 h 48 non — mais le journal la
+# dément : une extinction de 13 h 54 (22/08 20:52 → 23/08 10:46) s'est réveillée
+# sans incident. Le phénomène est donc INTERMITTENT.
+#
+# Impossible de trancher sans compter. On enregistre à chaque réveil la durée
+# d'extinction qui vient de s'écouler et la température du SoC, pour pouvoir un
+# jour croiser ces valeurs avec les pannes constatées (`ecran_noir.py`).
+#
+# ⚠️ Aucun fichier d'état : la durée est relue dans le journal lui-même. Un
+# service durci ne peut pas écrire n'importe où (zone Z2), et un fichier d'état
+# de plus est un fichier de plus à perdre.
+duree_extinction() {
+    local depuis maintenant
+    depuis=$(tac "$LOGFILE" 2>/dev/null \
+        | grep -m1 -E '\] off ' \
+        | cut -d'[' -f1)
+    [ -z "$depuis" ] && { echo "inconnue"; return; }
+    depuis=$(date -d "$depuis" +%s 2>/dev/null) || { echo "inconnue"; return; }
+    maintenant=$(date +%s)
+    echo "$(( maintenant - depuis ))s"
+}
+
+temperature_soc() {
+    local brut
+    brut=$(cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null) || { echo "?"; return; }
+    echo "$(( brut / 1000 ))C"
+}
+
 # Renvoie "yes", "no", ou "" si l'état n'a pas pu être lu.
 # wlr-randr liste chaque sortie sur une ligne non indentée ("HDMI-A-1 \"...\"")
 # suivie de ses propriétés indentées, dont "Enabled: yes|no".
@@ -120,7 +152,11 @@ case "${1:-off}" in
         else
             log_dpms "on     — sortie inactive (Enabled: ${STATE:-inconnu}), rebond $BOUNCE_MODE -> $MODE"
             bounce_mode
-            log_dpms "on     — terminé"
+            # TICKET-149 : exposition et température au moment du réveil. C'est
+            # cette ligne qu'`ecran_noir.py rapport` ira croiser avec les pannes
+            # constatées. Écrite APRÈS le rebond, donc l'image est déjà censée
+            # être revenue quand elle apparaît.
+            log_dpms "on     — terminé · extinction=$(duree_extinction) temp=$(temperature_soc)"
         fi
         ;;
 

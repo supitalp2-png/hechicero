@@ -894,6 +894,47 @@ else
     warn "test_kiosk_freeze.py absent — faux positifs du guetteur non couverts (TICKET-147)"
 fi
 
+# ── TICKET-149 — l'outil qui doit trancher ne doit pas se tromper ────────────
+# ecran_noir.py sert à répondre à UNE question : qu'est-ce qui distingue une
+# extinction dont la dalle revient d'une extinction dont elle ne revient pas ?
+# Son appariement panne ↔ réveil est donc critique. Un réveil raté compté parmi
+# les réussites rapproche artificiellement les deux populations et pousse à
+# conclure « la durée n'explique rien » même si elle expliquait tout — c'est
+# exactement le défaut trouvé et corrigé le 2026-08-25.
+ECR_TEST="$ROOT/scripts/test_ecran_noir.py"
+if [ -f "$ECR_TEST" ]; then
+    if sortie_ecr=$(timeout 15 python3 "$ECR_TEST" 2>&1); then
+        pass "diagnostic écran noir : appariement panne ↔ réveil correct (TICKET-149)"
+    else
+        fail "diagnostic écran noir : appariement incorrect (TICKET-149)"
+        echo "$sortie_ecr" | grep '❌' | head -6 | sed 's/^/     /'
+    fi
+else
+    warn "test_ecran_noir.py absent — appariement du diagnostic non couvert (TICKET-149)"
+fi
+
+# ── TICKET-149 — parler à MPD sans le croire mort à tort ─────────────────────
+# L'accusé sonore ouvre la socket MPD. Première version : elle cherchait la
+# sous-chaîne "OK\n" dans le tampon, alors que la bannière vaut "OK MPD 0.24.0".
+# Le client attendait une réponse déjà reçue jusqu'au délai de garde, et
+# annonçait « socket injoignable » sur un MPD en pleine forme.
+# ⚠️ Un faux négatif sur la santé de MPD est le symptôme même du TICKET-122,
+# celui qui déclenche un SIGKILL. Recopié dans un chien de garde, ce défaut
+# ferait tuer MPD sans raison. `mpd_watchdog.py`, lui, lit correctement — le
+# tort a été d'écrire une version naïve au lieu de réutiliser l'éprouvée.
+# Le test dialogue avec une socketpair : ni Pi, ni MPD, ni son.
+CLC_TEST="$ROOT/scripts/test_clic_confirmation.py"
+if [ -f "$CLC_TEST" ]; then
+    if sortie_clc=$(timeout 20 python3 "$CLC_TEST" 2>/dev/null); then
+        pass "accusé sonore : bannière MPD et sortie active correctes (TICKET-149)"
+    else
+        fail "accusé sonore : dialogue MPD ou sortie audio incorrects (TICKET-149)"
+        echo "$sortie_clc" | grep '❌' | head -6 | sed 's/^/     /'
+    fi
+else
+    warn "test_clic_confirmation.py absent — dialogue MPD non couvert (TICKET-149)"
+fi
+
 # ── TICKET-140 — ce qu'on enregistre n'arrive pas forcément au tableau de bord ─
 # Le tracker écrit un point de données ; battery_dashboard.php le recopie dans une
 # LISTE FIXE de clés avant de l'envoyer au navigateur. Une mesure ajoutée d'un côté
