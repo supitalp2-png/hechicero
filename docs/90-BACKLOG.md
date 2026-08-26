@@ -155,11 +155,45 @@ journée. Autonomie mesurée : **4 h 15** de la pleine charge à l'arrêt.
         compositeur d'abord — mais une récupération qui redémarre toute l'interface n'a
         plus grand intérêt face à un simple redémarrage.
         ⚠️ Ces commandes ne doivent **jamais** être lancées sur un écran qui fonctionne.
-      - ❌ **L'hypothèse du seuil de durée est morte (2026-08-25, au soir).** Je l'avais
-        avancée sur deux points — 60 s récupère, 1 h 48 non. Le journal, une fois
-        dépouillé, la dément : **84 réveils sans incident, de 0 à 43 h**, dont un à
-        13,90 h et un à 9,76 h, contre l'unique panne à 1,80 h. Les deux populations se
-        recouvrent entièrement. **Le phénomène est intermittent.**
+      - ⚠️ **CE QU'ON SAIT, ET CE QU'ON NE SAIT PAS** (état au 2026-08-26) — à relire
+        avant toute nouvelle hypothèse.
+
+        **Établi, mesuré, reproductible :**
+        - Le Pi émet un signal vidéo valide pendant la panne. Les six étages amont —
+          page, Chromium, compositeur, connecteur, CRTC, plan — ont été vérifiés un par
+          un, chacun avec sa propre preuve. Aucun n'est en faute.
+        - La dalle reste **rétroéclairée** et n'affiche aucun « No Signal ».
+        - Un **débranchement du câble HDMI** rétablit l'image immédiatement.
+        - Un **rebond de mode logiciel ne la rétablit pas** (celui de 20:01:44 avait déjà
+          eu lieu, l'écran est resté noir 7 min de plus).
+        - Un **redémarrage** rétablit l'image (éprouvé deux fois le 26/08).
+        - L'écran coûte **664 mA**, soit 1 h 17 d'autonomie.
+
+        **Non su, et à ne pas combler par une intuition :**
+        - **La fréquence.** Aucun décompte fiable n'existe avant le 2026-08-26.
+        - **Le déclencheur.** Durée sans signal, température, chemin de réveil : aucune
+          de ces pistes n'est étayée par des données recevables.
+        - **Si `rescue` ou `echo detect` suffiraient.** Jamais testés pendant une panne,
+          et le redémarrage automatique fait qu'on ne le saura plus par accident.
+        - **Si le câble a une part.** Peu probable, non exclu.
+
+      - ❌ **Conclusion RETIRÉE (2026-08-26) — « l'hypothèse du seuil de durée est morte ».**
+        Je l'avais tirée le 25 au soir de 84 « réveils sans incident » de 0 à 43 h face à
+        une panne à 1,80 h, populations qui se recouvrent. **Le raisonnement ne tient
+        pas** : avant le bouton de signalement, une panne ne laissait aucune trace. Ces
+        84 réveils ne sont pas des succès confirmés, ce sont des réveils *que personne
+        n'a signalés comme ratés*. Les compter comme sains, c'est traiter l'absence de
+        signalement comme une preuve de bon fonctionnement — sur un phénomène dont on
+        sait qu'il passait inaperçu des semaines durant.
+        Arrêté par Thomas : « ne cherche pas à utiliser les anciennes données, on prend
+        le diag à partir du moment où on a mis en place la nouvelle sonde. »
+        **L'hypothèse du seuil n'est donc ni confirmée ni infirmée : elle est ouverte.**
+      - 🔄 **Remise à zéro du 2026-08-26.** `data/ecran_noir.log` vidé (copie dans
+        `private/`), et le rapport ne retient plus que les réveils portant le champ
+        `extinction=`, écrit uniquement par la sonde instrumentée — critère porté par la
+        donnée elle-même, sans date en dur. Compteurs à zéro des deux côtés. Le rapport
+        restera muet plus longtemps : c'est le prix d'une comparaison honnête, et c'est
+        moins cher qu'une fausse piste.
       - 🛠️ **Diagnostic mis en place (2026-08-25)** — parce qu'aucun correctif ne se
         choisit sur un phénomène qu'on ne sait pas compter, et qu'on n'avait *aucun*
         décompte :

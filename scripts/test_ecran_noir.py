@@ -146,7 +146,29 @@ with tempfile.TemporaryDirectory() as tmp:
         verifie("appelant vide → autre, jamais une exception",
                 en.chemin_reveil("") == "autre")
 
-        # ── 8. Journal absent ou illisible → aucune exception ────────────────
+        # ── 8. Un réveil d'avant le démarrage ne compte pas ──────────────────
+        # Premier essai grandeur nature (2026-08-26) : un constat pris 19 min
+        # après un redémarrage s'est vu attribuer le réveil de la veille et une
+        # exposition de 12,48 h. Une donnée entièrement fausse, dans le tableau
+        # même qui doit trancher la cause.
+        apres_boot = datetime(2026, 8, 25, 21, 0, 0)
+        r, e = en.dernier_reveil(datetime(2026, 8, 25, 22, 0, 0),
+                                 depuis_demarrage=apres_boot)
+        verifie("aucun réveil depuis le démarrage → rien plutôt qu'une valeur fausse",
+                (r, e) == (None, None), str((r, e)))
+
+        # ⚠️⚠️ LE PIÈGE INVERSE, et il est pire. `rapport()` analyse des pannes
+        # PASSÉES, toutes antérieures au démarrage courant. Si la borne
+        # s'appliquait par défaut, elles disparaîtraient toutes et le rapport
+        # annoncerait zéro panne sur une base pleine — un silence parfaitement
+        # crédible, et faux.
+        r, e = en.dernier_reveil(datetime(2026, 8, 25, 22, 0, 0))
+        verifie("sans borne explicite, l'historique reste visible",
+                r is not None and r["quand"] == datetime(2026, 8, 25, 20, 1, 44),
+                str(r and r["quand"]))
+        verifie("et son exposition reste calculée", e is not None and abs(e - 6489) < 1)
+
+        # ── 9. Journal absent ou illisible → aucune exception ────────────────
         en.DPMS_LOG = Path(tmp) / "inexistant.log"
         verifie("journal absent → liste vide, pas d'exception",
                 en.evenements_dpms() == [])
@@ -154,6 +176,59 @@ with tempfile.TemporaryDirectory() as tmp:
                 en.dernier_reveil(datetime.now()) == (None, None))
     finally:
         en.DPMS_LOG = original
+
+
+# ── Résumé DRM : garder l'identité, jeter l'inutile ─────────────────────────
+# Premier constat réel : trente lignes `fb=0` sans les en-têtes `plane[N]`,
+# donc impossible de savoir de quel plan on parlait. Un diagnostic qu'on ne
+# sait pas relire ne diagnostique rien.
+ETAT_DRM = """\
+plane[48]: plane-0
+\tcrtc=(null)
+\tfb=0
+\tcrtc-pos=0x0+0+0
+plane[83]: plane-2
+\tcrtc=crtc-2
+\tfb=682
+\t\tsize=1024x600
+\tcrtc-pos=1024x600+0+0
+\tsrc-pos=1024.000000x600.000000+0.000000+0.000000
+crtc[59]: mop
+\tenable=0
+\tactive=0
+\tmode: "": 0 0
+crtc[94]: crtc-2
+\tenable=1
+\tactive=1
+\tmode: "1024x600": 60 50250 1024
+connector[35]: HDMI-A-1
+\tcrtc=crtc-2
+\toutput_bpc=8
+\ttmds_char_rate=50250000
+connector[44]: HDMI-A-2
+\tcrtc=(null)
+\ttmds_char_rate=0
+"""
+
+resume = en.resumer_drm(ETAT_DRM)
+verifie("le plan actif garde son identité", "plane[83]: plane-2" in resume, resume[:200])
+verifie("le CRTC actif est conservé avec son mode",
+        "crtc[94]: crtc-2" in resume and '"1024x600"' in resume)
+verifie("le connecteur actif garde son débit TMDS",
+        "connector[35]: HDMI-A-1" in resume and "tmds_char_rate=50250000" in resume)
+verifie("la géométrie du plan est conservée",
+        "crtc-pos=1024x600+0+0" in resume and "src-pos=1024.000000x600" in resume)
+
+verifie("les plans inactifs sont écartés", "plane[48]" not in resume, resume[:300])
+verifie("les CRTC désactivés sont écartés", "crtc[59]" not in resume)
+verifie("les connecteurs non branchés sont écartés", "connector[44]" not in resume)
+verifie("le nombre d'objets omis est indiqué", "inactif(s) omis" in resume,
+        resume[-120:])
+
+# Un état illisible ne doit pas rendre une chaîne vide : mieux vaut du brut
+# tronqué que rien du tout au moment d'une panne.
+verifie("état illisible → on rend quand même quelque chose",
+        len(en.resumer_drm("n'importe quoi sans structure")) > 0)
 
 
 # ── 6. Les sondes ne lèvent jamais, même hors Pi ─────────────────────────────

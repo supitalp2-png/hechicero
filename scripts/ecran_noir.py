@@ -47,10 +47,27 @@ HEARTBEAT = DATA_DIR / "kiosk_heartbeat.json"
 CMD_TIMEOUT = 6
 
 
+import os   # noqa: E402
+
+# ── Environnement Wayland (TICKET-149, corrigé au 1er essai réel) ────────────
+# `wlr-randr` parle au compositeur par une socket du répertoire de session. Le
+# daemon des boutons tourne en `User=root`, sans session utilisateur : il n'a ni
+# XDG_RUNTIME_DIR ni WAYLAND_DISPLAY. Résultat du premier constat pris au
+# bouton : « XDG_RUNTIME_DIR is invalid or not set », et **tout l'étage
+# compositeur perdu** — précisément l'un de ceux qu'on doit départager.
+# Les mêmes valeurs que `screen_dpms.sh`, qui les pose déjà en repli.
+ENV_WAYLAND = {
+    **os.environ,
+    "XDG_RUNTIME_DIR": os.environ.get("XDG_RUNTIME_DIR") or "/run/user/1000",
+    "WAYLAND_DISPLAY": os.environ.get("WAYLAND_DISPLAY") or "wayland-0",
+}
+
+
 def run(cmd: list[str], timeout: int = CMD_TIMEOUT) -> str:
     """Jamais d'exception : un constat partiel vaut mieux que pas de constat."""
     try:
-        p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        p = subprocess.run(cmd, capture_output=True, text=True,
+                           timeout=timeout, env=ENV_WAYLAND)
         return ((p.stdout or "") + (p.stderr or "")).strip() or "(vide)"
     except FileNotFoundError:
         return f"(commande absente : {cmd[0]})"
@@ -144,14 +161,82 @@ def chemin_reveil(appelant: str) -> str:
     return "autre"
 
 
-def dernier_reveil(avant: datetime) -> tuple[dict | None, float | None]:
+def resumer_drm(etat: str) -> str:
+    """
+    Extrait les seuls objets DRM ACTIFS, avec leur identité.
+
+    Première version : un filtre par motif sur `fb=`, `crtc-pos`, `src-pos`.
+    Illisible — le premier constat réel a produit trente lignes `fb=0` sans les
+    en-têtes `plane[N]`, donc impossible de savoir de quel plan on parlait. Un
+    diagnostic qu'on ne sait pas relire ne diagnostique rien.
+
+    Un objet inactif (`crtc=(null)`, `enable=0`) ne raconte rien : sur ce Pi,
+    56 plans sur 57 sont inutilisés en permanence. On ne garde que ce qui
+    travaille, et on garde son nom avec.
+    """
+    blocs: list[str] = []
+    courant: list[str] = []
+    for ligne in etat.splitlines():
+        if re.match(r"^(plane|crtc|connector)\[", ligne):
+            if courant:
+                blocs.append("\n".join(courant))
+            courant = [ligne]
+        elif courant:
+            courant.append(ligne)
+    if courant:
+        blocs.append("\n".join(courant))
+
+    garde: list[str] = []
+    for bloc in blocs:
+        inactif = "crtc=(null)" in bloc or re.search(r"^\s*enable=0", bloc, re.M)
+        if inactif:
+            continue
+        interessantes = [l for l in bloc.splitlines()
+                         if re.match(r"^(plane|crtc|connector)\[", l)
+                         or re.search(r"(crtc=|active=|enable=|mode:|fb=\d|size=|"
+                                      r"crtc-pos|src-pos|tmds_char_rate|output_)", l)]
+        garde.append("\n".join(interessantes))
+
+    if not garde:
+        return etat[:800] or "(état DRM illisible)"
+    return ("\n".join(garde)[:2000]
+            + f"\n({len(blocs) - len(garde)} objet(s) inactif(s) omis)")
+
+
+def instant_demarrage() -> datetime | None:
+    """Heure du dernier démarrage, d'après `/proc/uptime`."""
+    try:
+        secondes = float(lire("/proc/uptime", "").split()[0])
+    except (ValueError, IndexError):
+        return None
+    from datetime import timedelta
+    return datetime.now() - timedelta(seconds=secondes)
+
+
+def dernier_reveil(avant: datetime,
+                   depuis_demarrage: datetime | None = None) -> tuple[dict | None, float | None]:
     """
     Dernier réveil précédant `avant`, et la durée d'extinction qui l'a précédé.
 
     C'est LA donnée du ticket : chaque panne constatée doit pouvoir être
     rattachée à l'extinction dont la dalle n'est pas revenue.
+
+    ⚠️ **Un réveil antérieur au démarrage courant ne compte pas.** Constaté lors
+    du premier essai grandeur nature (2026-08-26) : un constat pris 19 min après
+    un redémarrage se voyait attribuer le réveil de la veille et une exposition
+    de 12,48 h — une donnée entièrement fausse, dans le tableau même qui doit
+    trancher la cause. En usage normal la capture précède le redémarrage, donc
+    le cas ne se produit pas ; mais un essai, ou un appui parasite après un
+    boot, empoisonnerait la statistique sans que rien ne le signale.
+    ⚠️⚠️ **Le filtre est facultatif, et il DOIT le rester.** `rapport()` analyse
+    des incidents passés, tous antérieurs au démarrage courant : appliquer la
+    borne par défaut les effacerait tous, et le rapport annoncerait zéro panne
+    sur une base pleine. Seul `signaler()`, qui décrit l'instant présent, passe
+    `depuis_demarrage`.
     """
     evts = [e for e in evenements_dpms() if e["quand"] <= avant]
+    if depuis_demarrage is not None:
+        evts = [e for e in evts if e["quand"] >= depuis_demarrage]
     reveil = None
     for e in reversed(evts):
         if e["action"] == "on" and "rebond" in e["detail"]:
@@ -173,7 +258,9 @@ def dernier_reveil(avant: datetime) -> tuple[dict | None, float | None]:
 
 def signaler(note: str | None) -> int:
     maintenant = datetime.now()
-    reveil, expo = dernier_reveil(maintenant)
+    # Seul le constat borne au démarrage : il décrit l'instant présent, où un
+    # réveil d'avant le boot n'a aucun sens. Le rapport, lui, ne borne jamais.
+    reveil, expo = dernier_reveil(maintenant, depuis_demarrage=instant_demarrage())
 
     battement = "?"
     try:
@@ -203,7 +290,12 @@ def signaler(note: str | None) -> int:
         lignes.append(f"chemin réveil  : {chemin_reveil(reveil['appelant'])}")
         lignes.append(f"noir depuis    : {(maintenant - reveil['quand']).total_seconds():.0f}s")
     else:
-        lignes.append("dernier réveil : introuvable dans le journal")
+        # Le plus souvent : aucun réveil depuis le démarrage. Le dire ainsi,
+        # plutôt que de remonter un réveil d'avant le boot — mieux vaut une
+        # donnée absente qu'une donnée fausse.
+        boot = instant_demarrage()
+        lignes.append("dernier réveil : AUCUN depuis le démarrage"
+                      + (f" ({boot:%Y-%m-%d %H:%M:%S})" if boot else ""))
         lignes.append("chemin réveil  : inconnu")
     lignes.append(f"extinction précédente : "
                   + (f"{expo:.0f}s ({expo/3600:.2f} h)" if expo is not None else "inconnue"))
@@ -236,10 +328,7 @@ def signaler(note: str | None) -> int:
     etat = lire("/sys/kernel/debug/dri/1/state", "")
     if not etat:
         etat = run(["sudo", "-n", "cat", "/sys/kernel/debug/dri/1/state"])
-    interessant = [l for l in etat.splitlines()
-                   if re.search(r"crtc-2|active=|enable=|tmds_char_rate|"
-                                r"crtc-pos|src-pos|fb=|mode:", l)]
-    lignes.append("\n".join(interessant[:40]) if interessant else etat[:800])
+    lignes.append(resumer_drm(etat))
 
     lignes.append("")
     lignes.append("── 10 derniers événements écran ──")
@@ -385,13 +474,21 @@ def rapport() -> int:
 
     # Réveils, avec leur exposition.
     #
-    # ⚠️ On ne se contente PAS de lire le champ `extinction=` ajouté par
-    # screen_dpms.sh : il n'existe que depuis le 2026-08-25, alors que le
-    # journal remonte bien plus loin. Or ces réveils anciens sont précisément
-    # l'échantillon « sans panne » dont on a besoin pour comparer — dont
-    # l'extinction de 13 h 54 du 22/08 qui dément l'hypothèse du seuil.
-    # On recalcule donc la durée depuis les événements eux-mêmes, et le champ
-    # ne sert que de recoupement.
+    # ⚠️⚠️ **Seuls comptent les réveils postérieurs à la mise en place de la
+    # sonde.** Un réveil est retenu s'il porte le champ `extinction=`, écrit
+    # uniquement par la version instrumentée de `screen_dpms.sh` — le critère
+    # est donc porté par la donnée elle-même, sans date en dur.
+    #
+    # J'avais d'abord fait l'inverse : recalculer les expositions des 88 réveils
+    # historiques pour rendre le rapport utile tout de suite. C'était une
+    # erreur, et Thomas l'a arrêtée (2026-08-26). **Ces réveils anciens ne sont
+    # pas des succès confirmés** : avant le bouton de signalement, une panne ne
+    # laissait aucune trace. Les compter comme sains revient à traiter
+    # l'absence de signalement comme une preuve de bon fonctionnement — sur un
+    # phénomène dont on sait qu'il passait inaperçu des semaines durant.
+    #
+    # Conséquence assumée : le rapport reste muet plus longtemps. C'est le prix
+    # d'une comparaison honnête, et c'est moins cher qu'une fausse piste.
     evts = evenements_dpms()
     reussis: list[tuple[datetime, float | None, str | None, str]] = []
     derniere_extinction: datetime | None = None
@@ -401,11 +498,12 @@ def rapport() -> int:
             continue
         if e["action"] != "on" or "rebond" not in e["detail"]:
             continue
-        expo_s = None
-        if derniere_extinction is not None:
-            expo_s = (e["quand"] - derniere_extinction).total_seconds()
+        m = re.search(r"extinction=(\d+)s", e["detail"])
+        if not m:
+            derniere_extinction = None
+            continue          # réveil d'avant la sonde : succès non confirmé
         t = re.search(r"temp=(\d+)C", e["detail"])
-        reussis.append((e["quand"], expo_s,
+        reussis.append((e["quand"], float(m.group(1)),
                         t.group(1) + " °C" if t else None,
                         chemin_reveil(e["appelant"])))
         derniere_extinction = None
