@@ -146,16 +146,31 @@ def chemin_reveil(appelant: str) -> str:
         Python. C'est `buttons_daemon` qui appelle le script directement.
         Appelant : `runuser<-python3` ou `python3<-…`.
 
-    Si l'hypothèse tient, les pannes se concentreront sur un seul chemin — et
-    cela désignerait un coupable très différent d'un aléa du récepteur : le
-    réveil par bouton ne réarme pas swayidle (TICKET-123), donc la séquence de
-    rallumage n'y est pas la même.
+    ⛔ **CETTE DISTINCTION NE FONCTIONNE PAS, et il ne faut pas s'y fier.**
+    Corrigé le 2026-08-30 après que Thomas ait contesté le résultat — à juste
+    titre. Depuis le TICKET-123, `buttons_daemon` envoie une **frappe virtuelle
+    au compositeur** à chaque appui, pour que swayidle réarme son compte à
+    rebours. Un appui bouton produit donc un réveil `[sh<-swayidle]`,
+    strictement indiscernable d'un appui sur la dalle.
+
+    Autrement dit l'appelant décrit **qui a appelé le script**, pas **ce qui a
+    réveillé l'appareil**. Le rapport annonçait « tactile » pour la totalité des
+    réveils, y compris ceux déclenchés au bouton, et fermait l'hypothèse de
+    Thomas sur une mesure qui ne la testait pas.
+
+    On renvoie donc `indéterminé` pour les réveils par swayidle plutôt qu'une
+    étiquette fausse. Mieux vaut une case vide qu'une case trompeuse — c'est
+    exactement la leçon de `feedback_absence_de_signalement`.
+
+    Pour trancher un jour l'hypothèse, il faudra une trace côté
+    `buttons_daemon` : journaliser l'appui AVANT la frappe virtuelle, avec son
+    horodatage, et corréler. Tant que ça n'existe pas, la question reste ouverte.
     """
     a = (appelant or "").lower()
     if "swayidle" in a:
-        return "tactile"
+        return "indéterminé"      # bouton OU tactile, cf. docstring
     if "python" in a or "runuser" in a:
-        return "bouton"
+        return "bouton"           # appel direct du daemon, sans passer par swayidle
     if "ssh" in a or "bash" in a:
         return "manuel"
     return "autre"
@@ -433,6 +448,47 @@ def separer_reveils(pannes: list[dict], reussis: list[tuple]) -> tuple[list, set
     return [r for r in reussis if r[0] not in fautifs], fautifs
 
 
+def ignorer(horodatage: str, raison: str) -> int:
+    """
+    Marque un constat comme n'étant pas une vraie panne.
+
+    Un essai, un double appui, un doute levé après coup : ces entrées faussent
+    le seul chiffre qui compte. Le 2026-08-30, le rapport annonçait deux pannes
+    là où Thomas n'en comptait qu'une — et deux pannes contre une, ça change
+    tout quand l'échantillon est de cette taille.
+
+    ⚠️ **On n'efface rien.** L'entrée est marquée, pas supprimée : un constat
+    écarté par erreur doit rester relisible, et savoir qu'une piste a été
+    écartée vaut souvent plus que le résultat final. Le rapport saute les
+    entrées portant cette marque.
+    """
+    try:
+        contenu = JOURNAL.read_text(encoding="utf-8", errors="ignore")
+    except Exception as e:  # noqa: BLE001
+        print(f"⛔ journal illisible : {e}")
+        return 1
+
+    entete = f"[{horodatage}] ÉCRAN NOIR CONSTATÉ"
+    if entete not in contenu:
+        print(f"⛔ aucun constat à « {horodatage} ».")
+        print("   Horodatages présents :")
+        for m in _ENTETE.finditer(contenu):
+            print(f"     {m.group(1)}")
+        return 1
+    if f"{entete}\nÉCARTÉ" in contenu:
+        print(f"Le constat du {horodatage} est déjà écarté.")
+        return 0
+
+    contenu = contenu.replace(
+        entete,
+        f"{entete}\nÉCARTÉ : {raison} "
+        f"(marqué le {datetime.now():%Y-%m-%d %H:%M:%S})", 1)
+    JOURNAL.write_text(contenu, encoding="utf-8")
+    print(f"✅ constat du {horodatage} écarté — {raison}")
+    print("   L'entrée est conservée dans le journal, seulement marquée.")
+    return 0
+
+
 def rapport() -> int:
     """
     Croise les pannes constatées avec les réveils réussis.
@@ -454,10 +510,12 @@ def rapport() -> int:
             if courante:
                 pannes.append(courante)
             courante = {"quand": m.group(1), "expo_s": None,
-                        "temp": None, "chemin": None}
+                        "temp": None, "chemin": None, "ecarte": False}
             continue
         if courante is None:
             continue
+        if ligne.startswith("ÉCARTÉ"):
+            courante["ecarte"] = True
         m = _EXPO.match(ligne)
         if m:
             courante["expo_s"] = int(m.group(1)) if m.group(1) else None
@@ -470,7 +528,8 @@ def rapport() -> int:
     if courante:
         pannes.append(courante)
 
-    pannes = dedoublonner(pannes)
+    ecartes = [p for p in pannes if p.get("ecarte")]
+    pannes = dedoublonner([p for p in pannes if not p.get("ecarte")])
 
     # Réveils, avec leur exposition.
     #
@@ -489,29 +548,42 @@ def rapport() -> int:
     #
     # Conséquence assumée : le rapport reste muet plus longtemps. C'est le prix
     # d'une comparaison honnête, et c'est moins cher qu'une fausse piste.
+    # ⚠️ UN RÉVEIL S'ÉCRIT SUR DEUX LIGNES, et c'est le piège :
+    #   … on — sortie inactive (Enabled: no), rebond 1280x720@60 -> 1024x600
+    #   … on — terminé · extinction=89s temp=76C
+    # L'instant du réveil est sur la première, l'exposition et la température
+    # sur la seconde, trois secondes plus tard. Première version : je cherchais
+    # `extinction=` sur la ligne « rebond ». Elles n'y sont jamais, donc le
+    # rapport annonçait **zéro réveil enregistré** alors que le journal en
+    # contenait des dizaines (constaté le 2026-08-30). Encore un silence
+    # crédible et faux.
+    #
+    # On apparie donc les deux lignes, et on retient l'instant du « rebond » :
+    # c'est lui que `dernier_reveil()` rattache aux pannes, les deux côtés
+    # doivent parler du même horodatage.
     evts = evenements_dpms()
     reussis: list[tuple[datetime, float | None, str | None, str]] = []
-    derniere_extinction: datetime | None = None
-    for e in evts:
-        if e["action"] == "off":
-            derniere_extinction = e["quand"]
-            continue
+    for i, e in enumerate(evts):
         if e["action"] != "on" or "rebond" not in e["detail"]:
             continue
-        m = re.search(r"extinction=(\d+)s", e["detail"])
+        # La ligne « terminé » suit immédiatement, sauf réveil interrompu.
+        fin = next((x for x in evts[i + 1:i + 3]
+                    if x["action"] == "on" and "terminé" in x["detail"]), None)
+        if fin is None:
+            continue
+        m = re.search(r"extinction=(\d+)s", fin["detail"])
         if not m:
-            derniere_extinction = None
             continue          # réveil d'avant la sonde : succès non confirmé
-        t = re.search(r"temp=(\d+)C", e["detail"])
+        t = re.search(r"temp=(\d+)C", fin["detail"])
         reussis.append((e["quand"], float(m.group(1)),
                         t.group(1) + " °C" if t else None,
                         chemin_reveil(e["appelant"])))
-        derniere_extinction = None
 
     sains, _fautifs = separer_reveils(pannes, reussis)
 
     print(f"╭─ TICKET-149 — {len(pannes)} panne(s) constatée(s), "
-          f"{len(reussis)} réveil(s) enregistré(s)")
+          f"{len(reussis)} réveil(s) enregistré(s)"
+          + (f", {len(ecartes)} écarté(s)" if ecartes else ""))
 
     if not pannes:
         print("╰─ Aucune panne signalée pour l'instant.")
@@ -581,10 +653,15 @@ def main() -> int:
     s = sub.add_parser("signaler", help="constate une panne en cours (à faire AVANT de débrancher)")
     s.add_argument("--note", help="précision libre : ce que tu voyais, ce que tu venais de faire")
     sub.add_parser("rapport", help="croise les pannes avec les réveils réussis")
+    i = sub.add_parser("ignorer", help="écarte un constat qui n'était pas une vraie panne")
+    i.add_argument("horodatage", help="début du constat, ex. « 2026-08-28 11:48:47 »")
+    i.add_argument("--raison", default="écarté manuellement")
     args = ap.parse_args()
 
     if args.commande == "signaler":
         return signaler(args.note)
+    if args.commande == "ignorer":
+        return ignorer(args.horodatage, args.raison)
     if args.commande == "rapport":
         return rapport()
     ap.print_help()

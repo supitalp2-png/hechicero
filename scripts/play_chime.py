@@ -58,8 +58,12 @@ try:
     import time
 
     def mpc(*args):
+        # ⚠️ `mpc` est proscrit ailleurs dans le projet (zone Z1) : face à un
+        # MPD figé il n'échoue pas, il ATTEND. Ici il tourne au démarrage,
+        # donc un MPD figé bloquerait le boot du kiosque. Le délai de garde
+        # est le minimum ; réécrire ce script sur la socket reste à faire.
         r = subprocess.run(['mpc', '--host', MPD_SOCKET] + list(args),
-                           capture_output=True, text=True)
+                           capture_output=True, text=True, timeout=10)
         return r.stdout.strip()
 
     # Sauvegarder l'état MPD

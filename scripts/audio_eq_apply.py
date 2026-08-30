@@ -74,7 +74,8 @@ def db_to_amixer(db: float) -> int:
 
 
 def list_controls(ctl_name: str) -> None:
-    result = subprocess.run(["amixer", "-D", ctl_name, "scontrols"], capture_output=True, text=True)
+    result = subprocess.run(["amixer", "-D", ctl_name, "scontrols"],
+                            capture_output=True, text=True, timeout=10)
     print(f"--- amixer -D {ctl_name} scontrols ---")
     print(result.stdout or result.stderr)
 
@@ -115,7 +116,9 @@ def apply_profile(ctl_name: str, bands_db: list[float], gain_db: float = 0.0,
         if dry_run:
             print(" ".join(cmd))
             continue
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        # 10 s : amixer répond en quelques ms. S'il attend, c'est ALSA qui
+        # est bloqué, et 30 bandes × attente infinie condamnerait le service.
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
         if result.returncode != 0:
             LOGGER.error("Échec amixer %s %s: %s", ctl_name, label, result.stderr.strip())
 

@@ -1416,6 +1416,54 @@ case "$sortie_mpd" in
     *)            fail "sorties MPD : $sortie_mpd — l'interrupteur de l'admin ne reflète pas l'état réel (TICKET-151)" ;;
 esac
 
+# ── TICKET-152 — toute commande externe porte un délai de garde ─────────────
+# Un `iw dev wlan0 scan` lancé par wifi_roam.py a tourné 18 h 15 à 100 % d'un
+# cœur : le Pi chauffait à 80 °C et bridait sa fréquence, et le daemon était
+# mort depuis le début — bloqué dans `subprocess.run`, plus un seul roaming.
+# Le service restait pourtant `active (running)`.
+# Même leçon que `mpc` au TICKET-122 : une commande qui n'échoue pas mais
+# ATTEND emporte son appelant. On l'avait écrite pour MPD sans la généraliser.
+manquants=$(python3 - "$ROOT" <<'PYEOF'
+import re, sys, pathlib
+fautifs = []
+for f in sorted((pathlib.Path(sys.argv[1]) / "scripts").glob("*.py")):
+    if f.name.startswith("test_"):
+        continue
+    for n, l in enumerate(f.read_text(encoding="utf-8", errors="ignore").splitlines(), 1):
+        if l.lstrip().startswith("#"):
+            continue
+        if "subprocess.run(" in l or "subprocess.check_output(" in l:
+            # L'appel peut tenir sur plusieurs lignes : on regarde la ligne et
+            # celles qui suivent jusqu'à la parenthèse fermante.
+            bloc, prof = "", 0
+            for suite in f.read_text(encoding="utf-8", errors="ignore").splitlines()[n-1:n+6]:
+                bloc += suite
+                prof += suite.count("(") - suite.count(")")
+                if prof <= 0:
+                    break
+            if "timeout" not in bloc:
+                fautifs.append(f"{f.name}:{n}")
+print(", ".join(fautifs))
+PYEOF
+)
+if [ -n "$manquants" ]; then
+    fail "commande(s) externe(s) sans délai de garde : $manquants (TICKET-152)"
+    echo "     → une commande qui attend au lieu d'échouer bloque son appelant pour toujours" | sed 's/^/  /'
+else
+    pass "toutes les commandes externes portent un délai de garde (TICKET-152)"
+fi
+
+# Et le symptôme lui-même : un scan Wi-Fi qui traîne. Un `iw scan` honnête dure
+# 2 à 10 s ; au-delà d'une minute il ne reviendra jamais.
+vieux_iw=$(ps -eo etimes,comm,args --no-headers 2>/dev/null \
+           | awk '$2=="iw" && $1>60 {print $1"s"}' | head -1)
+if [ -n "$vieux_iw" ]; then
+    fail "un processus 'iw' tourne depuis $vieux_iw — scan bloqué, un cœur brûlé (TICKET-152)"
+    echo "     → sudo pkill -f 'iw dev' puis sudo systemctl restart wifi_roam" | sed 's/^/  /'
+else
+    pass "aucun scan Wi-Fi bloqué (TICKET-152)"
+fi
+
 titre "9. Intégrité du catalogue (zone Z9)"
 
 # Dette de test de la zone Z9, ouverte depuis la création du registre :

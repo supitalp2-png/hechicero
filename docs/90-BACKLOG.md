@@ -416,7 +416,54 @@ journée. Autonomie mesurée : **4 h 15** de la pleine charge à l'arrêt.
         `echo detect` auraient suffi ; c'est un renoncement assumé, l'usage passant avant
         la curiosité. À tester à part, un jour de patience.
 
+- [x] TICKET-152 — bug/système — Un scan Wi-Fi bloqué 18 h a brûlé un cœur (2026-08-30)
+      - **Trouvé par accident**, en cherchant la cause d'un plateau de charge nocturne.
+        `ps` : `99.9 %   18:14:18   root   iw dev wlan0 scan`.
+      - Le processus démarre à **00:50:40** ; le relevé batterie voit la charge CPU passer
+        de 0,05 à 1,03 au premier échantillon suivant (00:52:53) et y rester **dix heures**.
+        La température suit : 59 °C → 80 °C, et `throttled` passe de `0x0` à `0x80000`
+        (01:38) puis `0xe0000` (03:04) — le Pi bride sa fréquence.
+      - 🎯 **Cause** : `wifi_roam.py` appelait `subprocess.run(["iw","dev",IFACE,"scan"])`
+        **sans `timeout=`**. Le scan s'est bloqué, l'appelant attend indéfiniment, et `iw`
+        tourne en boucle sur un cœur.
+      - ⚠️ **Trois conséquences, dont deux invisibles** :
+        - un cœur brûlé en permanence, et le Pi thermiquement bridé ;
+        - **`wifi_roam.py` était mort depuis 00:50** — bloqué dans son appel, plus un seul
+          roaming en dix-huit heures ;
+        - et le service restait `active (running)`. Rien, nulle part, ne le signalait.
+      - 🔁 **C'est la leçon du TICKET-122, mot pour mot.** Une commande qui n'échoue pas
+        mais **attend** emporte son appelant. On l'avait écrite pour `mpc` et MPD, sans
+        jamais la généraliser. Une règle apprise sur un cas et pas érigée en garde
+        revient par une autre porte.
+      - **Correctif** : helper `lancer()` dans `wifi_roam.py`, tous les appels bornés
+        (`iw link` 5 s, `iw scan` 20 s, `nmcli modify` 15 s, `nmcli up` 45 s). Sur
+        expiration Python tue l'enfant — le processus ne reste pas derrière.
+      - **Garde, et elle a immédiatement payé** : le smoke test §8 cherche tout
+        `subprocess.run` / `check_output` sans `timeout=` dans `scripts/*.py`. Il en a
+        trouvé **cinq autres** :
+        | Fichier | Risque |
+        |---|---|
+        | `play_chime.py:61` | utilise `mpc`, **au démarrage** — un MPD figé bloquait le boot |
+        | `backup_manager.py:176` | ghost de la carte SD : un NAS muet bloquait la sauvegarde et son verrou pour toujours |
+        | `audio_eq_apply.py:77,118` | 30 appels `amixer` par profil |
+        | `generate_orgue.py:105` | `ffmpeg`, outil ponctuel |
+
+        Tous bornés. Second contrôle : aucun processus `iw` de plus de 60 s.
+      - 📌 **Effet de bord sur le TICKET-148** : la ligne de base nocturne, avant ce
+        processus, est de **58 à 64 °C**. Les 80 °C attribués au boîtier fermé étaient sa
+        conséquence. À remesurer au calme.
+
 - [ ] TICKET-148 — matériel/thermique — Le Pi tient 80 °C en régime permanent dans le boîtier (2026-08-23)
+      - ⚠️ **CONSTAT LARGEMENT INVALIDÉ (2026-08-30).** Les 80,4 °C mesurés le 23/08 —
+        « régime permanent, appareil au repos » — étaient causés par le scan Wi-Fi bloqué
+        du TICKET-152, qui brûlait un cœur en continu. Les relevés nocturnes montrent une
+        ligne de base **entre 58 et 64 °C** tant que ce processus ne tourne pas.
+        Ma conclusion « le Pi tient 80 °C dans son boîtier » reposait sur une mesure prise
+        pendant une panne que je ne connaissais pas encore.
+      - 🔭 **À refaire** : une nuit complète après correction du 152, pour connaître la
+        vraie ligne de base et le vrai maximum en lecture. Le ticket reste ouvert le temps
+        de cette mesure, mais l'idée du ventilateur est suspendue — il n'y a peut-être
+        aucun problème thermique à régler.
       - **Découvert par accident**, en instrumentant le TICKET-140 : la première mesure de
         température jamais prise sur cet appareil sort à **80,4 °C**.
       - ✅ **Ce n'est pas un pic de mesure.** Deux relevés identiques à 6 min d'intervalle

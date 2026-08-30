@@ -173,7 +173,11 @@ def run_ghost(dest_file: Path) -> tuple[bool, str, int]:
         f" | gzip -c > {shlex.quote(str(tmp_dest))}"
     )
     LOGGER.info("Ghost en cours : %s -> %s", src, dest_file)
-    r = subprocess.run(["bash", "-c", shell_cmd], capture_output=True, text=True)
+    # 2 h : un ghost de carte SD complète est long, mais pas infini. Sans
+    # borne, un NAS qui cesse de répondre en cours de copie laisse la
+    # sauvegarde « en cours » pour toujours — et le verrou avec elle.
+    r = subprocess.run(["bash", "-c", shell_cmd], capture_output=True,
+                       text=True, timeout=7200)
     if r.returncode != 0 or not tmp_dest.exists():
         tmp_dest.unlink(missing_ok=True)
         return False, f"dd|gzip a échoué (code {r.returncode}) : {r.stderr.strip()[:300]}", 0

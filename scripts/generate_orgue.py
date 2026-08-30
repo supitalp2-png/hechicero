@@ -104,7 +104,7 @@ filters = ','.join([
 
 subprocess.run(
     ['ffmpeg', '-y', '-i', raw_path, '-af', filters,
-     '-ac', '2', '-ar', '44100', out_path],
+     '-ac', '2', '-ar', '44100', out_path], timeout=300,
     check=True
 )
 os.unlink(raw_path)

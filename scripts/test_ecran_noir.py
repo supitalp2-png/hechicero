@@ -44,6 +44,19 @@ JOURNAL_TYPE = """\
 2026-08-25 20:35:12 [smoke_test.sh<-bash] on     — déjà actif (Enabled: yes), aucune action
 """
 
+# Journal tel que la sonde l'écrit RÉELLEMENT : l'instant du réveil est sur la
+# ligne « rebond », l'exposition et la température sur la ligne « terminé »
+# trois secondes plus tard. Jamais les deux sur la même ligne.
+JOURNAL_SONDE = """\
+2026-08-30 09:00:00 [sh<-swayidle] off    — extinction demandée
+2026-08-30 10:22:01 [sh<-swayidle] on     — sortie inactive (Enabled: no), rebond 1280x720@60 -> 1024x600@59.821
+2026-08-30 10:22:04 [sh<-swayidle] on     — terminé · extinction=4921s temp=79C
+2026-08-30 10:47:00 [sh<-swayidle] off    — extinction demandée
+2026-08-30 10:51:43 [runuser<-python3] on     — sortie inactive (Enabled: no), rebond 1280x720@60 -> 1024x600@59.821
+2026-08-30 10:51:46 [runuser<-python3] on     — terminé · extinction=283s temp=84C
+2026-08-30 11:00:00 [smoke_test.sh<-bash] on     — déjà actif (Enabled: yes), aucune action
+"""
+
 with tempfile.TemporaryDirectory() as tmp:
     chemin = Path(tmp) / "screen_dpms.log"
     chemin.write_text(JOURNAL_TYPE, encoding="utf-8")
@@ -139,7 +152,15 @@ with tempfile.TemporaryDirectory() as tmp:
         # swayidle observe les entrées Wayland (tactile) ; il ne voit jamais le
         # GPIO, lu par un processus Python. Les deux chemins se distinguent donc
         # par l'appelant, déjà journalisé depuis le TICKET-123.
-        verifie("swayidle → tactile", en.chemin_reveil("sh<-swayidle") == "tactile")
+        # ⛔ Surtout PAS « tactile ». Depuis le TICKET-123, un appui bouton
+        # envoie une frappe virtuelle au compositeur, donc il produit lui aussi
+        # un réveil `[sh<-swayidle]`. L'appelant dit qui a appelé le script, pas
+        # ce qui a réveillé l'appareil. Étiqueter « tactile » a fait publier une
+        # attribution fausse, et fermé à tort l'hypothèse de Thomas (2026-08-30).
+        # Une case vide vaut mieux qu'une case trompeuse.
+        verifie("swayidle → indéterminé, jamais 'tactile'",
+                en.chemin_reveil("sh<-swayidle") == "indéterminé",
+                en.chemin_reveil("sh<-swayidle"))
         verifie("buttons_daemon → bouton", en.chemin_reveil("runuser<-python3") == "bouton")
         verifie("python direct → bouton", en.chemin_reveil("python3<-systemd") == "bouton")
         verifie("SSH → manuel", en.chemin_reveil("bash<-sshd-session") == "manuel")
@@ -174,6 +195,42 @@ with tempfile.TemporaryDirectory() as tmp:
                 en.evenements_dpms() == [])
         verifie("rattachement sans journal → (None, None)",
                 en.dernier_reveil(datetime.now()) == (None, None))
+    finally:
+        en.DPMS_LOG = original
+
+
+# ── Un réveil s'écrit sur DEUX lignes ────────────────────────────────────────
+# Le 2026-08-30, le rapport annonçait « 0 réveil enregistré » alors que le
+# journal en contenait des dizaines : je cherchais `extinction=` sur la ligne
+# « rebond », où il n'est jamais — il est sur la ligne « terminé ». Un compteur
+# à zéro sur une base pleine, sans le moindre message d'erreur.
+with tempfile.TemporaryDirectory() as tmp:
+    chemin = Path(tmp) / "screen_dpms.log"
+    chemin.write_text(JOURNAL_SONDE, encoding="utf-8")
+    original = en.DPMS_LOG
+    try:
+        en.DPMS_LOG = chemin
+        evts = en.evenements_dpms()
+        rebonds = [e for e in evts if e["action"] == "on" and "rebond" in e["detail"]]
+        termines = [e for e in evts if e["action"] == "on" and "terminé" in e["detail"]]
+        verifie("les deux lignes d'un réveil sont bien distinctes",
+                len(rebonds) == 2 and len(termines) == 2,
+                f"{len(rebonds)} rebonds, {len(termines)} terminés")
+        verifie("aucune ligne ne porte à la fois 'rebond' et 'extinction='",
+                not [e for e in evts
+                     if "rebond" in e["detail"] and "extinction=" in e["detail"]],
+                "le piège du 30/08 : chercher les deux sur la même ligne")
+        verifie("l'exposition n'est lisible que sur la ligne 'terminé'",
+                all("extinction=" in e["detail"] for e in termines))
+        # L'instant retenu doit être celui du REBOND, pas du « terminé » :
+        # c'est lui que dernier_reveil() rattache aux pannes. Deux références
+        # différentes et le réveil fautif ne serait jamais exclu des réussites.
+        r, _ = en.dernier_reveil(datetime(2026, 8, 30, 10, 30, 0))
+        verifie("l'instant du réveil est celui du rebond",
+                r is not None and r["quand"] == datetime(2026, 8, 30, 10, 22, 1),
+                str(r and r["quand"]))
+        verifie("le chemin de réveil se lit sur la ligne rebond",
+                en.chemin_reveil(rebonds[1]["appelant"]) == "bouton")
     finally:
         en.DPMS_LOG = original
 

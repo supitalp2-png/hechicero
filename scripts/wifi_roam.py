@@ -44,19 +44,51 @@ def log(msg):
         pass
 
 
+# ── TICKET-152 — toute commande externe porte un délai de garde ─────────────
+# Le 2026-08-30, un `iw dev wlan0 scan` lancé à 00:50:40 tournait encore
+# **18 h 15 plus tard**, à 100 % d'un cœur. Conséquences en chaîne :
+#   · le Pi chauffait de 60 à 80 °C et bridait sa fréquence (`throttled=0xe0000`) ;
+#   · ce daemon était MORT depuis 00:50 — bloqué dans `subprocess.run`, plus un
+#     seul roaming en dix-huit heures ;
+#   · et rien ne le signalait : le service restait `active (running)`.
+#
+# C'est mot pour mot la leçon du TICKET-122 avec `mpc` : une commande externe
+# qui n'échoue pas mais ATTEND emporte tout son appelant avec elle. On l'avait
+# écrite pour MPD, on ne l'avait pas généralisée.
+#
+# 📌 Règle : dans ce projet, `subprocess.run` sans `timeout=` est un défaut.
+# Le smoke test le vérifie sur tous les scripts.
+def lancer(cmd, delai, defaut=""):
+    """Exécute une commande, jamais plus longtemps que `delai` secondes.
+
+    Sur expiration, Python tue l'enfant avant de lever — le processus ne reste
+    donc pas à tourner derrière nous, ce qui était tout le problème.
+    """
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=delai)
+        return r.stdout
+    except subprocess.TimeoutExpired:
+        log(f"⚠️ délai de garde dépassé ({delai}s) : {' '.join(cmd)} — commande tuée")
+        return defaut
+    except Exception as e:
+        log(f"⚠️ échec de {' '.join(cmd)} : {type(e).__name__}: {e}")
+        return defaut
+
+
 def is_dfs(freq):
     return DFS_FREQ_MIN <= freq <= DFS_FREQ_MAX
 
 
 def get_current_bssid():
-    out = subprocess.run(["iw", "dev", IFACE, "link"], capture_output=True, text=True).stdout
+    out = lancer(["iw", "dev", IFACE, "link"], delai=5)
     m = re.search(r"Connected to ([0-9a-fA-F:]+)", out)
     return m.group(1).upper() if m else None
 
 
 def scan():
     """Retourne [(bssid, freq, signal_dbm), ...] pour les BSS diffusant CONN."""
-    out = subprocess.run(["iw", "dev", IFACE, "scan"], capture_output=True, text=True).stdout
+    # 20 s : un scan honnête prend 2 à 10 s. Au-delà, il ne reviendra pas.
+    out = lancer(["iw", "dev", IFACE, "scan"], delai=20)
     results = []
     bssid = ssid = freq = signal = None
 
@@ -88,8 +120,8 @@ def scan():
 
 
 def switch_to(bssid):
-    subprocess.run(["nmcli", "connection", "modify", CONN, "802-11-wireless.bssid", bssid])
-    subprocess.run(["nmcli", "connection", "up", CONN])
+    lancer(["nmcli", "connection", "modify", CONN, "802-11-wireless.bssid", bssid], delai=15)
+    lancer(["nmcli", "connection", "up", CONN], delai=45)
 
 
 def main():
