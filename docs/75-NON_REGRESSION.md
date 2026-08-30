@@ -499,6 +499,50 @@ JSON valide** — en cas d'erreur, on garde l'ancien.
 
 ---
 
+### 🟠 Z6bis — `alsaequal` et LADSPA ne se combinent pas
+
+**Le piège** : toute tentative d'empiler un `type ladspa` et l'`alsaequal` existant échoue,
+**dans les deux sens**, sur une assertion qui ne dit rien du vrai problème :
+
+```
+aplay: pcm_params.c:170: snd1_pcm_hw_param_get_min: Assertion `!snd_interval_empty(i)' failed
+```
+
+Quatre variantes essayées le 2026-08-26 — LADSPA au-dessus de l'égaliseur, égaliseur
+au-dessus de LADSPA, un seul greffon mono, la chaîne complète : toutes échouent. LADSPA
+branché **directement sur `plughw`** fonctionne. `alsaequal` négocie mal les formats.
+
+> **Règle** : sur une même voie, c'est `alsaequal` **ou** une chaîne LADSPA, jamais les
+> deux. Une voie traitée contourne donc l'égaliseur — et l'interface doit le dire, sinon
+> l'utilisateur tourne des curseurs sans effet.
+
+**Ce que ce piège apprend au-delà du son** : une assertion ALSA ne nomme jamais le greffon
+fautif. La seule méthode qui a marché est le **découpage** — quatre périphériques
+temporaires, un par variante, pour laisser l'échec désigner sa cause. Essayer des
+variantes au hasard aurait pu durer des heures.
+
+**Deuxième piège de la même zone** : **MPD active par défaut toute sortie qu'il
+découvre.** Au premier démarrage après l'ajout de la sortie traitée, les sorties 0 et 2
+étaient actives **ensemble** sur le même matériel. Ça se reproduira à chaque perte du
+fichier d'état de MPD : réinstallation, restauration d'image durcie, ajout d'une sortie.
+Deux flux vers la même carte, c'est au mieux un doublon, au pire plus de son du tout.
+
+**Fichiers** : `scripts/asound.conf` (`eqhp_dsp`), `/etc/mpd.conf`, `web/lecteur/radio.php`
+(`hp_output_index`, action `set_dsp_hp`)
+
+**Historique** : TICKET-151
+
+**Test de garde** : smoke test §8 — lit les sorties MPD **par la socket, jamais par
+`mpc`** (zone Z1), et échoue si deux sorties haut-parleurs sont actives, si aucune ne
+l'est, ou si l'état réel contredit `dsp_hp_enabled` dans `config.json`.
+
+⚠️ Les index de sortie sont **référencés en dur** : 0 = haut-parleurs, 1 = casque,
+2 = haut-parleurs traités. Ne jamais insérer un `audio_output` avant eux dans
+`/etc/mpd.conf`. Et attention en diagnostic : `mpc` numérote à partir de 1 quand le
+protocole compte à partir de 0 — la sortie 2 est « Output 3 » pour `mpc`.
+
+---
+
 ### 🟠 Z6 — Chaîne audio : ALSA, égaliseur, sorties
 
 **Le piège** : les **numéros de carte ALSA (`hw:N,0`) ne sont pas stables** d'un boot à

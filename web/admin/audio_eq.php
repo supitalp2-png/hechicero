@@ -164,6 +164,36 @@ $currentPage = basename($_SERVER['PHP_SELF'] ?? 'audio_eq.php');
       et <code>python3 scripts/audio_eq_apply.py --list-controls</code> sur le Pi.
     </div>
 
+    <?php
+      // ── TICKET-151 — traitement du son des haut-parleurs ──────────────────
+      // L'état vit dans config.json du lecteur, pas dans audio_eq.json : c'est
+      // radio.php qui choisit la sortie MPD, et il lit ce fichier-là.
+      $cfgLecteur = @json_decode(@file_get_contents(
+          '/home/thomas/hechicero/web/lecteur/config.json'), true) ?: [];
+      $dspActif = !empty($cfgLecteur['dsp_hp_enabled']);
+    ?>
+    <div class="eq-note" style="border-left:3px solid #4a9eff;">
+      <label style="display:flex;align-items:center;gap:12px;cursor:pointer;">
+        <input type="checkbox" id="dsp-hp" <?php echo $dspActif ? 'checked' : ''; ?>
+               style="width:22px;height:22px;flex:0 0 auto;cursor:pointer;">
+        <span>
+          <strong>Traitement du son des haut-parleurs</strong>
+          <span id="dsp-etat" style="opacity:.7;"><?php echo $dspActif ? '· actif' : '· inactif'; ?></span><br>
+          <span style="opacity:.75;font-size:.92em;">
+            Génération d'harmoniques, coupure sous 140 Hz et limiteur. Les membranes de
+            38 mm ne produisent rien dans le grave : on remplace ces fréquences par leurs
+            harmoniques, que l'oreille recompose en un grave plus rond, sans faire battre
+            le cône.
+          </span>
+        </span>
+      </label>
+      <div style="margin-top:10px;padding-top:8px;border-top:1px solid rgba(255,255,255,.08);opacity:.75;font-size:.9em;">
+        ⚠️ Quand le traitement est actif, <strong>les réglages d'égaliseur ci-dessous ne
+        s'appliquent pas aux haut-parleurs</strong> : ALSA ne sait pas empiler l'égaliseur
+        et la chaîne de traitement. Le casque n'est jamais concerné.
+      </div>
+    </div>
+
     <div class="eq-tabs">
       <button type="button" class="eq-tab active" data-tab="hp">🔊 Haut-parleurs</button>
       <button type="button" class="eq-tab" data-tab="casque">🎧 Casque</button>
@@ -294,6 +324,44 @@ $currentPage = basename($_SERVER['PHP_SELF'] ?? 'audio_eq.php');
         majGain();
       }
     });
+
+    // ── TICKET-151 — interrupteur du traitement des haut-parleurs ───────────
+    // La bascule est instantanée : radio.php active la sortie MPD 0 ou 2, sans
+    // redémarrer MPD ni interrompre la lecture.
+    // ⚠️ On remet la case dans son état RÉEL en cas d'échec. Une case qui
+    // resterait cochée alors que rien n'a changé ferait chercher le défaut du
+    // côté du son pendant des heures.
+    (function () {
+      const bascule = document.getElementById('dsp-hp');
+      const etat    = document.getElementById('dsp-etat');
+      if (!bascule) return;
+
+      bascule.addEventListener('change', async () => {
+        const voulu = bascule.checked;
+        bascule.disabled = true;
+        etat.textContent = '· application…';
+        try {
+          const r = await fetch('/lecteur/radio.php?action=set_dsp_hp', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: 'enabled=' + (voulu ? 'true' : 'false'),
+          });
+          const d = await r.json();
+          if (!d.ok) throw new Error('enregistrement refusé');
+          // `applique` est faux quand le casque est branché : le réglage est
+          // mémorisé mais ne prendra effet qu'au retour sur les haut-parleurs.
+          etat.textContent = d.applique
+            ? (voulu ? '· actif' : '· inactif')
+            : (voulu ? '· actif au prochain passage en haut-parleurs'
+                     : '· inactif au prochain passage en haut-parleurs');
+        } catch (e) {
+          bascule.checked = !voulu;
+          etat.textContent = '· échec — ' + e.message;
+        } finally {
+          bascule.disabled = false;
+        }
+      });
+    })();
   </script>
 </body>
 </html>

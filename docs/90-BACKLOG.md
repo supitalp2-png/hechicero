@@ -7,7 +7,7 @@
 
 ## 📌 État des lieux
 
-*2026-08-25 — 5 ouverts, 140 clos*
+*2026-08-26 — 5 ouverts, 143 clos*
 
 ### À faire
 
@@ -30,6 +30,7 @@
 | 146 | Le graphique par langue après redressement de la base |
 | 138 | Plus d'écran noir sur dalle allumée après un `wtype -k F5` |
 | 141 | Cadence plancher, et purge au-delà de 30 jours |
+| 151 | Le traitement du son à l'usage, et après la pose des boîtes étanches |
 
 ✅ **137 · 139 · 142 confirmés par l'usage (2026-08-23).** Deux décharges complètes
 sous le nouveau code : 24 à 34 min par tranche de 10 %, pour 27-28 min attendus d'une
@@ -123,6 +124,111 @@ journée. Autonomie mesurée : **4 h 15** de la pleine charge à l'arrêt.
         `extinction=` restait donc **toujours** vide — et comme le rapport du TICKET-149
         filtre justement sur lui, il n'aurait plus jamais compté un seul réveil. Un
         silence parfaitement crédible, et faux.
+
+- [x] TICKET-151 — audio — Traitement du son des haut-parleurs (2026-08-26)
+      - **Demande de Thomas** après le TICKET-150 : « le son manque de profondeur ».
+        Attendu, et ce n'est pas un défaut : à plat, des membranes de 38 mm en baffle
+        ouvert ne produisent rien sous ~200 Hz.
+      - 🎯 **Ce qui donne de la profondeur sur de petits drivers**, dans l'ordre :
+        1. **génération d'harmoniques** — on synthétise les harmoniques des fondamentales
+           graves ; l'oreille reconstruit une fondamentale qui n'est jamais émise. Aucune
+           excursion supplémentaire. C'est le tour de force de Bose sur ses petites
+           enceintes ;
+        2. **passe-haut** — retirer ce que la membrane ne sait pas produire rend au médium
+           la marge que l'excursion lui volait. Contre-intuitif : un petit haut-parleur
+           sonne **plus plein** quand on lui retire le grave ;
+        3. **limiteur** — les crêtes ne peuvent plus écrêter, quelle que soit la source.
+      - **Chaîne livrée** (`scripts/asound.conf`, périphérique `eqhp_dsp`) :
+        `harmonicGen (1220)` → `butthigh_iir (1904) 140 Hz` → `fastLookaheadLimiter (1913)`.
+        Paquet requis : `swh-plugins`.
+      - ⚠️ **L'ORDRE EST LE MÉCANISME.** Un vrai MaxxBass sépare la bande grave, lui
+        génère des harmoniques, puis remélange — `asound.conf` ne sait pas dériver en
+        parallèle. On obtient l'équivalent en série : générer les harmoniques **avant** de
+        couper, si bien qu'il ne reste que les harmoniques quand la fondamentale
+        disparaît. Inverser les deux étages supprime tout l'effet.
+      - 🔴 **DÉCOUVERTE STRUCTURANTE — `alsaequal` et LADSPA ne se combinent pas.**
+        Quatre variantes essayées, toutes en échec sur
+        `snd1_pcm_hw_param_get_min: Assertion !snd_interval_empty(i) failed` : LADSPA
+        au-dessus de l'égaliseur, égaliseur au-dessus de LADSPA, un seul greffon mono,
+        la chaîne complète. LADSPA branché **directement sur le matériel** fonctionne.
+        `alsaequal` négocie mal les formats : il faut choisir l'un ou l'autre.
+        📌 Conséquence assumée : sur la voie traitée, les réglages d'égaliseur de l'admin
+        ne s'appliquent pas. C'est écrit dans l'interface — sans quoi on tournerait les
+        curseurs sans rien entendre changer.
+      - **Interrupteur** dans Admin → Égaliseur audio. Il bascule entre la sortie MPD 0
+        (directe) et 2 (traitée), sans redémarrer MPD ni couper la lecture. Basculer
+        pendant une écoute au casque mémorise le choix sans rien changer, et le dit.
+      - 🛡️ **Filet de sécurité structurel** : la sortie 0 reste toujours déclarée. Si la
+        chaîne DSP défaille ou qu'un greffon disparaît, décocher la case suffit. Aucune
+        procédure à retenir.
+      - 🐛 **Piège trouvé au premier démarrage** : MPD **active par défaut** toute sortie
+        qu'il découvre — les sorties 0 et 2 se sont retrouvées actives ensemble sur le
+        même matériel. Ça se reproduira à chaque perte de son fichier d'état
+        (réinstallation, restauration d'image). Garde ajoutée au smoke test §8 : elle
+        échoue si deux sorties haut-parleurs sont actives, si aucune ne l'est, ou si
+        l'état réel contredit `dsp_hp_enabled`.
+      - ⚠️ **Mes deux tests étaient biaisés, et Thomas l'a relevé les deux fois** :
+        `aplay` joue à pleine échelle sans passer par le volume de MPD, alors que la
+        radio est plafonnée à 66 %. « Ça sature » ne voulait donc rien dire. Un test doit
+        reproduire les conditions du symptôme, pas des conditions commodes.
+      - **Réglage final** : harmoniques 0,24 / 0,18 (montées après « meilleur mais manque
+        de basses »), coupure 140 Hz, limiteur à −1,5 dB avec −6 dB de gain d'entrée pour
+        égaliser les niveaux entre les deux voies — sans quoi la voie la plus forte paraît
+        toujours meilleure.
+      - **Verdict de Thomas** : « le son est bien meilleur, c'est plus rond, plus agréable ».
+      - 🔭 **Suite, si besoin après la boîte étanche** : renfort réel vers 200–250 Hz avec
+        `mbeq (1197)`, dont les bandes utiles sont `156Hz`, `220Hz`, `311Hz` (ports
+        relevés le 2026-08-26). À placer **après** le passe-haut et **avant** le limiteur.
+        Mais aucun traitement ne fabriquera ce qu'une membrane en baffle ouvert ne peut
+        pas produire — le vrai palier reste mécanique.
+
+- [x] TICKET-150 — audio — Craquements à fort volume : l'égaliseur volait la marge (2026-08-26)
+      - **Signalé par Thomas** : « quand le son est un peu élevé, il y a des craquements,
+        le son devient de très mauvaise qualité et ça craque dans les HP ». Présent
+        « depuis le début ».
+      - 🎯 **Cause** : le profil haut-parleurs montait `+4 +4 +3 +1 0 0 0 +2 +2 0` dB.
+        Aucune bande négative — **un égaliseur qui ne fait qu'amplifier ne peut
+        fonctionner qu'en volant de la marge**. +4 dB, c'est une amplitude ×1,6 : sur les
+        passages qui ont du grave, la crête sort du plafond et se fait raboter. Et à
+        volume maximum il ne reste aucune marge par définition, donc toute bande positive
+        écrête **à coup sûr**.
+      - Ça explique aussi le caractère intermittent : le boost ne coûte ses 4 dB que
+        quand le programme a de l'énergie à 31-125 Hz. Une voix seule passe, une musique
+        avec des basses non.
+      - ✅ **Preuve par l'expérience** : profil remis à plat, musique avec basses à fond
+        — plus un seul craquement. **Ni l'ampli ni les drivers n'étaient en cause.**
+      - ❌ **Deux hypothèses à moi, écartées** :
+        - *Butée d'excursion des membranes de 38 mm.* `test_limite_hp.py` a relevé le
+          même seuil (~75 %) de 60 Hz à 1 kHz : un seuil indépendant de la fréquence
+          désigne l'écrêtage électrique, pas la mécanique.
+        - *Drivers de qualité insuffisante.* Thomas a corrigé : ils viennent d'une
+          enceinte Bose. Ils encaissent bien — chez Bose derrière un DSP qui coupe le
+          grave et limite les crêtes, protection qui leur manque ici. Leur qualité
+          n'était pas le sujet.
+      - 🐛 **Trois défauts de mon propre test, trouvés au premier usage** :
+        - les frappes faites **pendant** la lecture étaient mises en tampon par le
+          terminal et lues au palier suivant : seuils décalés d'un cran, en silence.
+          `termios.tcflush` avant chaque question ;
+        - la colonne « courant » mesurait la **batterie**, pas l'ampli. Sur secteur elle
+          ne montrait que le va-et-vient du chargeur (3 mA à 66 %, 1213 mA à 75 %). Elle
+          n'est plus affichée quand l'appareil n'est pas en décharge ;
+        - le verdict prenait `max(graves)` en l'appelant « seuil le plus bas », ce qui
+          inversait le signe de l'écart.
+      - ⚠️ **Et surtout — j'ai testé la mauvaise chaîne.** Le test a tourné égaliseur à
+        plat, alors que Thomas entendait le défaut avec le boost actif. Il concluait donc
+        « propre à 66 % » sur une configuration qui n'était pas celle du symptôme.
+        C'est Thomas qui l'a relevé : « et si tu prenais en compte qu'il y avait un
+        égaliseur quand j'ai entendu les derniers craquements ».
+      - 📌 **Règle retenue** : pour entendre une bande davantage, **baisser les autres**.
+        Même relief, même timbre, plafond intact. La courbe d'origine sans un décibel
+        ajouté : `[0, 0, -1, -3, -4, -4, -4, -2, -2, -4]`.
+      - **Garde** : le smoke test §8 signale toute bande positive dans un profil, en
+        nommant le profil et le dépassement. Il alerte aujourd'hui sur le profil casque,
+        resté à +4 dB.
+      - 🔭 Le chantier « traitement type Bose » (passe-haut + limiteur) reste possible
+        mais n'a plus rien d'urgent : la cause est traitée. Un limiteur resterait utile
+        parce qu'un programme réel a 10 à 15 dB de facteur de crête là où une sinusoïde
+        en a 3 — un test à la sinusoïde surestime donc toujours le plafond utilisable.
 
 - [ ] TICKET-149 — matériel/écran — L'écran noir vient de la dalle, pas du logiciel (2026-08-25)
       - **Le bug le plus ancien du projet, cherché au mauvais étage pendant des mois.**

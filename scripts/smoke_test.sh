@@ -1318,6 +1318,104 @@ else
     fail "limite de volume violée — $sortie_vol"
 fi
 
+# ── TICKET-150 — un égaliseur qui amplifie vole de la marge ─────────────────
+# Craquements aux forts volumes, signalés « depuis le début ». Cause établie le
+# 2026-08-26 : le profil haut-parleurs montait +4 dB à 31 et 62 Hz, +3 à 125.
+# +4 dB, c'est une amplitude ×1,6 — sur les passages qui ont du grave, la crête
+# sort du plafond et se fait raboter. À volume maximum il ne reste AUCUNE marge,
+# donc toute bande positive écrête à coup sûr.
+# Preuve par l'expérience : profil remis à plat, musique avec basses à fond,
+# plus un seul craquement. Ni l'ampli ni les drivers n'étaient en cause.
+# Règle : pour entendre une bande davantage, on BAISSE LES AUTRES. Même relief,
+# même timbre, plafond intact.
+sortie_eq=$(python3 - "$ROOT" <<'PYEOF'
+import json, sys, pathlib
+chemin = pathlib.Path(sys.argv[1]) / "data" / "audio_eq.json"
+try:
+    profils = json.loads(chemin.read_text(encoding="utf-8")).get("profiles", {})
+except Exception as e:
+    print(f"INTROUVABLE {e}"); sys.exit(0)
+if not profils:
+    print("INTROUVABLE aucun profil"); sys.exit(0)
+# Haut-parleurs uniquement. Le profil casque garde volontairement des bandes
+# positives (choix de Thomas, 2026-08-26) : le DAC USB a sa propre marge et son
+# gain est déjà borné à 4 dB par ailleurs. Alerter dessus produirait un
+# avertissement permanent, et un avertissement permanent ne se lit plus.
+p = profils.get("hp", {})
+bandes = [float(b) for b in p.get("bands_db", [])]
+print(f"hp +{max(bandes):.0f} dB" if bandes and max(bandes) > 0 else "")
+PYEOF
+)
+if [ "${sortie_eq#INTROUVABLE}" != "$sortie_eq" ]; then
+    warn "profils d'égaliseur illisibles — contrôle de marge inopérant (TICKET-150)"
+elif [ -n "$sortie_eq" ]; then
+    warn "égaliseur : bande(s) positive(s) — $sortie_eq · vole de la marge, écrête à fort volume (TICKET-150)"
+    echo "     → même relief sans perte de marge : baisser les AUTRES bandes plutôt que monter celles-ci" | sed 's/^/  /'
+else
+    pass "égaliseur : aucune bande positive, marge préservée (TICKET-150)"
+fi
+
+# ── TICKET-151 — une seule sortie haut-parleurs à la fois ───────────────────
+# Deux sorties MPD mènent au même matériel : la 0 (directe) et la 2 (chaîne de
+# traitement). MPD ACTIVE PAR DÉFAUT toute sortie qu'il découvre — constaté au
+# premier démarrage : les deux se sont retrouvées actives ensemble. Ça se
+# reproduira à chaque perte de son fichier d'état : réinstallation, restauration
+# d'image durcie, ou simple ajout d'une sortie.
+# Deux flux vers la même carte, c'est au mieux un doublon, au pire une carte qui
+# refuse de s'ouvrir et plus de son du tout.
+# ⚠️ Jamais `mpc` : face à un MPD figé il attend au lieu d'échouer (zone Z1).
+sortie_mpd=$(timeout 8 python3 - <<'PYEOF'
+import socket, json, sys
+try:
+    s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM); s.settimeout(3)
+    s.connect("/run/mpd/socket")
+    f = s.makefile("rwb")
+    if not f.readline().startswith(b"OK MPD"):
+        print("INJOIGNABLE"); sys.exit(0)
+    f.write(b"outputs\n"); f.flush()
+    actifs, courant = [], None
+    while True:
+        l = f.readline()
+        if not l or l == b"OK\n" or l.startswith(b"ACK "):
+            break
+        t = l.decode("utf-8", "replace").strip()
+        if t.startswith("outputid: "):
+            courant = int(t.split(": ")[1])
+        elif t.startswith("outputenabled: ") and t.endswith("1"):
+            actifs.append(courant)
+    f.close(); s.close()
+except Exception:
+    print("INJOIGNABLE"); sys.exit(0)
+
+try:
+    cfg = json.load(open("/home/thomas/hechicero/web/lecteur/config.json"))
+    attendu = 2 if cfg.get("dsp_hp_enabled") else 0
+except Exception:
+    attendu = 0
+
+hp = [o for o in actifs if o in (0, 2)]
+if len(hp) > 1:
+    print(f"DOUBLE {hp}")
+elif 1 in actifs:
+    print("CASQUE")            # écoute au casque : les sorties HP sont éteintes, normal
+elif hp == [attendu]:
+    print(f"OK sortie {attendu}" + (" (traitement actif)" if attendu == 2 else ""))
+elif not hp:
+    print("AUCUNE")
+else:
+    print(f"DESACCORD active={hp[0]} config={attendu}")
+PYEOF
+)
+case "$sortie_mpd" in
+    OK*)          pass "sorties MPD : $sortie_mpd (TICKET-151)" ;;
+    CASQUE)       pass "sorties MPD : écoute au casque, sorties HP éteintes (TICKET-151)" ;;
+    INJOIGNABLE)  warn "sorties MPD illisibles — contrôle inopérant (TICKET-151)" ;;
+    DOUBLE*)      fail "DEUX sorties haut-parleurs actives $sortie_mpd sur le même matériel (TICKET-151)"
+                  echo "     → mpc disable 3   puis vérifier l'interrupteur dans l'admin" ;;
+    AUCUNE)       fail "aucune sortie haut-parleurs active — plus de son (TICKET-151)" ;;
+    *)            fail "sorties MPD : $sortie_mpd — l'interrupteur de l'admin ne reflète pas l'état réel (TICKET-151)" ;;
+esac
+
 titre "9. Intégrité du catalogue (zone Z9)"
 
 # Dette de test de la zone Z9, ouverte depuis la création du registre :

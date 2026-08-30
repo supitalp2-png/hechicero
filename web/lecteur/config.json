@@ -10,5 +10,6 @@
     "sleep_mode": "retro_clock",
     "screen_off_enabled": true,
     "screen_off_delay": 600,
-    "chime_sound": "boot_orgue.wav"
+    "chime_sound": "boot_orgue.wav",
+    "dsp_hp_enabled": true
 }

@@ -61,6 +61,22 @@ function load_audio_state(): array {
     ];
 }
 
+/**
+ * Sortie MPD à utiliser pour les haut-parleurs (TICKET-151).
+ *
+ * 0 = `eqhp`, la chaîne directe. 2 = `eqhp_dsp`, avec harmoniques, passe-haut
+ * et limiteur. Le casque garde la sortie 1 et n'est jamais concerné.
+ *
+ * ⚠️ Le repli est 0, la chaîne directe — et c'est délibéré. Si config.json est
+ * illisible, si la clé manque, ou si sa valeur est inattendue, on veut du son,
+ * pas la chaîne la plus élaborée. Une panne de configuration ne doit jamais
+ * rendre l'appareil muet pour un enfant de 7 ans.
+ */
+function hp_output_index(): int {
+    $cfg = read_json_radio(CONFIG_PATH);
+    return !empty($cfg['dsp_hp_enabled']) ? 2 : 0;
+}
+
 function save_audio_state(array $state): void {
     $dir = dirname(AUDIO_STATE_PATH);
     if (!is_dir($dir)) {
@@ -548,6 +564,46 @@ if (isset($_GET['action'])) {
         exit;
     }
 
+    // ── TICKET-151 — traitement du son des haut-parleurs ────────────────────
+    // Deux sorties MPD mènent aux haut-parleurs : la 0 (directe, `eqhp`) et la
+    // 2 (`eqhp_dsp` : harmoniques + passe-haut + limiteur). Une seule est
+    // active à la fois, et le choix vit dans config.json pour survivre aux
+    // redémarrages.
+    if ($action === 'set_dsp_hp') {
+        header('Content-Type: application/json; charset=utf-8');
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            http_response_code(405);
+            echo json_encode(['ok' => false, 'error' => 'method_not_allowed']);
+            exit;
+        }
+        $actif = filter_var($_POST['enabled'] ?? 'false', FILTER_VALIDATE_BOOLEAN);
+        $cfg = read_json_radio(CONFIG_PATH);
+        $cfg['dsp_hp_enabled'] = $actif;
+        // Écriture atomique par fichier temporaire puis rename, comme partout
+        // ailleurs ici : une coupure en cours d'écriture ne doit jamais laisser
+        // un config.json tronqué — c'est lui qui porte les limites de volume.
+        $tmp = CONFIG_PATH . '.tmp';
+        $ecrit = file_put_contents($tmp, json_encode($cfg,
+                    JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)) !== false
+                 && rename($tmp, CONFIG_PATH);
+
+        // Application immédiate, mais SEULEMENT si les haut-parleurs sont la
+        // sortie active : bousculer les sorties MPD pendant une écoute au
+        // casque couperait le son sans raison.
+        $applique = false;
+        $etat = read_json_radio(AUDIO_STATE_PATH);
+        if (($etat['mode'] ?? 'hp') === 'hp') {
+            $cible = $actif ? 2 : 0;
+            $autre = $actif ? 0 : 2;
+            $res = mpd_batch(["enableoutput $cible", 'disableoutput 1',
+                              "disableoutput $autre"]);
+            $applique = !str_starts_with($res, 'MPD connection failed');
+        }
+        echo json_encode(['ok' => $ecrit, 'enabled' => $actif,
+                          'applique' => $applique]);
+        exit;
+    }
+
     if ($action === 'parental_status') {
         header('Content-Type: application/json; charset=utf-8');
         $p = read_json_radio($projectRoot . '/data/parental.json');
@@ -650,9 +706,18 @@ if (isset($_GET['action'])) {
         mpd_command('setvol ' . ihm_to_mpd_vol($targetPct, $targetMode));
 
         if ($targetMode === 'casque') {
-            $res = mpd_batch(['enableoutput 1', 'disableoutput 0']);
+            $res = mpd_batch(['enableoutput 1', 'disableoutput 0', 'disableoutput 2']);
         } else {
-            $res = mpd_batch(['enableoutput 0', 'disableoutput 1']);
+            // TICKET-151 : deux sorties possibles pour les haut-parleurs — la
+            // sortie 0 (directe) et la sortie 2 (chaîne de traitement). On
+            // n'en active qu'une, l'autre reste disponible.
+            // ⚠️ C'est le filet de sécurité de tout le ticket : si la chaîne
+            // DSP est mal réglée ou si un greffon LADSPA disparaît, la sortie 0
+            // est toujours là et le son revient en basculant l'interrupteur.
+            $sortieHp = hp_output_index();
+            $autre    = $sortieHp === 2 ? 0 : 2;
+            $res = mpd_batch(["enableoutput $sortieHp", 'disableoutput 1',
+                              "disableoutput $autre"]);
         }
 
         $state['mode'] = $targetMode;
