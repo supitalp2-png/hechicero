@@ -7,14 +7,15 @@
 
 ## 📌 État des lieux
 
-*2026-08-26 — 5 ouverts, 143 clos*
+*2026-08-30 — 6 ouverts, 145 clos*
 
 ### À faire
 
 | # | Sujet | État |
 |---|---|---|
-| 149 | Écran noir : la dalle ne re-verrouille pas le HDMI | cause trouvée, signalement au bouton opérationnel |
-| 148 | Le Pi tient 80 °C en régime permanent dans le boîtier | mesuré, cause non cherchée |
+| 153 | Chemin bouton : rebond tué en plein milieu | correctifs posés, attend l'usage |
+| 149 | Écran noir : la dalle ne re-verrouille pas le HDMI | cause matérielle établie, signalement au bouton |
+| 148 | Le Pi tient 80 °C en régime permanent dans le boîtier | **constat invalidé** par le 152, à remesurer |
 | 140 | Arrêt de charge nocturne, alimentation présente | instrumenté 23/08, attend une nuit branché |
 | 122 | Récupération du chien de garde MPD | logique testée, action non éprouvée |
 | 058 | Série podcast « Décisions Prises » | 2 épisodes écrits |
@@ -229,6 +230,48 @@ journée. Autonomie mesurée : **4 h 15** de la pleine charge à l'arrêt.
         mais n'a plus rien d'urgent : la cause est traitée. Un limiteur resterait utile
         parce qu'un programme réel a 10 à 15 dB de facteur de crête là où une sinusoïde
         en a 3 — un test à la sinusoïde surestime donc toujours le plafond utilisable.
+
+- [ ] TICKET-153 — écran — Le chemin bouton tuait le rebond en plein milieu (2026-08-30)
+      - **Thomas, depuis des mois** : « je suis presque certain que c'est lié au réveil
+        par les boutons ». Je lui opposais une mesure — et cette mesure ne mesurait rien
+        (cf. TICKET-149 : la colonne « chemin de réveil » affichait *tactile* pour tout).
+      - 🎯 **Mécanisme trouvé en comparant les deux chemins ligne par ligne** :
+
+        | | tactile | bouton |
+        |---|---|---|
+        | détection | entrée Wayland, vue par swayidle | GPIO, invisible du compositeur |
+        | déclencheur | `swayidle resume` → `screen_dpms.sh on` | frappe virtuelle (TICKET-123) → même chose |
+        | appel supplémentaire | — | **GPIO23 seulement** : `wake_screen()` → 2ᵉ appel |
+        | délai de garde | **aucun** | **`timeout=5`** |
+
+        Le rebond dure `wlr-randr` + **`sleep 3`** + `wlr-randr`, plus le démarrage de
+        `runuser` et `env` : **4 à 5 s**. Le délai de garde valait **5 s**. Le chemin
+        bouton courait donc contre une échéance qu'il atteignait parfois — et il était
+        tué **pendant le sommeil**, c'est-à-dire *entre les deux changements de mode*.
+        La dalle restait en `1280x720` quand le compositeur rendait en `1024x600`.
+        Écran noir, tous les indicateurs au vert, exactement l'état mesuré le 25/08.
+      - **Le chemin tactile n'a pas de délai de garde. Il ne peut pas produire ce défaut.**
+        L'intuition de Thomas était juste ; c'est ma mesure qui était fausse.
+      - 🛡️ **Trois défenses, indépendantes** :
+        1. **`trap` de restauration** dans `bounce_mode()` — le mode natif est reposé même
+           sur SIGTERM. C'est celle qui traite le mécanisme : la dalle ne peut plus rester
+           au mode intermédiaire, quoi qu'il arrive au script.
+        2. **Verrou `flock -w 12`** — deux rebonds ne peuvent plus s'entrelacer. La
+           concurrence était réelle : deux invocations à la **même seconde** au journal du
+           28/08 à 19:44:32. L'état est **relu après** obtention du verrou, sinon on
+           rebondirait une seconde fois sur une dalle déjà réveillée.
+        3. **Délai de garde 5 s → 20 s** dans `wake_screen()`.
+      - 🔬 **Et la trace qui manquait** : `buttons_daemon` dépose une marque dans
+        `screen_dpms.log` **avant** d'envoyer la frappe virtuelle. Un réveil précédé de
+        cette marque de moins de 8 s vient d'un bouton ; sans elle, il est tactile.
+        `ecran_noir.py rapport` dira enfin `réveil=bouton` ou `réveil=tactile` pour de
+        vrai. La fenêtre est courte à dessein : une marque vieille de cinq minutes
+        n'explique rien, et contaminerait tous les réveils de la journée.
+      - **Garde** : `test_ecran_noir.py`, 48 contrôles — réveil sans marque → tactile,
+        marque 1 s avant → bouton, marque 5 min avant → tactile.
+      - 🔭 **À observer** : si les écrans noirs cessent, laquelle des trois défenses a
+        compté ? Le journal le dira : le filet de sécurité s'y annonce quand il agit
+        (« mode natif restauré par le filet de sécurité »).
 
 - [ ] TICKET-149 — matériel/écran — L'écran noir vient de la dalle, pas du logiciel (2026-08-25)
       - **Le bug le plus ancien du projet, cherché au mauvais étage pendant des mois.**

@@ -258,6 +258,35 @@ def handle_favori_screen(pin: int) -> None:
     LOGGER.info("Demande écran favoris (GPIO%s) — réponse radio.php : %s", pin, result)
 
 
+JOURNAL_ECRAN = "/home/thomas/hechicero/data/screen_dpms.log"
+
+
+def marquer_appui_bouton() -> None:
+    """
+    Dépose dans le journal d'écran la trace d'un appui physique (TICKET-153).
+
+    Format aligné sur celui de `screen_dpms.sh` pour que tout se lise dans
+    l'ordre chronologique, sans outil :
+
+        2026-08-30 21:14:07 [buttons_daemon] appui — origine du réveil : BOUTON
+        2026-08-30 21:14:07 [sh<-swayidle] on — sortie inactive …, rebond …
+
+    Sans cette ligne, un réveil est tactile. Avec elle juste avant, il vient
+    d'un bouton. C'est la seule façon de trancher : la frappe virtuelle envoyée
+    juste après rend les deux chemins indiscernables côté compositeur.
+
+    Best-effort et silencieux : tracer un appui ne doit jamais gêner un appui.
+    Le service est durci, mais `data/` est dans ses `ReadWritePaths` (zone Z2).
+    """
+    try:
+        horodatage = time.strftime("%Y-%m-%d %H:%M:%S")
+        with open(JOURNAL_ECRAN, "a", encoding="utf-8") as fh:
+            fh.write(f"{horodatage} [buttons_daemon] appui  "
+                     f"— origine du réveil : BOUTON\n")
+    except Exception:
+        pass
+
+
 def wake_screen() -> None:
     """Rallume la dalle si elle est en veille DPMS (TICKET-112). Best-effort,
     ne lève jamais : un échec de réveil écran ne doit pas empêcher la bascule
@@ -274,9 +303,20 @@ def wake_screen() -> None:
     def _run():
         try:
             env_prefix = [f"{k}={v}" for k, v in SCREEN_ENV.items()]
+            # ⚠️ 20 s, et surtout PAS 5 (TICKET-153). Le rebond de mode dure
+            # 3 s de `sleep` + deux `wlr-randr` + le démarrage de `runuser` —
+            # soit 4 à 5 s. Avec un délai de garde de 5 s, ce chemin tuait le
+            # script **pendant le sommeil**, donc entre les deux changements de
+            # mode : la dalle restait en 1280x720 quand le compositeur rendait
+            # en 1024x600. Écran noir, tous les indicateurs au vert.
+            # Le chemin tactile, lancé par swayidle sans délai de garde, n'a
+            # jamais eu ce défaut — d'où l'intuition de Thomas, exacte, que les
+            # écrans noirs suivaient les réveils par bouton.
+            # Le script porte désormais aussi un `trap` qui repose le mode natif
+            # même s'il est tué ; ce délai généreux est la seconde protection.
             subprocess.run(
                 ["runuser", "-u", SCREEN_USER, "--", "env", *env_prefix, SCREEN_DPMS_SCRIPT, "on"],
-                timeout=5, check=False,
+                timeout=20, check=False,
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
             )
         except Exception as e:
@@ -333,6 +373,19 @@ def signaler_activite() -> None:
     if maintenant - _derniere_activite < ACTIVITE_THROTTLE_S:
         return
     _derniere_activite = maintenant
+
+    # ── TICKET-153 — tracer l'ORIGINE du réveil ─────────────────────────────
+    # Le journal d'écran ne sait pas distinguer un réveil tactile d'un réveil
+    # par bouton : les deux arrivent par swayidle, puisque la frappe virtuelle
+    # ci-dessous est justement là pour ça (TICKET-123). Le rapport du 149
+    # affichait donc « tactile » pour TOUT, y compris les appuis boutons — une
+    # attribution fausse, qui a fermé à tort l'hypothèse de Thomas.
+    #
+    # On dépose donc une marque AVANT la frappe. Un réveil précédé de cette
+    # ligne à quelques secondes est un réveil par bouton ; sans elle, c'est un
+    # réveil tactile. La marque est écrite dans le journal d'écran lui-même,
+    # pour que la corrélation soit une simple lecture chronologique.
+    marquer_appui_bouton()
 
     if not os.path.exists(WTYPE_BIN):
         if not _wtype_manquant_signale:

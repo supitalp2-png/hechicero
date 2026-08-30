@@ -235,6 +235,53 @@ with tempfile.TemporaryDirectory() as tmp:
         en.DPMS_LOG = original
 
 
+# ── TICKET-153 — distinguer enfin bouton et tactile ──────────────────────────
+# La frappe virtuelle du TICKET-123 fait arriver les deux chemins par swayidle.
+# `buttons_daemon` dépose donc une marque JUSTE AVANT de l'envoyer. C'est cette
+# marque, et elle seule, qui permet de trancher l'hypothèse de Thomas.
+JOURNAL_ORIGINE = """\
+2026-08-30 20:00:00 [sh<-swayidle] off    — extinction demandée
+2026-08-30 20:10:00 [sh<-swayidle] on     — sortie inactive (Enabled: no), rebond 1280x720@60 -> 1024x600@59.821
+2026-08-30 20:10:03 [sh<-swayidle] on     — terminé · extinction=600s temp=62C
+2026-08-30 20:20:00 [sh<-swayidle] off    — extinction demandée
+2026-08-30 20:30:01 [buttons_daemon] appui  — origine du réveil : BOUTON
+2026-08-30 20:30:02 [sh<-swayidle] on     — sortie inactive (Enabled: no), rebond 1280x720@60 -> 1024x600@59.821
+2026-08-30 20:30:05 [sh<-swayidle] on     — terminé · extinction=602s temp=63C
+2026-08-30 20:40:00 [sh<-swayidle] off    — extinction demandée
+2026-08-30 21:00:00 [buttons_daemon] appui  — origine du réveil : BOUTON
+2026-08-30 21:05:00 [sh<-swayidle] on     — sortie inactive (Enabled: no), rebond 1280x720@60 -> 1024x600@59.821
+2026-08-30 21:05:03 [sh<-swayidle] on     — terminé · extinction=1500s temp=61C
+"""
+
+with tempfile.TemporaryDirectory() as tmp:
+    chemin = Path(tmp) / "screen_dpms.log"
+    chemin.write_text(JOURNAL_ORIGINE, encoding="utf-8")
+    original = en.DPMS_LOG
+    try:
+        en.DPMS_LOG = chemin
+        evts = en.evenements_dpms()
+        idx = [i for i, e in enumerate(evts)
+               if e["action"] == "on" and "rebond" in e["detail"]]
+        verifie("trois réveils repérés", len(idx) == 3, str(len(idx)))
+
+        verifie("réveil sans marque → tactile",
+                en.origine_reveil(evts, idx[0]) == "tactile",
+                en.origine_reveil(evts, idx[0]))
+        verifie("réveil précédé d'une marque 1 s avant → bouton",
+                en.origine_reveil(evts, idx[1]) == "bouton",
+                en.origine_reveil(evts, idx[1]))
+        # ⚠️ Une marque vieille de 5 min n'explique PAS le réveil qui suit :
+        # sinon le moindre appui de la journée contaminerait tous les réveils
+        # ultérieurs, et on conclurait « tout vient des boutons ».
+        verifie("marque trop ancienne (5 min) → tactile, pas bouton",
+                en.origine_reveil(evts, idx[2]) == "tactile",
+                en.origine_reveil(evts, idx[2]))
+        verifie("la fenêtre reste courte", en.FENETRE_MARQUE_S <= 15,
+                str(en.FENETRE_MARQUE_S))
+    finally:
+        en.DPMS_LOG = original
+
+
 # ── Résumé DRM : garder l'identité, jeter l'inutile ─────────────────────────
 # Premier constat réel : trente lignes `fb=0` sans les en-têtes `plane[N]`,
 # donc impossible de savoir de quel plan on parlait. Un diagnostic qu'on ne

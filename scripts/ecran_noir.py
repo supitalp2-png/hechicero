@@ -168,12 +168,44 @@ def chemin_reveil(appelant: str) -> str:
     """
     a = (appelant or "").lower()
     if "swayidle" in a:
-        return "indéterminé"      # bouton OU tactile, cf. docstring
+        return "indéterminé"      # bouton OU tactile — trancher via la marque
     if "python" in a or "runuser" in a:
         return "bouton"           # appel direct du daemon, sans passer par swayidle
     if "ssh" in a or "bash" in a:
         return "manuel"
     return "autre"
+
+
+# Fenêtre pendant laquelle une marque d'appui explique le réveil qui suit.
+# La frappe virtuelle part juste après la marque, swayidle réagit dans la
+# foulée : quelques secondes suffisent largement.
+FENETRE_MARQUE_S = 8
+
+
+def origine_reveil(evts: list[dict], indice: int) -> str:
+    """
+    Origine RÉELLE d'un réveil : bouton ou tactile (TICKET-153).
+
+    L'appelant du script ne suffit pas — la frappe virtuelle du TICKET-123 fait
+    arriver les deux chemins par swayidle. `buttons_daemon` dépose donc une
+    marque juste avant d'envoyer cette frappe ; un réveil précédé de cette
+    marque de moins de `FENETRE_MARQUE_S` secondes vient d'un bouton.
+
+    ⚠️ C'est cette fonction qui répond à la question ouverte depuis des mois.
+    Si elle se trompe, on repart sur une fausse piste — d'où la fenêtre courte
+    et l'exigence que la marque PRÉCÈDE le réveil, jamais l'inverse.
+    """
+    direct = chemin_reveil(evts[indice]["appelant"])
+    if direct != "indéterminé":
+        return direct
+    quand = evts[indice]["quand"]
+    for e in reversed(evts[:indice]):
+        ecart = (quand - e["quand"]).total_seconds()
+        if ecart > FENETRE_MARQUE_S:
+            break
+        if "buttons_daemon" in e["appelant"] or "appui" in e["action"]:
+            return "bouton"
+    return "tactile"
 
 
 def resumer_drm(etat: str) -> str:
@@ -577,7 +609,7 @@ def rapport() -> int:
         t = re.search(r"temp=(\d+)C", fin["detail"])
         reussis.append((e["quand"], float(m.group(1)),
                         t.group(1) + " °C" if t else None,
-                        chemin_reveil(e["appelant"])))
+                        origine_reveil(evts, i)))
 
     sains, _fautifs = separer_reveils(pannes, reussis)
 

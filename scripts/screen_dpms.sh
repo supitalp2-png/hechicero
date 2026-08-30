@@ -134,12 +134,53 @@ output_enabled() {
     '
 }
 
-# Aller-retour de mode : la seule façon de forcer un modeset et de réveiller
-# physiquement la dalle. --on est inclus pour couvrir le cas connecteur éteint.
+# ── TICKET-153 — le rebond ne doit jamais rester à mi-chemin ────────────────
+# Le rebond passe par un mode INTERMÉDIAIRE (1280x720) avant de revenir au mode
+# natif. Entre les deux, il y a `sleep 3`. Si le script est tué pendant ce
+# sommeil, la dalle reste en 1280x720 alors que le compositeur rend en
+# 1024x600 : écran noir, tous les indicateurs au vert.
+#
+# Ce n'est pas théorique. `buttons_daemon.wake_screen()` lançait ce script avec
+# `timeout=5`, alors que le rebond dure 3 s de sommeil + deux `wlr-randr` + le
+# démarrage de `runuser` — soit 4 à 5 s. Le chemin BOUTON courait donc contre
+# une échéance qu'il atteignait parfois, et il était tué exactement au pire
+# endroit. Le chemin TACTILE, lancé par swayidle sans délai de garde, n'a
+# jamais eu ce problème. C'est ce que Thomas observait depuis des mois.
+#
+# Deux protections, et elles sont indépendantes :
+#   1. un `trap` remet le mode natif quoi qu'il arrive — y compris sur SIGTERM ;
+#   2. un verrou interdit à deux rebonds de s'entrelacer.
+restaurer_mode() {
+    # Idempotent : reposer le mode natif alors qu'il est déjà en place est un
+    # no-op pour wlr-randr. Le coût d'un appel inutile est nul, celui d'une
+    # dalle laissée en 1280x720 est un écran noir.
+    wlr-randr --output "$OUTPUT" --mode "$MODE" 2>/dev/null
+    log_dpms "rebond — mode natif restauré par le filet de sécurité"
+}
+
 bounce_mode() {
+    # Si on est tué maintenant, le mode natif est reposé avant de mourir.
+    trap 'restaurer_mode; exit 143' TERM INT HUP
     wlr-randr --output "$OUTPUT" --on --mode "$BOUNCE_MODE"
     sleep "$BOUNCE_DELAY"
     wlr-randr --output "$OUTPUT" --mode "$MODE"
+    trap - TERM INT HUP
+}
+
+# ⚠️ Verrou : deux exécutions concurrentes existent réellement. Le journal du
+# 2026-08-28 montre deux invocations à la MÊME seconde (19:44:32). Deux rebonds
+# entrelacés émettent des changements de mode dans le désordre.
+# `-w 12` : on attend le verrou jusqu'à 12 s — plus long que le rebond — puis on
+# renonce plutôt que de s'accumuler. Renoncer est sûr : si un autre rebond vient
+# de finir, la dalle est déjà réveillée.
+VERROU="/tmp/hechicero-screen-dpms.lock"
+prendre_verrou_ou_renoncer() {
+    exec 9>"$VERROU" 2>/dev/null || return 0   # /tmp indisponible : on continue
+    if ! flock -w 12 9; then
+        log_dpms "$1 — verrou occupé 12 s, on renonce (un autre rebond est en cours)"
+        return 1
+    fi
+    return 0
 }
 
 case "${1:-off}" in
@@ -156,6 +197,15 @@ case "${1:-off}" in
             # l'écran à chaque appui du bouton GPIO23 (régression TICKET-115).
             log_dpms "on     — déjà actif (Enabled: yes), aucune action"
         else
+            prendre_verrou_ou_renoncer "on" || exit 0
+            # ⚠️ Relire l'état APRÈS avoir obtenu le verrou : pendant l'attente,
+            # l'autre exécution a pu réveiller la dalle. Rebondir une seconde
+            # fois ferait clignoter l'écran pour rien.
+            STATE="$(output_enabled)"
+            if [ "$STATE" = "yes" ]; then
+                log_dpms "on     — réveillé par une autre exécution pendant l'attente du verrou"
+                exit 0
+            fi
             log_dpms "on     — sortie inactive (Enabled: ${STATE:-inconnu}), rebond $BOUNCE_MODE -> $MODE"
             bounce_mode
             # TICKET-149 : exposition et température au moment du réveil. C'est
@@ -169,6 +219,7 @@ case "${1:-off}" in
     rescue|Rescue|RESCUE)
         # Usage manuel en SSH : « wlr-randr dit Enabled: yes mais l'écran est
         # noir ». Ce cas est invisible côté Pi, donc c'est l'humain qui tranche.
+        prendre_verrou_ou_renoncer "rescue" || exit 0
         log_dpms "rescue — rebond forcé $BOUNCE_MODE -> $MODE (état: $(output_enabled))"
         bounce_mode
         log_dpms "rescue — terminé"
