@@ -258,6 +258,47 @@ journée. Autonomie mesurée : **4 h 15** de la pleine charge à l'arrêt.
         `wlr-randr --off` est devenu une porte à sens unique. Seul un redémarrage récupère.
       - **Versions en cause** : labwc 0.20.1 · wlroots 0.20.2 (contre 0.19 avant) ·
         noyau 6.18.50 · `wlr-randr` 0.4.1 inchangé.
+      - 🔎 **CAUSE CONFIRMÉE : c'est une régression amont, pas notre code** (analyse du
+        2026-09-16 au soir, à la demande de Thomas — « regarde du côté des mises à jour,
+        tout fonctionnait parfaitement depuis plusieurs jours »).
+
+        **Le journal d'`apt` contient une ligne qui explique tout** :
+        ```
+        labwc : 0.9.8-1+rpt1  →  0.20.1-1+rpt1
+        ```
+        Ce n'est pas une mise à jour de maintenance mais un **bond de dix versions
+        majeures** du compositeur, avec `libwlroots-0.19` désinstallé au profit de
+        `libwlroots-0.20`. Trois symptômes, une seule cause.
+
+        **Le bug est documenté ailleurs, à l'identique.** Un fil du forum Raspberry Pi
+        du 20-21 août 2026, sur **Pi 5 + raspios-trixie fraîchement installé, sans rien
+        d'autre**, décrit mot pour mot notre panne : on peut éteindre, on ne peut plus
+        rallumer, `failed to apply configuration` pour seul message. Trois détails y
+        recoupent nos observations :
+        - **« it also creates a headless output called NOOP-1 »** — c'est la **deuxième
+          sortie** qu'on a vue apparaître dans `wlr-randr` pendant une extinction, et
+          que je n'avais pas su expliquer. Elle explique aussi le `No output found` de
+          `wayvnc` : la vraie sortie a disparu, il ne reste qu'une sortie fantôme.
+        - **préciser le mode ne change rien** — l'auteur a essayé
+          `--on --mode 1920x1080@60Hz`, sans effet. Ça recoupe notre mesure : chez nous
+          un `--on` nu échoue aussi.
+        - **`off` puis `sleep 5` puis `on` fonctionne** chez lui. Chez nous les deux sont
+          séparés de plusieurs minutes, donc ce n'est pas notre variable — mais ça
+          confirme qu'on est sur une course d'état interne au compositeur, pas sur un
+          problème de matériel ni de mode.
+
+        Côté labwc, l'issue #2576 signale par ailleurs que `wlopm --on` échoue à réveiller
+        après un changement de mode par `wlr-randr` — ce qui éclaire l'état incohérent de
+        `wlopm` qu'on a constaté en fin de soirée.
+
+        📌 **Conséquence sur nos priorités** : il n'y a rien à corriger dans Hechicero.
+        La bonne réponse est celle qu'on a prise — ne plus jamais désactiver la sortie et
+        piloter l'alimentation par `wlopm`. Le contournement n'est pas un pis-aller, c'est
+        la manière correcte de faire avec ce compositeur.
+
+        Sources : [forum Raspberry Pi t=400252](https://forums.raspberrypi.com/viewtopic.php?t=400252)
+        · [labwc discussion #2777](https://github.com/labwc/labwc/discussions/2777)
+        · [labwc issue #2576](https://github.com/labwc/labwc/issues/2576)
       - ❌ **`wayvnc` écarté.** Il redémarrait en boucle toutes les 5 s pendant chaque
         extinction (compteur à 411), ce qui en faisait un suspect sérieux. **Le défaut
         s'est reproduit pendant qu'il était arrêté** (20:15:48 → 20:16:34). Sa boucle
@@ -301,6 +342,29 @@ journée. Autonomie mesurée : **4 h 15** de la pleine charge à l'arrêt.
            physique du HDMI, il annonce `off` alors que l'écran affiche normalement, et
            `--on` échoue (`Setting power mode failed`). Or `etat_alimentation()` décide
            d'après cette valeur. À revoir avant toute réactivation de la veille.
+      - 🔙 **Retour arrière : possible, mais étroit** (évalué le 2026-09-16) :
+        | | état |
+        |---|---|
+        | anciens `.deb` en cache local | **absents**, cette voie est fermée |
+        | `libwlroots-0.19` au dépôt | **disponible** (0.19.1-1+rpt5, archive.raspberrypi.com) |
+        | `labwc` versions offertes | **0.20.1-1+rpt1** (Raspberry Pi) · **0.8.3-1** (Debian trixie) |
+
+        La version installée avant la mise à jour — `0.9.8-1+rpt1` — **n'est plus servie
+        nulle part**. Redescendre signifierait donc aller sur la build **Debian 0.8.3**,
+        soit deux versions sous le point de départ **et sans les correctifs Raspberry
+        Pi**, ceux-là mêmes qui adaptent le compositeur à la pile d'affichage du Pi.
+        S'ajoute la nécessité d'épingler les paquets pour qu'aucune mise à jour ne les
+        relève — ce qui gèle tout le socle graphique, correctifs de sécurité compris.
+        **Conservé comme repli, pas retenu comme plan.**
+      - 📌 **À SUIVRE : la résolution du fil amont.** Le bug est reproductible sur une
+        installation Pi 5 + Trixie vierge, donc il ne nous est pas propre et sera traité
+        en amont. Surveiller
+        [forum Raspberry Pi t=400252](https://forums.raspberrypi.com/viewtopic.php?t=400252)
+        et [labwc #2576](https://github.com/labwc/labwc/issues/2576) — et rouvrir ce
+        ticket à la prochaine mise à jour de `labwc` ou `libwlroots` pour retester
+        `wlr-randr --off/--on`. Le jour où il est corrigé, deux choses redeviennent
+        possibles : le rebond de mode en secours (seule arme connue contre le décrochage
+        du récepteur, TICKET-149) et le retour à une mécanique plus simple.
       - 🔭 **Pistes pour la suite, aucune essayée** :
         1. **Ne plus désactiver la sortie du tout.** Remplacer l'extinction par un voile
            noir plein écran : le signal reste vivant, la porte ne s'ouvre jamais. Ne coupe
