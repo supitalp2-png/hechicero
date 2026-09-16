@@ -7,13 +7,14 @@
 
 ## 📌 État des lieux
 
-*2026-08-30 — 6 ouverts, 145 clos*
+*2026-09-16 — 7 ouverts, 146 clos*
 
 ### À faire
 
 | # | Sujet | État |
 |---|---|---|
-| 153 | Chemin bouton : rebond tué en plein milieu | correctifs posés, attend l'usage |
+| 154 | 🔴 Sortie éteinte ne se rallume plus (maj 16/09) | contourné : veille désactivée |
+| 153 | Chemin bouton : rebond tué en plein milieu | correctifs posés, non testables tant que 154 dure |
 | 149 | Écran noir : la dalle ne re-verrouille pas le HDMI | cause matérielle établie, signalement au bouton |
 | 148 | Le Pi tient 80 °C en régime permanent dans le boîtier | **constat invalidé** par le 152, à remesurer |
 | 140 | Arrêt de charge nocturne, alimentation présente | instrumenté 23/08, attend une nuit branché |
@@ -230,6 +231,86 @@ journée. Autonomie mesurée : **4 h 15** de la pleine charge à l'arrêt.
         mais n'a plus rien d'urgent : la cause est traitée. Un limiteur resterait utile
         parce qu'un programme réel a 10 à 15 dB de facteur de crête là où une sinusoïde
         en a 3 — un test à la sinusoïde surestime donc toujours le plafond utilisable.
+
+- [x] TICKET-155 — écran — Le splash de démarrage a disparu après la mise à jour (2026-09-16)
+      - La mise à jour de `rpd-plym-splash` (0.47 → 0.48) a remis le thème plymouth par
+        défaut à `pix`. Le thème `hechicero` était **toujours installé**, et son image
+        `/usr/share/plymouth/themes/pix/splash.png` n'avait même pas été écrasée (date du
+        01/09) : seul le thème actif avait changé.
+      - **Correctif** : `sudo plymouth-set-default-theme -R hechicero` (le `-R`
+        reconstruit l'initramfs, une minute).
+      - 📌 À reverifier après chaque mise à jour touchant `rpd-plym-splash` ou
+        `plymouth` — le paquet repose le thème par défaut sans prévenir.
+
+- [ ] TICKET-154 — 🔴 BLOQUANT — Après mise à jour, une sortie éteinte ne se rallume plus (2026-09-16)
+      - **Symptôme** : depuis la mise à jour de Raspberry Pi OS du 2026-09-16 17:17,
+        l'écran s'éteint en veille et **ne se rallume jamais**. Systématique, plus
+        intermittent.
+      - 🎯 **Établi, et c'est sans ambiguïté** : toutes les commandes de rallumage
+        échouent, **y compris un simple `--on` sans aucun mode** :
+        ```
+        wlr-randr --output HDMI-A-1 --on --mode 1280x720@60   → failed to apply configuration, code 1
+        wlr-randr --output HDMI-A-1 --mode 1024x600@59.821    → failed to apply configuration, code 1
+        wlr-randr --output HDMI-A-1 --on                      → failed to apply configuration, code 1
+        ```
+        La sortie reste `Enabled: no`. **Ce n'est ni le mode, ni le rebond, ni la dalle :
+        le compositeur refuse de réactiver une sortie qu'il a désactivée.**
+        `wlr-randr --off` est devenu une porte à sens unique. Seul un redémarrage récupère.
+      - **Versions en cause** : labwc 0.20.1 · wlroots 0.20.2 (contre 0.19 avant) ·
+        noyau 6.18.50 · `wlr-randr` 0.4.1 inchangé.
+      - ❌ **`wayvnc` écarté.** Il redémarrait en boucle toutes les 5 s pendant chaque
+        extinction (compteur à 411), ce qui en faisait un suspect sérieux. **Le défaut
+        s'est reproduit pendant qu'il était arrêté** (20:15:48 → 20:16:34). Sa boucle
+        reste un problème en soi, mais elle n'est pas la cause.
+      - ⏱️ **Le seuil de récupération s'est effondré.** Le 25/08, une extinction de 60 s
+        se réveillait sans problème. Aujourd'hui : 6 s passe, 37 s échoue. Ce n'est
+        probablement pas un seuil mais le fait que le rallumage échoue tout court — les
+        6 s ayant réussi avant que l'état du compositeur ne se dégrade.
+      - 🛡️ **Contournement en place** : `screen_off_enabled = false`. L'écran reste
+        allumé en permanence. Coût : les 664 mA mesurés au TICKET-150, et l'usure de la
+        dalle. L'objet reste utilisable, ce qui prime.
+        📌 Thomas avait pris cette décision seul vers 19h30, avant tout diagnostic.
+        C'était la bonne, et la seule qui empêche d'ouvrir cette porte.
+      - 🐛 **Défaut de notre côté, corrigé** : `bounce_mode()` ignorait les codes de
+        retour de `wlr-randr` et journalisait « terminé » sur un échec. Une soirée entière
+        pour établir ce qu'un code de retour affiché aurait dit en trois minutes.
+        `executer_wlr()` capture désormais le message et l'écrit au journal, et un rebond
+        raté sort en erreur au lieu de se déclarer réussi.
+      - ✅ **`wlopm` fonctionne depuis cette mise à jour** — la note de l'en-tête de
+        `screen_dpms.sh` qui affirmait le contraire datait d'un an et a fait chercher
+        ailleurs toute la soirée. labwc 0.20 expose `zwlr_output_power_management_v1`.
+        Vérifié : `wlopm` répond `HDMI-A-1 on`, `--off` coupe réellement le
+        rétroéclairage, et pendant l'extinction **`wlr-randr` rapporte toujours
+        `Enabled: yes`** — la porte à sens unique ne s'ouvre jamais.
+        `screen_dpms.sh` a été réécrit autour : plus aucun `wlr-randr --off`, plus de
+        rebond de mode dans le chemin normal, donc plus de `sleep 3` ni de mode
+        intermédiaire à laisser en plan (le TICKET-153 perd son objet).
+      - 🛡️ **Garde de sûreté, et elle a servi le soir même** : si `wlopm` échoue ou se
+        tait, le script **laisse l'écran allumé** au lieu de se rabattre sur `--off`.
+        À 20:36:52 `wlopm` est devenu muet et le script a refusé d'éteindre, exactement
+        comme prévu. Un écran allumé coûte 664 mA ; un écran qu'on ne peut plus rallumer
+        rend l'objet inutilisable pour un enfant de 7 ans.
+      - ⚠️ **MAIS deux problèmes restent ouverts, et ils empêchent de réactiver la veille** :
+        1. **Un tiers désactive la sortie.** Entre un `wlopm --on` réussi (20:35:11) et
+           20:36:52, la sortie est passée à `Enabled: no` — alors que notre script avait
+           refusé d'éteindre. Ce n'est donc plus nous. Suspect restant :
+           `rpi-connect-wayvnc`, qui redémarrait en boucle toutes les 5 s depuis la mise
+           à jour (compteur à 411) et qu'on a vu faire apparaître une seconde sortie.
+           **Masqué le 2026-09-16** — une nuit dira s'il était en cause.
+        2. **L'état rapporté par `wlopm` n'est pas fiable.** Après un débranchement
+           physique du HDMI, il annonce `off` alors que l'écran affiche normalement, et
+           `--on` échoue (`Setting power mode failed`). Or `etat_alimentation()` décide
+           d'après cette valeur. À revoir avant toute réactivation de la veille.
+      - 🔭 **Pistes pour la suite, aucune essayée** :
+        1. **Ne plus désactiver la sortie du tout.** Remplacer l'extinction par un voile
+           noir plein écran : le signal reste vivant, la porte ne s'ouvre jamais. Ne coupe
+           pas le rétroéclairage, donc ne rend pas les 664 mA.
+        2. **`wlopm`** — il échouait sur l'ancienne version (protocole
+           `zwlr_output_power_management_v1` non supporté). labwc 0.20 l'expose
+           peut-être. À retester : ce serait la vraie extinction, sans toucher à
+           l'activation de la sortie.
+        3. Chercher si labwc 0.20 journalise la raison du refus.
+        4. Revenir à labwc/wlroots 0.19 si les paquets sont encore disponibles.
 
 - [ ] TICKET-153 — écran — Le chemin bouton tuait le rebond en plein milieu (2026-08-30)
       - **Thomas, depuis des mois** : « je suis presque certain que c'est lié au réveil

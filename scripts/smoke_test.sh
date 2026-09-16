@@ -22,7 +22,7 @@ ACCESS_LOG="/var/log/apache2/access.log"
 # script, sinon le test passe en avertissement et on finit par l'ignorer.
 # 2026-08-04 933e04d7… — réécriture TICKET-115bis (off/on/rescue/status)
 # 2026-08-05 270794ad… — TICKET-123, journalisation de l'appelant
-SCREEN_MD5_ATTENDU="8f146058a3e07ca36cbdd4d6e9654bbe"   # 2026-08-30 : verrou + trap de restauration du mode (TICKET-153)
+SCREEN_MD5_ATTENDU="410c1f8e4eb1899ce6888fc73b00e685"   # 2026-09-16 : extinction par wlopm, plus jamais de --off (TICKET-154)
 
 export WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-0}"
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"

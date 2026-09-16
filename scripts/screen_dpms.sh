@@ -1,9 +1,29 @@
 #!/bin/bash
-# screen_dpms.sh — Extinction/allumage écran via wlr-randr (Pi 5 + labwc)
+# screen_dpms.sh — Extinction/allumage écran (Pi 5 + labwc)
 #
-# wlopm échoue : zwlr_output_power_management_v1 non supporté
-# sysfs DRM dpms : lecture seule sur Pi 5 même en root
-# Solution : wlr-randr désactive/réactive le connecteur via zwlr_output_management_v1
+# ⚠️ CE QUI SUIT A CHANGÉ LE 2026-09-16, LIRE AVANT DE TOUCHER AU SCRIPT.
+#
+# Historique des méthodes, et pourquoi on en est à la troisième :
+#   1. `wlopm` — REFUSÉ à l'origine : labwc n'exposait pas
+#      `zwlr_output_power_management_v1`.
+#   2. `wlr-randr --off/--on` — retenu faute de mieux, avec un rebond de mode
+#      pour forcer un modeset (TICKET-115).
+#   3. **`wlopm` à nouveau, et c'est la bonne** — depuis labwc 0.20.1 /
+#      wlroots 0.20.2, le protocole est exposé. Vérifié le 2026-09-16 :
+#      `wlopm` répond `HDMI-A-1 on`, et pendant une extinction par wlopm
+#      `wlr-randr` rapporte toujours `Enabled: yes`.
+#
+# 🔴 ET SURTOUT : la même mise à jour a rendu `wlr-randr --off` DESTRUCTEUR.
+# Une fois la sortie désactivée, tout rallumage échoue — y compris un `--on`
+# nu — avec `failed to apply configuration`, code 1. Seul un redémarrage
+# récupère. C'est le TICKET-154, et c'est pour ça que ce script n'appelle
+# plus jamais `--off`.
+#
+# `sysfs DRM dpms` : lecture seule sur Pi 5 même en root, écarté depuis toujours.
+#
+# 📌 Une note périmée dans un en-tête coûte cher : celle qui disait « wlopm
+# échoue » datait d'un an et a fait chercher ailleurs pendant toute la soirée
+# du 16/09. Redater les affirmations sur l'environnement quand il change.
 #
 # ⚠️ OUTPUT dépend du port HDMI physique du Pi 5 (HDMI-A-1 ou HDMI-A-2) — pas
 # du modèle d'écran. Si l'écran est rebranché sur l'autre port (ex: après une
@@ -158,13 +178,33 @@ restaurer_mode() {
     log_dpms "rebond — mode natif restauré par le filet de sécurité"
 }
 
+# ── TICKET-154 — un échec de wlr-randr doit s'entendre ──────────────────────
+# Le 2026-09-16, après une mise à jour de Raspberry Pi OS, `wlr-randr` a
+# commencé à répondre `failed to apply configuration` / code 1 sur TOUTES les
+# commandes de rallumage — y compris un simple `--on` sans mode. La sortie
+# restait `Enabled: no`, l'écran noir, et ce script écrivait « terminé ».
+#
+# Il a fallu une soirée entière pour établir ce qu'un code de retour affiché
+# aurait dit en trois minutes. **Ignorer le statut d'une commande, c'est
+# transformer une panne bruyante en panne silencieuse.**
+executer_wlr() {
+    local sortie
+    if sortie=$(wlr-randr "$@" 2>&1); then
+        return 0
+    fi
+    log_dpms "⛔ ÉCHEC wlr-randr $* — ${sortie:-(pas de message)}"
+    return 1
+}
+
 bounce_mode() {
     # Si on est tué maintenant, le mode natif est reposé avant de mourir.
     trap 'restaurer_mode; exit 143' TERM INT HUP
-    wlr-randr --output "$OUTPUT" --on --mode "$BOUNCE_MODE"
+    local rc=0
+    executer_wlr --output "$OUTPUT" --on --mode "$BOUNCE_MODE" || rc=1
     sleep "$BOUNCE_DELAY"
-    wlr-randr --output "$OUTPUT" --mode "$MODE"
+    executer_wlr --output "$OUTPUT" --mode "$MODE" || rc=1
     trap - TERM INT HUP
+    return $rc
 }
 
 # ⚠️ Verrou : deux exécutions concurrentes existent réellement. Le journal du
@@ -183,51 +223,104 @@ prendre_verrou_ou_renoncer() {
     return 0
 }
 
+# ── TICKET-154 — extinction par wlopm, plus jamais par --off ────────────────
+# Depuis la mise à jour du 2026-09-16 (labwc 0.20.1 / wlroots 0.20.2),
+# `wlr-randr --off` est une PORTE À SENS UNIQUE : toutes les commandes de
+# rallumage échouent ensuite, y compris un simple `--on` sans mode
+# (`failed to apply configuration`, code 1). Seul un redémarrage récupère.
+#
+# La même mise à jour apporte la solution : labwc expose désormais
+# `zwlr_output_power_management_v1`, que `wlopm` utilise. Il coupe le
+# RÉTROÉCLAIRAGE sans toucher à la configuration de la sortie — vérifié le
+# 2026-09-16 : pendant une extinction par wlopm, `wlr-randr` rapporte toujours
+# `Enabled: yes`. La porte ne s'ouvre jamais.
+#
+# 📌 Ce que ça supprime au passage : plus de mode intermédiaire, donc plus de
+# `sleep 3`, donc plus de fenêtre où le script peut être tué en plein rebond
+# (TICKET-153), et plus de rebond à faire du tout (TICKET-115).
+#
+# ⚠️ RÈGLE DE SÛRETÉ : si `wlopm` échoue, on NE se rabat PAS sur
+# `wlr-randr --off`. Un écran qui reste allumé coûte 664 mA ; un écran qu'on ne
+# peut plus rallumer rend l'objet inutilisable pour un enfant de 7 ans. En cas
+# de doute, on laisse allumé.
+etat_alimentation() {
+    # "on", "off", ou vide si wlopm ne répond pas / protocole absent.
+    wlopm 2>/dev/null | awk -v out="$OUTPUT" '$1 == out { print $2; exit }'
+}
+
 case "${1:-off}" in
     off|Off|OFF)
         log_dpms "off    — extinction demandée"
-        wlr-randr --output "$OUTPUT" --off
+        if [ -z "$(etat_alimentation)" ]; then
+            log_dpms "⛔ off — wlopm muet (protocole absent ?). Écran laissé ALLUMÉ"
+            log_dpms "        volontairement : wlr-randr --off ne se rallume plus (TICKET-154)"
+            exit 1
+        fi
+        if wlopm --off "$OUTPUT" 2>/dev/null; then
+            log_dpms "off    — rétroéclairage coupé (wlopm), sortie laissée configurée"
+        else
+            log_dpms "⛔ off — wlopm a échoué. Écran laissé ALLUMÉ volontairement (TICKET-154)"
+            exit 1
+        fi
         ;;
 
     on|On|ON)
         # Chemin automatique : swayidle resume ET bouton antenne GPIO23.
-        STATE="$(output_enabled)"
-        if [ "$STATE" = "yes" ]; then
-            # Déjà actif : ne rien faire. Un rebond ici ferait clignoter
-            # l'écran à chaque appui du bouton GPIO23 (régression TICKET-115).
-            log_dpms "on     — déjà actif (Enabled: yes), aucune action"
+        alim="$(etat_alimentation)"
+        if [ "$alim" = "on" ]; then
+            # Rien à faire. Indispensable : ce chemin est celui du bouton
+            # GPIO23, et agir ici ferait clignoter l'écran à chaque appui
+            # (régression TICKET-115bis).
+            log_dpms "on     — déjà allumé (wlopm), aucune action"
+        elif [ "$alim" = "off" ]; then
+            if wlopm --on "$OUTPUT" 2>/dev/null; then
+                log_dpms "on     — rétroéclairage rétabli (wlopm)"
+            else
+                log_dpms "⛔ on — wlopm a échoué, repli sur le rebond de mode"
+                prendre_verrou_ou_renoncer "on" || exit 0
+                bounce_mode || { log_dpms "on — ⛔ LE REBOND A AUSSI ÉCHOUÉ"; exit 1; }
+                log_dpms "on     — terminé par repli · extinction=$(duree_extinction) temp=$(temperature_soc)"
+            fi
         else
-            prendre_verrou_ou_renoncer "on" || exit 0
-            # ⚠️ Relire l'état APRÈS avoir obtenu le verrou : pendant l'attente,
-            # l'autre exécution a pu réveiller la dalle. Rebondir une seconde
-            # fois ferait clignoter l'écran pour rien.
+            # wlopm indisponible : ancien chemin, avec toutes ses gardes.
             STATE="$(output_enabled)"
             if [ "$STATE" = "yes" ]; then
-                log_dpms "on     — réveillé par une autre exécution pendant l'attente du verrou"
-                exit 0
+                log_dpms "on     — déjà actif (Enabled: yes), aucune action"
+            else
+                prendre_verrou_ou_renoncer "on" || exit 0
+                STATE="$(output_enabled)"
+                if [ "$STATE" = "yes" ]; then
+                    log_dpms "on     — réveillé par une autre exécution pendant l'attente du verrou"
+                    exit 0
+                fi
+                log_dpms "on     — sortie inactive (Enabled: ${STATE:-inconnu}), rebond $BOUNCE_MODE -> $MODE"
+                bounce_mode || { log_dpms "on — ⛔ LE REBOND A ÉCHOUÉ"; exit 1; }
+                log_dpms "on     — terminé · extinction=$(duree_extinction) temp=$(temperature_soc)"
             fi
-            log_dpms "on     — sortie inactive (Enabled: ${STATE:-inconnu}), rebond $BOUNCE_MODE -> $MODE"
-            bounce_mode
-            # TICKET-149 : exposition et température au moment du réveil. C'est
-            # cette ligne qu'`ecran_noir.py rapport` ira croiser avec les pannes
-            # constatées. Écrite APRÈS le rebond, donc l'image est déjà censée
-            # être revenue quand elle apparaît.
-            log_dpms "on     — terminé · extinction=$(duree_extinction) temp=$(temperature_soc)"
         fi
         ;;
 
     rescue|Rescue|RESCUE)
-        # Usage manuel en SSH : « wlr-randr dit Enabled: yes mais l'écran est
-        # noir ». Ce cas est invisible côté Pi, donc c'est l'humain qui tranche.
+        # Usage manuel : « tout a l'air allumé mais la dalle est noire ». Ce cas
+        # est invisible côté Pi, c'est donc l'humain qui tranche. On tente
+        # d'abord wlopm, puis le rebond de mode — ce dernier reste la seule
+        # arme contre le décrochage du récepteur HDMI (TICKET-149).
+        log_dpms "rescue — demandé (alimentation: $(etat_alimentation), $(output_enabled))"
+        wlopm --off "$OUTPUT" 2>/dev/null && sleep 1 && wlopm --on "$OUTPUT" 2>/dev/null \
+            && log_dpms "rescue — cycle wlopm effectué"
         prendre_verrou_ou_renoncer "rescue" || exit 0
-        log_dpms "rescue — rebond forcé $BOUNCE_MODE -> $MODE (état: $(output_enabled))"
-        bounce_mode
-        log_dpms "rescue — terminé"
+        if bounce_mode; then
+            log_dpms "rescue — terminé"
+        else
+            log_dpms "rescue — ⛔ LE REBOND A ÉCHOUÉ"
+            exit 1
+        fi
         ;;
 
     status|Status|STATUS)
-        # Pratique en SSH quand l'écran est noir : dit ce que le Pi CROIT
-        # afficher, ce qui est rarement ce qu'on voit.
+        echo "── alimentation (wlopm) ──"
+        wlopm 2>/dev/null || echo "(wlopm indisponible)"
+        echo "── configuration (wlr-randr) ──"
         wlr-randr
         ;;
 
