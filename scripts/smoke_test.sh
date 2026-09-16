@@ -22,7 +22,7 @@ ACCESS_LOG="/var/log/apache2/access.log"
 # script, sinon le test passe en avertissement et on finit par l'ignorer.
 # 2026-08-04 933e04d7… — réécriture TICKET-115bis (off/on/rescue/status)
 # 2026-08-05 270794ad… — TICKET-123, journalisation de l'appelant
-SCREEN_MD5_ATTENDU="410c1f8e4eb1899ce6888fc73b00e685"   # 2026-09-16 : extinction par wlopm, plus jamais de --off (TICKET-154)
+SCREEN_MD5_ATTENDU="02964666f1b89f67a61f6121edf3dea1"   # 2026-09-16 : decision sur wlr-randr, jamais sur wlopm (TICKET-154)
 
 export WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-0}"
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
@@ -73,11 +73,22 @@ else
             /^[^[:space:]]/   { inblock = 0 }
             inblock && $1 == "Enabled:" { print $2; exit }')
         if [ "$etat_ecran" = "yes" ]; then
+            lignes_avant=$(wc -l < "$ROOT/data/screen_dpms.log" 2>/dev/null || echo 0)
             "$ROOT/scripts/screen_dpms.sh" on >/dev/null 2>&1
-            if tail -1 "$ROOT/data/screen_dpms.log" 2>/dev/null | grep -q "déjà actif"; then
+            # ⚠️ Ce qu'il faut interdire, c'est le REBOND — pas l'absence d'une
+            # phrase. La version précédente cherchait « déjà actif » dans la
+            # dernière ligne ; elle aurait laissé passer un rebond suivi d'un
+            # message rassurant. On vérifie donc les deux : aucune ligne de
+            # rebond ajoutée, et la trace explicite du no-op.
+            nouvelles=$(tail -n "+$((lignes_avant + 1))" "$ROOT/data/screen_dpms.log" 2>/dev/null)
+            if echo "$nouvelles" | grep -q "rebond"; then
+                fail "écran allumé et 'on' a rebondi — régression du clignotement GPIO23 (TICKET-115bis)"
+                echo "$nouvelles" | sed 's/^/     /'
+            elif echo "$nouvelles" | grep -q "déjà actif"; then
                 pass "appui bouton antenne : no-op confirmé (pas de clignotement)"
             else
-                fail "écran allumé mais 'on' n'a pas été un no-op — régression du clignotement GPIO23"
+                fail "écran allumé mais 'on' n'a laissé aucune trace de no-op — comportement inconnu"
+                echo "$nouvelles" | sed 's/^/     /'
             fi
         elif [ "$etat_ecran" = "no" ]; then
             pass "écran en veille — test du no-op sauté (le réveiller depuis un test figerait swayidle, TICKET-123)"

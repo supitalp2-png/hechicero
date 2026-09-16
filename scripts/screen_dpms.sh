@@ -266,36 +266,35 @@ case "${1:-off}" in
 
     on|On|ON)
         # Chemin automatique : swayidle resume ET bouton antenne GPIO23.
-        alim="$(etat_alimentation)"
-        if [ "$alim" = "on" ]; then
-            # Rien à faire. Indispensable : ce chemin est celui du bouton
-            # GPIO23, et agir ici ferait clignoter l'écran à chaque appui
-            # (régression TICKET-115bis).
-            log_dpms "on     — déjà allumé (wlopm), aucune action"
-        elif [ "$alim" = "off" ]; then
-            if wlopm --on "$OUTPUT" 2>/dev/null; then
-                log_dpms "on     — rétroéclairage rétabli (wlopm)"
-            else
-                log_dpms "⛔ on — wlopm a échoué, repli sur le rebond de mode"
-                prendre_verrou_ou_renoncer "on" || exit 0
-                bounce_mode || { log_dpms "on — ⛔ LE REBOND A AUSSI ÉCHOUÉ"; exit 1; }
-                log_dpms "on     — terminé par repli · extinction=$(duree_extinction) temp=$(temperature_soc)"
+        #
+        # ⚠️ LA DÉCISION SE PREND SUR `wlr-randr`, PAS SUR `wlopm`.
+        # L'état rapporté par wlopm s'est révélé FAUX le 2026-09-16 : après un
+        # débranchement physique du HDMI, il annonce `off` sur un écran qui
+        # affiche normalement, et son `--on` échoue. Ma première version s'y
+        # fiait : elle croyait l'écran éteint, tentait wlopm, échouait, et se
+        # rabattait sur le rebond de mode — donc un CLIGNOTEMENT À CHAQUE APPUI
+        # du bouton antenne. C'est la régression du TICKET-115bis, rattrapée
+        # par le smoke test avant qu'elle n'arrive sur l'appareil.
+        if [ "$(output_enabled)" = "no" ]; then
+            # Sortie réellement désactivée (héritage d'un ancien `--off`, ou
+            # d'un tiers). Seul le rebond de mode peut la ramener.
+            prendre_verrou_ou_renoncer "on" || exit 0
+            if [ "$(output_enabled)" = "yes" ]; then
+                log_dpms "on     — réveillé par une autre exécution pendant l'attente du verrou"
+                exit 0
             fi
+            log_dpms "on     — sortie inactive, rebond $BOUNCE_MODE -> $MODE"
+            bounce_mode || { log_dpms "on     — ⛔ LE REBOND A ÉCHOUÉ"; exit 1; }
+            log_dpms "on     — terminé · extinction=$(duree_extinction) temp=$(temperature_soc)"
         else
-            # wlopm indisponible : ancien chemin, avec toutes ses gardes.
-            STATE="$(output_enabled)"
-            if [ "$STATE" = "yes" ]; then
-                log_dpms "on     — déjà actif (Enabled: yes), aucune action"
+            # Sortie configurée : c'est le cas normal depuis le TICKET-154.
+            # `wlopm --on` rallume le rétroéclairage et ne fait rien s'il est
+            # déjà allumé. JAMAIS de rebond ici — ce chemin est celui du bouton
+            # GPIO23, tout effet visible y serait ressenti à chaque pression.
+            if wlopm --on "$OUTPUT" 2>/dev/null; then
+                log_dpms "on     — déjà actif (sortie configurée), rétroéclairage assuré par wlopm"
             else
-                prendre_verrou_ou_renoncer "on" || exit 0
-                STATE="$(output_enabled)"
-                if [ "$STATE" = "yes" ]; then
-                    log_dpms "on     — réveillé par une autre exécution pendant l'attente du verrou"
-                    exit 0
-                fi
-                log_dpms "on     — sortie inactive (Enabled: ${STATE:-inconnu}), rebond $BOUNCE_MODE -> $MODE"
-                bounce_mode || { log_dpms "on — ⛔ LE REBOND A ÉCHOUÉ"; exit 1; }
-                log_dpms "on     — terminé · extinction=$(duree_extinction) temp=$(temperature_soc)"
+                log_dpms "on     — déjà actif (sortie configurée) ; wlopm a refusé, aucun rebond volontairement"
             fi
         fi
         ;;
