@@ -400,20 +400,39 @@
       filter: drop-shadow(0 2px 4px rgba(0,0,0,.55));
     }
     .noel-hat.noel-hat-sm { width: 46px; height: 46px; }
-    /* Traîneau : rennes en tête (x haut, sens du déplacement), traîneau tiré derrière */
+    /* Traîneau : rennes en tête (x haut, sens du déplacement), traîneau tiré derrière.
+       2026-11-20 : trajectoire courbe au lieu d'une ligne droite (demande de Thomas,
+       « plus magique »). Le chemin est un path() calculé en JS à chaque passage
+       (vague montante ou looping, en alternance) ; offset-rotate:auto oriente le
+       traîneau selon la tangente, il pique, remonte, passe sur le dos dans le looping.
+       Visible aussi pendant la veille (z-index au-dessus de #sleep-overlay). */
     #noel-sled {
-      position: fixed; top: 8%; left: -340px;
-      width: 320px; pointer-events: none; z-index: 9000;
+      position: fixed; top: 0; left: 0;
+      width: 320px; pointer-events: none; z-index: 10045;
       opacity: 0;
+      offset-anchor: 50% 50%;
+      offset-rotate: auto;
+      offset-distance: 0%;
     }
     #noel-sled.noel-sled-run {
-      animation: noel-sled-fly 10s linear;
+      animation: noel-sled-fly 12s cubic-bezier(.4, .1, .6, .9);
     }
     @keyframes noel-sled-fly {
-      0%   { opacity: 0; transform: translateX(0); }
-      6%   { opacity: 1; }
-      94%  { opacity: 1; }
-      100% { opacity: 0; transform: translateX(calc(100vw + 340px)); }
+      0%   { offset-distance: 0%;   opacity: 0; }
+      5%   { opacity: 1; }
+      95%  { opacity: 1; }
+      100% { offset-distance: 100%; opacity: 0; }
+    }
+    /* Poussière d'étoiles semée derrière le traîneau pendant le vol */
+    .noel-sparkle {
+      position: fixed; width: 7px; height: 7px; margin: -3px 0 0 -3px;
+      border-radius: 50%; pointer-events: none; z-index: 10044;
+      background: radial-gradient(circle, #fffbe0 0%, #f0cc58 45%, rgba(240,204,88,0) 72%);
+      animation: noel-sparkle-fade 1.4s ease-out forwards;
+    }
+    @keyframes noel-sparkle-fade {
+      0%   { opacity: 1; transform: translate(0, 0) scale(1); }
+      100% { opacity: 0; transform: translate(var(--dx, 0px), 28px) scale(.2); }
     }
     /* Guirlande lumineuse — câble en chaînette (cosh) + ampoules clignotantes, en haut de tous
        les écrans y compris l'écran de veille (z-index au-dessus de #sleep-overlay, 9999) */
@@ -467,12 +486,14 @@
       filter: drop-shadow(0 2px 4px rgba(0,0,0,.55));
     }
     .anniv-hat.anniv-hat-sm { width: 46px; height: 46px; }
-    /* Banderole "Joyeux Anniversaire / Feliz Cumpleaños" — traverse l'écran de temps en
-       temps, cachée pendant la veille (même logique que le traîneau de Noël) */
+    /* Banderole "Joyeux Anniversaire / Feliz Cumpleaños" — traverse l'écran
+       régulièrement, Y COMPRIS pendant la veille (2026-11-20, demande de Thomas :
+       elle était sous #sleep-overlay comme le traîneau de Noël, donc invisible la
+       plupart du temps). pointer-events:none, elle ne gêne pas le réveil au doigt. */
     #anniv-banner {
       position: fixed; top: 14%; left: -820px;
       width: max-content; white-space: nowrap;
-      pointer-events: none; z-index: 9000;
+      pointer-events: none; z-index: 10045;
       opacity: 0;
     }
     #anniv-banner.anniv-banner-run {
@@ -2311,21 +2332,76 @@ function initNoelSnow() {
   }
 }
 
+// Trajectoire du traîneau, recalculée à chaque passage sur la taille réelle de
+// l'écran. Deux figures en alternance :
+//   · vague : décolle en bas à gauche, ondule en montant, file vers le ciel ;
+//   · looping : plane, fait une boucle complète au milieu, repart vers le ciel.
+// La boucle est faite de deux demi-cercles de Bézier (contrôles à 4r/3).
+function noelSledPath(n) {
+  const W = window.innerWidth, H = window.innerHeight, m = 260;
+  if (n % 2 === 0) {
+    return `M ${-m} ${H * 0.80} ` +
+           `C ${W * 0.15} ${H * 0.40}, ${W * 0.30} ${H * 0.28}, ${W * 0.45} ${H * 0.42} ` +
+           `S ${W * 0.70} ${H * 0.32}, ${W * 0.80} ${H * 0.18} ` +
+           `S ${W + m * 0.6} ${-H * 0.05}, ${W + m} ${-H * 0.15}`;
+  }
+  // r à 24 % de la hauteur : sur 1024×600 la boucle fait ~290 px, à peine moins
+  // que le traîneau (320 px). Plus petite, il tournerait sur lui-même.
+  const cx = W * 0.5, cy = H * 0.45, r = Math.min(W, H) * 0.24, k = r * 4 / 3;
+  return `M ${-m} ${H * 0.30} ` +
+         `C ${W * 0.15} ${H * 0.20}, ${W * 0.30} ${cy + r}, ${cx} ${cy + r} ` +
+         `C ${cx + k} ${cy + r}, ${cx + k} ${cy - r}, ${cx} ${cy - r} ` +
+         `C ${cx - k} ${cy - r}, ${cx - k} ${cy + r}, ${cx} ${cy + r} ` +
+         `C ${W * 0.70} ${cy + r}, ${W * 0.85} ${H * 0.10}, ${W + m} ${-H * 0.12}`;
+}
+
 function initNoelSled() {
   const sled = el('noel-sled');
   if (!sled) return;
-  function scheduleNext() {
-    const delay = 60000 + Math.random() * 30000; // 60-90s
-    setTimeout(() => {
-      sled.classList.add('noel-sled-run');
-      sled.addEventListener('animationend', function onEnd() {
-        sled.classList.remove('noel-sled-run');
-        sled.removeEventListener('animationend', onEnd);
-        scheduleNext();
-      });
-    }, delay);
+  let passage = 0, prev = null, sparkleTimer = null;
+
+  // Sème deux grains de poussière d'étoiles à l'arrière du traîneau. Le sens de
+  // marche se déduit de la position précédente : l'arrière est à 120 px derrière
+  // le centre, dans la direction opposée au mouvement (marche aussi dans le looping).
+  function sparkle() {
+    const r = sled.getBoundingClientRect();
+    const c = { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+    if (prev) {
+      const dx = c.x - prev.x, dy = c.y - prev.y, d = Math.hypot(dx, dy) || 1;
+      const x = c.x - dx / d * 120, y = c.y - dy / d * 120;
+      for (let i = 0; i < 2; i++) {
+        const s = document.createElement('div');
+        s.className = 'noel-sparkle';
+        s.style.left = (x + (Math.random() - 0.5) * 18) + 'px';
+        s.style.top  = (y + (Math.random() - 0.5) * 18) + 'px';
+        s.style.setProperty('--dx', ((Math.random() - 0.5) * 30).toFixed(0) + 'px');
+        s.addEventListener('animationend', () => s.remove());
+        document.body.appendChild(s);
+      }
+    }
+    prev = c;
   }
-  scheduleNext();
+
+  function run() {
+    sled.style.offsetPath = `path("${noelSledPath(passage++)}")`;
+    prev = null;
+    sled.classList.add('noel-sled-run');
+    sparkleTimer = setInterval(sparkle, 70);
+    sled.addEventListener('animationend', function onEnd(e) {
+      if (e.target !== sled) return;   // une animation interne ne doit pas clore le vol
+      sled.removeEventListener('animationend', onEnd);
+      clearInterval(sparkleTimer);
+      sled.classList.remove('noel-sled-run');
+      scheduleNext(false);
+    });
+  }
+
+  // Comme la banderole d'anniversaire : premier vol à 5 s, puis un départ toutes
+  // les 15-20 s (vol de 12 s, donc 3-8 s d'attente après l'atterrissage).
+  function scheduleNext(premier) {
+    setTimeout(run, premier ? 5000 : 3000 + Math.random() * 5000);
+  }
+  scheduleNext(true);
 }
 
 // Guirlande lumineuse — câble tendu entre deux points = une chaînette, y = cosh(x)
@@ -2455,27 +2531,33 @@ function initAnnivConfetti() {
   }
 }
 
-// Banderole "Joyeux Anniversaire" / "¡Feliz Cumpleaños!" — comme le traîneau de Noël,
-// déclenchée à intervalle aléatoire (60-90s) et cachée pendant la veille (z-index sous
-// #sleep-overlay). Le texte alterne FR/ES à chaque passage.
+// Banderole "Joyeux Anniversaire" / "¡Feliz Cumpleaños!" — passe toutes les 15-20 s,
+// visible aussi pendant la veille (z-index au-dessus de #sleep-overlay), et ALTERNE
+// strictement FR/ES. Avant le 2026-11-20 : 60-90 s, cachée en veille, et un tirage
+// au hasard qui pouvait répéter la même langue — le commentaire disait « alterne »,
+// le code ne le faisait pas.
 const ANNIV_BANNER_MESSAGES = ['Joyeux Anniversaire !', '¡Feliz Cumpleaños!'];
 function initAnnivBanner() {
   const banner = el('anniv-banner');
   const textEl = banner ? banner.querySelector('.anniv-banner-text') : null;
   if (!banner || !textEl) return;
-  function scheduleNext() {
-    const delay = 60000 + Math.random() * 30000; // 60-90s
+  let passage = 0;
+  function scheduleNext(premier) {
+    // Premier passage rapide (5 s) : on voit tout de suite que le mode est actif.
+    // Ensuite un passage toutes les 15-20 s, mesuré de départ à départ : le délai
+    // court après la fin de l'animation (10 s), d'où 5-10 s ici.
+    const delay = premier ? 5000 : 5000 + Math.random() * 5000;
     setTimeout(() => {
-      textEl.textContent = ANNIV_BANNER_MESSAGES[Math.floor(Math.random() * ANNIV_BANNER_MESSAGES.length)];
+      textEl.textContent = ANNIV_BANNER_MESSAGES[passage++ % ANNIV_BANNER_MESSAGES.length];
       banner.classList.add('anniv-banner-run');
       banner.addEventListener('animationend', function onEnd() {
         banner.classList.remove('anniv-banner-run');
         banner.removeEventListener('animationend', onEnd);
-        scheduleNext();
+        scheduleNext(false);
       });
     }, delay);
   }
-  scheduleNext();
+  scheduleNext(true);
 }
 
 function initAnnivGarland() {
@@ -3333,6 +3415,21 @@ fetchFavoris();
 initAudioMode();
 if (NOEL_ACTIVE) { initNoelSnow(); initNoelSled(); initNoelGarland(); initNoelPlayerHat(); }
 if (ANNIV_ACTIVE) { initAnnivConfetti(); initAnnivBanner(); initAnnivGarland(); initAnnivPlayerHat(); }
+// Changement de saison sans rechargement (2026-11-20) — NOEL_ACTIVE et
+// ANNIV_ACTIVE ne sont évalués qu'au chargement de la page. Or le kiosque
+// tourne des jours sans recharger (TICKET-114 rafraîchit le catalogue en
+// place, pas la page) : chargé le 19, il n'a jamais affiché l'anniversaire du
+// 20 — et ne l'aurait jamais retiré le 21. On revérifie la date chaque minute
+// et on recharge UNIQUEMENT si l'état saisonnier a changé : quatre fois par an
+// (20 et 21 novembre, 1er décembre, 1er janvier).
+// ⚠️ Zone Z4 : cette boucle ne signale aucune activité, elle ne réarme donc
+// pas le timer de veille. Un rechargement ne touche ni au volume ni à la
+// sortie audio (rien de tel dans l'INIT ci-dessus).
+setInterval(() => {
+  if (isAnnivActive() !== ANNIV_ACTIVE || isNoelActive() !== NOEL_ACTIVE) {
+    location.reload();
+  }
+}, 60000);
 // Resynchro rapide et globale (pas seulement écran lecteur) — un
 // basculement déclenché ailleurs (bouton physique GPIO) doit se refléter
 // à l'écran quasi instantanément, pas au bout de plusieurs secondes.

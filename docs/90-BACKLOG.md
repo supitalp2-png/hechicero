@@ -232,6 +232,72 @@ journée. Autonomie mesurée : **4 h 15** de la pleine charge à l'arrêt.
         parce qu'un programme réel a 10 à 15 dB de facteur de crête là où une sinusoïde
         en a 3 — un test à la sinusoïde surestime donc toujours le plafond utilisable.
 
+- [ ] TICKET-157 — IHM — Le mode anniversaire ne s'est pas affiché le 20 novembre (2026-11-20)
+      - **Cause** : `ANNIV_ACTIVE` et `NOEL_ACTIVE` ne sont évalués qu'**au chargement de
+        la page**. Le kiosque tourne des jours sans recharger (TICKET-114 rafraîchit le
+        catalogue en place) : chargé avant minuit, il n'a jamais vu le 20. La date elle-même
+        était juste (`getMonth() === 10`). Même défaut latent pour Noël au 1er décembre, et
+        pour le retrait des deux modes le lendemain.
+      - Jamais vu avant parce que les deux modes n'avaient été testés que par l'override
+        `?anniv=1` / `?noel=1`, qui recharge la page par construction.
+      - **Correctif** : vérification de la date chaque minute, rechargement **uniquement si
+        l'état saisonnier change** — quatre rechargements par an. La boucle ne signale
+        aucune activité (zone Z4 : ne réarme pas la veille).
+      - ⏳ À valider : la bascule réelle à minuit le 21 novembre (retrait), puis le
+        1er décembre (Noël).
+      - **Banderole** (même jour) : Thomas ne la voyait pas passer. Par construction elle
+        était sous `#sleep-overlay` (invisible en veille, donc la plupart du temps) et ne
+        passait que toutes les 60-90 s ; le tirage FR/ES était au hasard alors que le
+        commentaire promettait une alternance. Désormais : visible aussi en veille, premier
+        passage à 5 s, puis toutes les 15-20 s (de départ à départ, demande de Thomas),
+        alternance stricte FR/ES.
+      - **Traîneau de Noël** (même jour) : mêmes réglages (visible en veille, 5 s puis
+        15-20 s), et trajectoire courbe au lieu de la ligne droite : `offset-path` calculé
+        en JS à chaque vol, vague montante et looping en alternance, `offset-rotate:auto`
+        pour qu'il suive la tangente, poussière d'étoiles semée à l'arrière.
+        ⏳ Jamais vu sur la dalle : à valider avec `?noel=1`.
+
+- [ ] TICKET-156 — dalle — Le tactile décroche : contact mécanique du câble USB (2026-10-18)
+      - **Symptôme** : plus aucune réaction au doigt. Apparu le matin d'une mise à jour de
+        82 paquets, d'où une corrélation très convaincante — et fausse.
+      - 🎯 **Cause établie** : le contrôleur tactile (`1a86:e2e3`, wch.cn
+        `USB2IIC_CTP_CONTROL`) **disparaît du bus USB**. Il n'a jamais été question de
+        logiciel.
+        - 10 énumérations en 42 s, instances HID de `.0002` à `.000F` ;
+        - `device not accepting address 15, error -71` (EPROTO),
+          `Device not responding to setup address` ;
+        - après un cycle `uhubctl`, le port affiche `power` **sans** `connect`, là où le
+          port du DAC audio affiche `power enable connect` : plus de résistance de présence ;
+        - **le comportement change quand on manipule le câble.** C'est la preuve.
+      - 📊 **Ce qui a réfuté la piste de la mise à jour** — énumérations par démarrage :
+        | démarrage | quand | énumérations | déconnexions |
+        |---|---|---|---|
+        | −3 | 17 oct 11:28 | 12 | 2 |
+        | −2 | 17 oct 16:07 | 0 | 0 |
+        | −1 | 18 oct 09:19 | 0 | 0 |
+        | actuel | 18 oct 09:22 | 10 | 10 |
+        La dégradation précède la mise à jour de deux jours. Personne n'avait touché
+        l'écran entre-temps : d'où l'illusion d'une rupture nette.
+      - ❌ **Hypothèses démenties, dans l'ordre où elles sont tombées** :
+        - *mise à jour en cause* → les compteurs ci-dessus ;
+        - *Chromium remplacé à chaud* → `libinput` ne voyait aucun périphérique tactile,
+          deux étages sous le navigateur ;
+        - *rail 5 V marginal du Pi* → `throttled=0x0` et `EXT5V_V = 5,226 V`, rail propre ;
+        - *plafond de courant USB 600 mA* → un plafond ne fait pas disparaître le drapeau
+          de présence du port. La directive manquait réellement (`usb_max_current_enable=1`
+          ajoutée à `config.txt`), mais ce n'est pas le correctif de cette panne.
+      - ⚠️ **Erreur de méthode** : premier relevé fait avec `grep … | tail -20`, qui a
+        coupé le début de la chronologie et fait conclure à une « arrivée tardive » du
+        périphérique — artefact de la commande. Pas de `tail` sur un journal qu'on lit
+        pour établir une chronologie.
+      - **Correctif** : mécanique. Réasseoir le connecteur, puis **immobiliser le câble**
+        (décharge de traction près du connecteur, ou point de colle si le connecteur a du
+        jeu sur la carte). Tant que le câble bouge, la panne revient.
+      - 🔭 Le contrôleur tactile est sur la **même carte** que le récepteur HDMI de la
+        dalle. À garder en tête pour TICKET-149, sans en faire une conclusion.
+      - ✅ **Garde ajoutée** : smoke test §1, zone Z14 du registre — présence sur le bus,
+        existence du nœud d'entrée, comptage des décrochages depuis le démarrage.
+
 - [x] TICKET-155 — écran — Le splash de démarrage a disparu après la mise à jour (2026-09-16)
       - La mise à jour de `rpd-plym-splash` (0.47 → 0.48) a remis le thème plymouth par
         défaut à `pix`. Le thème `hechicero` était **toujours installé**, et son image
@@ -356,6 +422,38 @@ journée. Autonomie mesurée : **4 h 15** de la pleine charge à l'arrêt.
         S'ajoute la nécessité d'épingler les paquets pour qu'aucune mise à jour ne les
         relève — ce qui gèle tout le socle graphique, correctifs de sécurité compris.
         **Conservé comme repli, pas retenu comme plan.**
+      - ✅ **CAUSE AMONT IDENTIFIÉE ET DÉJÀ CORRIGÉE (recherche du 2026-09-27)**.
+        Un ticket ouvert la veille chez Raspberry Pi décrit la même panne, avec
+        **exactement l'état qu'on avait capturé** : `enabled = disabled`, `dpms = Off`,
+        et la sortie fantôme `NOOP-1` qu'on avait vue apparaître sans l'expliquer.
+
+        **Mécanisme** : en 0.20.x, `configure_new_output()` ajoute la sortie à la
+        disposition puis valide son activation via `lab_wlr_scene_output_commit()`, qui
+        **saute la validation réelle** quand la scène ne signale ni dommage ni
+        `needs_frame`. Or au premier passage la sortie fait encore 0×0 : `needs_frame`
+        n'est jamais levé, donc **`enabled=true` n'est jamais validé**. En 0.9.8 la
+        validation était directe — d'où l'apparition du défaut avec le passage en 0.20.
+
+        **Correctif** : commit `d36348e` — « Force the initial modeset commit to actually
+        happen » — publié dans **labwc 0.20.2 le 2026-08-21**, soit un mois avant la mise
+        à jour qui nous a touchés. **`archive.raspberrypi.com` livre toujours 0.20.1** au
+        2026-09-27 ; le ticket amont demande le passage en 0.20.2 ou le rétroportage.
+
+        ⚠️ **Nuance, pas encore levée** : leur déclencheur est un débranchement HDMI, le
+        nôtre une extinction volontaire. Le mécanisme décrit vaut pour une sortie
+        *ajoutée* — ça colle si labwc retire et réajoute la sortie quand on l'éteint, ce
+        que la présence de `NOOP-1` suggère fortement. Très probable, pas démontré.
+
+        Sources : [trixie-feedback#105](https://github.com/raspberrypi/trixie-feedback/issues/105)
+        · [commit d36348e](https://github.com/labwc/labwc/commit/d36348e8fbf78b7b4a874a5162adff5047fb5ae5)
+        · [release 0.20.2](https://github.com/labwc/labwc/releases/tag/0.20.2)
+      - 🤖 **L'attente est désormais automatique.** Le smoke test §8 compare la version
+        installée de `labwc` à 0.20.2 : il **avertit** tant qu'on est en dessous, et
+        **passe au vert avec la marche à suivre** dès que le paquet arrive. Plus besoin
+        d'y penser ni de vérifier à la main.
+      - 🔴 **RÈGLE TANT QUE L'AVERTISSEMENT DURE** : `screen_off_enabled` reste à
+        `false`. La veille passe par le voile noir de la page (écran de veille rétro),
+        la dalle reste alimentée. Coût assumé : **664 mA**, soit 1 h 17 d'autonomie.
       - 📌 **À SUIVRE : la résolution du fil amont.** Le bug est reproductible sur une
         installation Pi 5 + Trixie vierge, donc il ne nous est pas propre et sera traité
         en amont. Surveiller
